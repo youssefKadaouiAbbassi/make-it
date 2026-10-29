@@ -1,6 +1,6 @@
-// Command makeit installs and keeps up to date the Claude Code build stack on this machine.
-// This build has the commands that change nothing: version, help and doctor
-// (cli/READ-ONLY-COMMANDS.md).
+// Command makeit installs and keeps up to date the Claude Code build stack on this machine:
+// setup, update and uninstall change it (cli/SETUP.md, cli/UPDATE-UNINSTALL.md); version, help
+// and doctor change nothing (cli/READ-ONLY-COMMANDS.md).
 package main
 
 import (
@@ -28,6 +28,11 @@ var commands = []cli.Command{
 	{Name: "doctor", Summary: "check this machine against what the stack expects; changes nothing"},
 	{Name: "help", Args: "[command|exit-codes|environment]", Summary: "show help for a command or a topic"},
 	{Name: "setup", Summary: "install the stack on this machine: prerequisites, Claude Code, the catalog, settings and global files"},
+	{Name: "uninstall", Summary: "remove what makeit put on this machine and nobody changed since", Flags: []cli.Flag{
+		{Name: "keep-settings", Help: "leave settings.json as it is"},
+		{Name: "purge", Help: "also delete the data of the plugins makeit installed, and the makeit directory with every backup; cannot be undone"},
+	}},
+	{Name: "update", Summary: "bring this machine to the stack this makeit carries: catalog, plugins, settings and global files"},
 	{Name: "version", Summary: "print the version"},
 }
 
@@ -120,10 +125,16 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 	switch cmd.Name {
 	case "help":
 		return help(p.Positionals, stdout, stderr)
-	case "setup":
+	case "setup", "update", "uninstall":
 		if len(p.Positionals) > 0 {
-			fmt.Fprintf(stderr, "%s: setup takes no arguments\n", prog)
+			fmt.Fprintf(stderr, "%s: %s takes no arguments\n", prog, cmd.Name)
 			return 2
+		}
+		switch cmd.Name {
+		case "update":
+			return runUpdate(ctx, p, args, stdout, stderr)
+		case "uninstall":
+			return runUninstall(ctx, p, args, stdout, stderr)
 		}
 		return runSetup(ctx, p, args, stdout, stderr)
 	case "version":
@@ -250,7 +261,8 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 }
 
 // isTTY reports whether w is a terminal.
-func isTTY(w io.Writer) bool {
+// isTTY reports whether w is a terminal; tests replace it.
+var isTTY = func(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	return ok && ui.IsTerminal(f)
 }

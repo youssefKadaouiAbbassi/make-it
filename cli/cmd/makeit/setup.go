@@ -44,6 +44,28 @@ var setupEnv = func(context.Context) (setup.Env, error) {
 }
 
 func runSetup(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {
+	return runModifying(ctx, p, stdout, stderr, modifying{name: "setup", question: "Apply this plan?", yesFirst: true,
+		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
+			return setup.Run(ctx, e, mode, confirm, args)
+		}})
+}
+
+// modifying is what differs between setup, update and uninstall.
+type modifying struct {
+	name     string
+	question string
+	// yesFirst is the prompt's default answer.
+	yesFirst bool
+	run      func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error)
+	// notice is update's newer-release line, asked before the run; nil for the others.
+	notice func(ctx context.Context) string
+	// after prints the command's own closing lines, in text mode, after a run without error.
+	after func(w io.Writer, rep setup.Report)
+}
+
+// runModifying is what setup, update and uninstall share: the consent rule, the plan shown before
+// the prompt, the outcomes, the exit code and the JSON report.
+func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m modifying) int {
 	e, err := setupEnv(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
@@ -55,25 +77,27 @@ func runSetup(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 	mode := plan.Decide(e.Interactive, e.Yes, p.Bool["dry-run"])
 	u := ui.New(os.Stdin, stderr, e.Interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
+	notice := ""
+	if m.notice != nil && !p.Bool["offline"] {
+		notice = m.notice(ctx)
+	}
 	shown := false
 	confirm := func(outs []plan.Outcome) (bool, error) {
 		printOutcomes(u, outs)
 		shown = true
-		return u.Confirm("Apply this plan?", true)
+		return u.Confirm(m.question, m.yesFirst)
 	}
-	rep, err := setup.Run(ctx, e, mode, confirm, args)
+	rep, err := m.run(ctx, e, mode, confirm)
 	if ctx.Err() != nil {
-		fmt.Fprintf(stderr, "%s: setup interrupted\n", prog)
+		fmt.Fprintf(stderr, "%s: %s interrupted\n", prog, m.name)
 		return 1
 	}
 	code := 0
 	switch {
 	case errors.Is(err, setup.ErrConsent):
 		code = 2
-	case errors.Is(err, setup.ErrDeclined):
-	case err != nil:
-		code = 1
-	case rep.Plan.Failed():
+	case errors.Is(err, setup.ErrDeclined), errors.Is(err, setup.ErrNothing):
+	case err != nil, rep.Plan.Failed():
 		code = 1
 	}
 	if asJSON {
@@ -81,10 +105,13 @@ func runSetup(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 			Version    string          `json:"version"`
 			Plan       []plan.Outcome  `json:"plan"`
 			Skipped    []setup.Skipped `json:"skipped"`
+			Hints      []setup.Hint    `json:"hints,omitempty"`
+			Kept       []setup.Kept    `json:"kept,omitempty"`
+			Notice     string          `json:"notice,omitempty"`
 			Generation int             `json:"generation"`
 			Summary    string          `json:"summary"`
 			Error      string          `json:"error,omitempty"`
-		}{buildinfo.Version, rep.Plan.Outcomes, rep.Skipped, rep.Generation, rep.Plan.Summary(), errText(err)}
+		}{buildinfo.Version, rep.Plan.Outcomes, rep.Skipped, rep.Hints, rep.Kept, notice, rep.Generation, rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
 	if !shown || rep.Generation > 0 {
@@ -96,6 +123,18 @@ func runSetup(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 	fmt.Fprintln(stderr, rep.Plan.Summary())
 	for _, s := range rep.Skipped {
 		fmt.Fprintf(stderr, "install by hand: %s (%s)\n", s.ID, s.Manual)
+	}
+	for _, k := range rep.Kept {
+		fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)
+	}
+	for _, h := range rep.Hints {
+		fmt.Fprintf(stderr, "%s: %s\n", h.ID, h.Text)
+	}
+	if notice != "" {
+		fmt.Fprintln(stderr, notice)
+	}
+	if m.after != nil && err == nil {
+		m.after(stderr, rep)
 	}
 	return code
 }

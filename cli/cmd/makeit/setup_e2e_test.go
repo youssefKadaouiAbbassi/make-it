@@ -30,11 +30,15 @@ func handInstalled(t *testing.T, edit func(*jsonx.Object)) (claudeDir, stack str
 		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
 	}
 	write(t, filepath.Join(bin, "claude"), `#!/bin/sh
+echo "$*" >> "$CALLS"
 case "$*" in
   "--version") echo "2.1.312 (Claude Code)" ;;
   "doctor") ;;
   "plugin marketplace list --json") echo '[{"name":"makeit","source":"directory","path":"/repo"},{"name":"claude-plugins-official","source":"github"}]' ;;
   "plugin list --json") echo '[{"id":"makeit-bundle@makeit","version":"3.10.0","scope":"user","enabled":true}]' ;;
+  "plugin marketplace update makeit --json") echo '{"command":"marketplace-update","outcome":"ok"}' ;;
+  "plugin update "*) echo '{"command":"update","outcome":"ok","updateOutcome":"up_to_date"}' ;;
+  "plugin prune --dry-run --scope user") ;;
   *) echo "unexpected $*" >&2; exit 1 ;;
 esac
 `)
@@ -72,6 +76,7 @@ esac
 	t.Setenv("CLAUDE_CONFIG_DIR", claudeDir)
 	t.Setenv("MAKEIT_DIR", stack)
 	t.Setenv("PATH", bin)
+	t.Setenv("CALLS", filepath.Join(t.TempDir(), "calls"))
 	return claudeDir, stack
 }
 
