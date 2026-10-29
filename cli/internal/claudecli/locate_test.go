@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -66,7 +67,10 @@ func TestMachineProbe(t *testing.T) {
 		}
 	}
 	write(filepath.Join(bin, "claude"), "#!/bin/sh\n")
-	write(filepath.Join(bin, "npm"), "#!/bin/sh\necho "+prefix+"\n")
+	// The fake npm records its arguments: a plain `npm prefix -g` writes a debug log under
+	// ~/.npm/_logs and may check the registry, and doctor writes nothing.
+	npmArgs := filepath.Join(t.TempDir(), "npm.args")
+	write(filepath.Join(bin, "npm"), "#!/bin/sh\nprintf '%s\\n' \"$@\" > "+npmArgs+"\necho "+prefix+"\n")
 	write(filepath.Join(prefix, "bin", "claude"), "#!/bin/sh\n")
 	// The native launcher is a symlink into versions/ (setup.md), so Exists must follow links.
 	write(filepath.Join(home, ".local", "share", "claude", "versions", "2.1.311"), "#!/bin/sh\n")
@@ -89,6 +93,15 @@ func TestMachineProbe(t *testing.T) {
 		{filepath.Join(prefix, "bin", "claude"), "npm", false}}
 	if !slices.Equal(got, want) {
 		t.Errorf("Locate(MachineProbe) = %v, want %v", got, want)
+	}
+	args, err := os.ReadFile(npmArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--logs-max=0", "--no-update-notifier"} {
+		if !slices.Contains(strings.Fields(string(args)), flag) {
+			t.Errorf("npm ran with %q, without %s", args, flag)
+		}
 	}
 	p := MachineProbe(context.Background(), home)
 	if p.Exists(filepath.Join(home, "notafile", "claude")) {

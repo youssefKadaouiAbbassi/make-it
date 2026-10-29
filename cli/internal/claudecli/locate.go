@@ -97,7 +97,10 @@ func MachineProbe(ctx context.Context, home string) Probe {
 			if !ok {
 				return ""
 			}
-			r, err := execx.Run(ctx, execx.Cmd{Argv: []string{npm, "prefix", "-g"}, Timeout: 10 * time.Second})
+			// Without these npm writes a debug log under ~/.npm/_logs on every run and may check
+			// the registry for a newer npm (docs.npmjs.com config: logs-max, update-notifier).
+			r, err := execx.Run(ctx, execx.Cmd{Argv: []string{npm, "prefix", "-g", "--logs-max=0", "--no-update-notifier"},
+				Timeout: 10 * time.Second})
 			if err != nil || r.Code != 0 {
 				return ""
 			}
