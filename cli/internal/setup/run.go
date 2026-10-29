@@ -35,6 +35,15 @@ type Skipped struct {
 // Run plans setup and, as mode allows, applies it. confirm is asked once, with the plan, in
 // Prompt mode. A plan with nothing to do applies nothing and makes no generation.
 func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), argv []string) (Report, error) {
+	// A run that may apply holds the lock from before it reads state, so it never plans on state
+	// another run is about to change. A dry run and a run that only prints its plan take none.
+	if mode == plan.Apply || mode == plan.Prompt {
+		lock, err := fsx.Acquire(filepath.Join(e.Roots.Stack, "lock"), time.Now())
+		if err != nil {
+			return Report{}, err
+		}
+		defer lock.Release()
+	}
 	statePath := filepath.Join(e.Roots.Stack, "state.json")
 	st, _, err := state.LoadState(statePath)
 	if err != nil {
@@ -72,11 +81,6 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 		}
 	}
 
-	lock, err := fsx.Acquire(filepath.Join(e.Roots.Stack, "lock"), time.Now())
-	if err != nil {
-		return rep, err
-	}
-	defer lock.Release()
 	gen, err := state.NewGeneration(e.Roots.Stack, st.Generation, "setup", argv)
 	if err != nil {
 		return rep, err

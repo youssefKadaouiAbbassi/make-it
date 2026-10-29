@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/execx"
+	"makeit/internal/fsx"
 	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
@@ -188,5 +190,22 @@ func TestRunPromptDeclined(t *testing.T) {
 	}
 	if generations(t, m.env.Roots.Stack) != 0 {
 		t.Error("declined, but a generation was made")
+	}
+}
+
+// A run that would apply takes the lock before it reads state or asks claude anything, so a
+// second setup cannot plan on stale state while another applies.
+func TestRunLockedPlansNothing(t *testing.T) {
+	m := newMachine(t)
+	lock, err := fsx.Acquire(filepath.Join(m.env.Roots.Stack, "lock"), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	if _, err := Run(context.Background(), m.env, plan.Apply, nil, nil); err == nil || !strings.Contains(err.Error(), "another makeit run") {
+		t.Fatalf("err %v, want the lock holder named", err)
+	}
+	if len(m.calls) != 0 {
+		t.Errorf("planned while another run held the lock: %v", m.calls)
 	}
 }
