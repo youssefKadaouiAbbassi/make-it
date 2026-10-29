@@ -45,3 +45,22 @@ func TestMarketplaceAdoptedInfo(t *testing.T) {
 		t.Errorf("marketplace = %+v, want info naming it adopted", got)
 	}
 }
+
+func TestAdoptedPluginCommandInfo(t *testing.T) {
+	m, _ := healthy(t)
+	write(t, m.SettingsPath, `{"extraKnownMarketplaces": {"claude-plugins-official": {"autoUpdate": false}}}`)
+	got := byID(t, Run(context.Background(), m), "update.typescript-lsp@claude-plugins-official")
+	if got.Level != Info || got.Fix != "claude plugin update typescript-lsp@claude-plugins-official --scope user" ||
+		!strings.Contains(got.Message, "not updated automatically") {
+		t.Errorf("check %+v, want info with the update command", got)
+	}
+}
+
+func TestAutoUpdatedPluginNoLine(t *testing.T) {
+	m, _ := healthy(t)
+	for _, c := range Run(context.Background(), m) {
+		if strings.HasPrefix(c.ID, "update.") {
+			t.Errorf("a plugin Claude Code updates got a line: %+v", c)
+		}
+	}
+}

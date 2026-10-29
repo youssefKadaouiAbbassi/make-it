@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"makeit/internal/catalog"
@@ -52,6 +53,28 @@ func (r *report) plugins(ctx context.Context, m Machine, req catalog.Requires, r
 			r.add("plugin."+id, g, Info, id+" is installed but disabled", "")
 		default:
 			r.add("plugin."+id, g, OK, id+" "+installed[i].Version, "")
+		}
+	}
+	r.updates(ctx, m, req, ids, installed, st)
+}
+
+// updates adds one info line per adopted stack plugin from another marketplace that nothing
+// updates by itself (cli/UPDATE-UNINSTALL.md, rule 4); makeit update updates the makeit
+// marketplace's own, and Claude Code the auto-updated and in-place ones.
+func (r *report) updates(ctx context.Context, m Machine, req catalog.Requires, ids []string, installed []claudecli.Plugin, st *state.State) {
+	in, err := pluginrule.Gather(ctx, m.Claude, m.SettingsPath, m.Getenv)
+	if err != nil {
+		return // the listing failed: the plugin checks above say so
+	}
+	for _, id := range ids {
+		if rec := st.Plugins[id]; rec != nil && rec.InstalledBy == "makeit" {
+			continue
+		}
+		if strings.HasSuffix(id, "@"+req.Marketplace) || !slices.ContainsFunc(installed, func(p claudecli.Plugin) bool { return p.ID == id }) {
+			continue
+		}
+		if v := in.Classify(id); v.Rule == pluginrule.Command {
+			r.add("update."+id, "plugins", Info, id+" is not updated automatically", v.Text)
 		}
 	}
 }

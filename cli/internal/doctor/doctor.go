@@ -54,6 +54,8 @@ type Machine struct {
 	// global files setup writes into it (templates/global/...).
 	ClaudeDir string
 	Globals   []string
+	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
+	Getenv func(string) string
 }
 
 type report struct{ checks []Check }

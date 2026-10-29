@@ -23,6 +23,7 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 	present := func(name string) bool { _, ok := execx.LookPath(name); return ok }
 	p := platform.Detect(runtime.GOOS, runtime.GOARCH, present, os.Getenv)
 	m := Machine{
+		Getenv:  os.Getenv,
 		Version: version, Target: target, CatalogDigest: digest,
 		Platform:     p,
 		Prereqs:      platform.Status(p, present),
