@@ -238,6 +238,15 @@ func ClaudeRoutes(p Platform, present func(string) bool) []Route {
 	return rs
 }
 
+// Text is the route's command as a person would type it: the script itself for a shell route,
+// so doctor shows exactly what setup runs.
+func (r Route) Text() string {
+	if len(r.Argv) == 3 && (r.Argv[0] == "sh" || r.Argv[0] == "bash") && r.Argv[1] == "-c" {
+		return r.Argv[2]
+	}
+	return execx.Quote(r.Argv)
+}
+
 // The Claude Code release signing key (setup.md 363-460). A key that fails its check makes a
 // repository script exit 3, which is never answered with the native installer.
 const (

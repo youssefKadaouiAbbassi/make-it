@@ -126,7 +126,7 @@ func (r *report) claude(ctx context.Context, m Machine, req catalog.Requires, re
 	if len(m.Installs) == 0 {
 		fix := ""
 		if len(m.Routes) > 0 {
-			fix = routeText(m.Routes[0])
+			fix = m.Routes[0].Text()
 		}
 		const why = "Claude Code is not installed"
 		r.add("claude.installed", g, Error, why, fix)
@@ -189,13 +189,4 @@ func (r *report) version(ctx context.Context, m Machine, req catalog.Requires, r
 		r.add(id, g, OK, "Claude Code "+v, "")
 	}
 	return ""
-}
-
-// routeText is a route's command as a person would type it: the script itself for a shell
-// route, so doctor shows exactly what setup would run.
-func routeText(r platform.Route) string {
-	if len(r.Argv) == 3 && (r.Argv[0] == "sh" || r.Argv[0] == "bash") && r.Argv[1] == "-c" {
-		return r.Argv[2]
-	}
-	return execx.Quote(r.Argv)
 }

@@ -4,6 +4,7 @@
 package setup
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 
@@ -24,6 +25,8 @@ type Env struct {
 	Present func(string) bool
 	Run     execx.Runner
 	Catalog catalog.Source
+	// Locate finds the claude binaries on the machine (claudecli.Locate in production).
+	Locate func(ctx context.Context) []claudecli.Install
 	// Interactive is true when a person can answer sudo's password prompt; Yes is --yes, which
 	// makes sudo run with -n. Root skips sudo.
 	Interactive, Yes, Root bool
