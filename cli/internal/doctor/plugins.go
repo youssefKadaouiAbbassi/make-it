@@ -3,14 +3,13 @@ package doctor
 import (
 	"cmp"
 	"context"
-	"encoding/json/v2"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
+	"makeit/internal/pluginrule"
 	"makeit/internal/state"
 )
 
@@ -22,7 +21,11 @@ func (r *report) plugins(ctx context.Context, m Machine, req catalog.Requires, r
 	} else {
 		r.marketplace(ctx, m, req, st)
 	}
-	ids, err := bundleIDs(m.Catalog, req, reqErr)
+	var ids []string
+	err := reqErr
+	if err == nil {
+		ids, err = pluginrule.BundleIDs(m.Catalog, req)
+	}
 	if err != nil {
 		r.add("plugin.list", g, Error, err.Error(), "")
 		return
@@ -71,33 +74,6 @@ func (r *report) marketplace(ctx context.Context, m Machine, req catalog.Require
 		}
 	}
 	r.add(id, g, Error, "the "+req.Marketplace+" marketplace is not added", "makeit setup")
-}
-
-// bundleIDs are the bundle's id and its plugin.json dependencies; a dependency without a
-// marketplace comes from the bundle's own.
-func bundleIDs(src catalog.Source, req catalog.Requires, reqErr error) ([]string, error) {
-	if reqErr != nil {
-		return nil, reqErr
-	}
-	name, _, _ := strings.Cut(req.Bundle, "@")
-	raw, err := src.ReadFile("plugins/" + name + "/.claude-plugin/plugin.json")
-	if err != nil {
-		return nil, fmt.Errorf("the catalog's %s manifest: %w", name, err)
-	}
-	var manifest struct {
-		Dependencies []string `json:"dependencies"`
-	}
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return nil, fmt.Errorf("the catalog's %s manifest: %w", name, err)
-	}
-	ids := []string{req.Bundle}
-	for _, d := range manifest.Dependencies {
-		if !strings.Contains(d, "@") {
-			d += "@" + req.Marketplace
-		}
-		ids = append(ids, d)
-	}
-	return ids, nil
 }
 
 // record checks makeit's own record of what it did on this machine.

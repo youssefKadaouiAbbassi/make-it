@@ -123,14 +123,17 @@ func parseVersion(v string) ([]int, error) {
 
 // Plugin is one entry of `claude plugin list --json`.
 type Plugin struct {
-	ID            string   `json:"id"`
-	Version       string   `json:"version"`
-	Scope         string   `json:"scope"`
-	Enabled       bool     `json:"enabled"`
-	InstallPath   string   `json:"installPath"`
-	HasUserConfig bool     `json:"hasUserConfig"`
-	Errors        []string `json:"errors"`
-	Notes         []string `json:"notes"`
+	ID            string `json:"id"`
+	Version       string `json:"version"`
+	Scope         string `json:"scope"`
+	Enabled       bool   `json:"enabled"`
+	InstallPath   string `json:"installPath"`
+	HasUserConfig bool   `json:"hasUserConfig"`
+	// ReadFromFolder is the source directory of a plugin that sessions load in place from its
+	// marketplace's folder (Claude Code 2.1.289 or later); empty for a copied plugin.
+	ReadFromFolder string   `json:"readFromFolder"`
+	Errors         []string `json:"errors"`
+	Notes          []string `json:"notes"`
 }
 
 // Plugins lists installed plugins.
