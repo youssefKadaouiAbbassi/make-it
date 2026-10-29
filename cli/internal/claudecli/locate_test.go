@@ -28,16 +28,18 @@ func TestLocate(t *testing.T) {
 	}{
 		{"linux, every source, PATH first", probe("linux", "/usr/bin/claude", "/home/u/.npm-global",
 			native, "/home/linuxbrew/.linuxbrew/bin/claude", "/home/u/.npm-global/bin/claude"),
-			[]Install{{"/usr/bin/claude", "path"}, {native, "native"},
-				{"/home/linuxbrew/.linuxbrew/bin/claude", "brew"}, {"/home/u/.npm-global/bin/claude", "npm"}}},
-		{"PATH entry that is the native launcher is listed once", probe("linux", native, "", native),
-			[]Install{{native, "path"}}},
+			[]Install{{"/usr/bin/claude", "path", true}, {native, "native", false},
+				{"/home/linuxbrew/.linuxbrew/bin/claude", "brew", false}, {"/home/u/.npm-global/bin/claude", "npm", false}}},
+		{"PATH entry that is the native launcher is listed once, as native", probe("linux", native, "", native),
+			[]Install{{native, "native", true}}},
+		{"PATH entry that is a Homebrew link keeps brew", probe("darwin", "/opt/homebrew/bin/claude", "", "/opt/homebrew/bin/claude"),
+			[]Install{{"/opt/homebrew/bin/claude", "brew", true}}},
 		{"darwin checks both Homebrew prefixes", probe("darwin", "", "",
 			"/opt/homebrew/bin/claude", "/usr/local/bin/claude"),
-			[]Install{{"/opt/homebrew/bin/claude", "brew"}, {"/usr/local/bin/claude", "brew"}}},
+			[]Install{{"/opt/homebrew/bin/claude", "brew", false}, {"/usr/local/bin/claude", "brew", false}}},
 		{"windows: claude.exe launcher, npm shim directly in the prefix, no brew", probe("windows", "", "/appdata/npm",
 			native+".exe", "/appdata/npm/claude.cmd", "/home/linuxbrew/.linuxbrew/bin/claude"),
-			[]Install{{native + ".exe", "native"}, {"/appdata/npm/claude.cmd", "npm"}}},
+			[]Install{{native + ".exe", "native", false}, {"/appdata/npm/claude.cmd", "npm", false}}},
 		{"nothing installed and no npm", probe("linux", "", ""), nil},
 	}
 	for _, c := range cases {
@@ -83,8 +85,8 @@ func TestMachineProbe(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 	got := Locate(MachineProbe(context.Background(), home))
-	want := []Install{{filepath.Join(bin, "claude"), "path"}, {filepath.Join(home, ".local", "bin", "claude"), "native"},
-		{filepath.Join(prefix, "bin", "claude"), "npm"}}
+	want := []Install{{filepath.Join(bin, "claude"), "path", true}, {filepath.Join(home, ".local", "bin", "claude"), "native", false},
+		{filepath.Join(prefix, "bin", "claude"), "npm", false}}
 	if !slices.Equal(got, want) {
 		t.Errorf("Locate(MachineProbe) = %v, want %v", got, want)
 	}

@@ -11,11 +11,13 @@ import (
 	"makeit/internal/execx"
 )
 
-// Install is one claude binary found on this machine. Source is where it was found: path,
-// native, brew or npm.
+// Install is one claude binary found on this machine. Source is the install route whose
+// location it is (native, brew or npm), or path for a claude on PATH at none of them. OnPath
+// marks the one PATH runs.
 type Install struct {
 	Path   string
 	Source string
+	OnPath bool
 }
 
 // Probe is what Locate reads from the machine.
@@ -38,15 +40,20 @@ func Locate(p Probe) []Install {
 	var found []Install
 	add := func(path, source string) {
 		path = filepath.Clean(path)
-		for _, f := range found {
+		for i, f := range found {
 			if f.Path == path {
+				// PATH's claude at a route's location takes that route's name, for its upgrade hint.
+				if f.Source == "path" {
+					found[i].Source = source
+				}
 				return
 			}
 		}
-		found = append(found, Install{path, source})
+		found = append(found, Install{Path: path, Source: source})
 	}
 	if path, ok := p.LookPath("claude"); ok {
 		add(path, "path")
+		found[0].OnPath = true
 	}
 	exe, shim, bin := "claude", "claude", "bin"
 	if p.GOOS == "windows" {
