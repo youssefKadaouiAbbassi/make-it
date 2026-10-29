@@ -526,3 +526,53 @@ func TestStalePinBacksUpData(t *testing.T) {
 		t.Error("the plugin was uninstalled before its data was copied into the generation")
 	}
 }
+
+// adoptedMachine had the makeit marketplace, the bundle and every global file before setup.
+func adoptedMachine(t *testing.T) *fakeMachine {
+	t.Helper()
+	m := newMachine(t)
+	m.markets = []string{"makeit", "claude-plugins-official"}
+	m.plugins = []string{"makeit-bundle@makeit"}
+	for _, p := range globalPaths(t, m.env.Roots.Claude) {
+		writeFile(t, p, "mine\n")
+	}
+	apply(t, m)
+	return m
+}
+
+// Final review I1: what the user removed stays removed, adopted or not.
+func TestUpdateLeavesRemovedAdoptedBundle(t *testing.T) {
+	m := adoptedMachine(t)
+	m.plugins = nil
+	before := len(m.calls)
+	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range m.calls[before:] {
+		if strings.Contains(c, "plugin install makeit-bundle@makeit") {
+			t.Errorf("update reinstalled the adopted bundle the user removed: %s", c)
+		}
+	}
+	if r := keptReason(&env{kept: rep.Kept}, "makeit-bundle@makeit"); r != removedByYou {
+		t.Errorf("kept %q", r)
+	}
+}
+
+func TestUpdateLeavesRemovedAdoptedMarketplace(t *testing.T) {
+	m := adoptedMachine(t)
+	m.markets = []string{"claude-plugins-official"}
+	m.plugins = nil
+	before := len(m.calls)
+	if _, err := Update(context.Background(), m.env, plan.Apply, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range m.calls[before:] {
+		if strings.Contains(c, "marketplace add") && strings.Contains(c, ".makeit") {
+			t.Errorf("update re-added the makeit marketplace the user removed: %s", c)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "catalog")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("update wrote a catalog for a marketplace the user removed: %v", err)
+	}
+}

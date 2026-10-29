@@ -29,7 +29,12 @@ func (e *env) stackSteps() []plan.Step {
 				if err != nil {
 					return false, err
 				}
-				if rec := e.st.Marketplaces[e.req.Marketplace]; listed && rec != nil && rec.AddedBy == "user" {
+				rec := e.st.Marketplaces[e.req.Marketplace]
+				if listed && rec != nil && rec.AddedBy == "user" {
+					return true, nil
+				}
+				// update writes no catalog for a marketplace the user removed (the marketplace step says so).
+				if e.command == "update" && !listed && rec != nil {
 					return true, nil
 				}
 				return catalog.UpToDate(dir)
@@ -56,8 +61,8 @@ func (e *env) stackSteps() []plan.Step {
 				if err != nil || listed {
 					return listed, err
 				}
-				// update does not put back a marketplace makeit added and the user removed.
-				if rec := e.st.Marketplaces[e.req.Marketplace]; e.command == "update" && rec != nil && rec.AddedBy == "makeit" {
+				// update does not put back a recorded marketplace the user removed, adopted or added by makeit.
+				if rec := e.st.Marketplaces[e.req.Marketplace]; e.command == "update" && rec != nil {
 					e.keep("marketplace "+e.req.Marketplace, removedByYou)
 					return true, nil
 				}
@@ -78,9 +83,9 @@ func (e *env) stackSteps() []plan.Step {
 				if err != nil {
 					return false, err
 				}
-				// update does not put back a bundle makeit installed and the user removed, and leaves
-				// a disabled one disabled.
-				if rec := e.st.Plugins[e.req.Bundle]; e.command == "update" && p == nil && rec != nil && rec.InstalledBy == "makeit" {
+				// update does not put back a recorded bundle the user removed, adopted or installed by
+				// makeit, and leaves a disabled one disabled.
+				if rec := e.st.Plugins[e.req.Bundle]; e.command == "update" && p == nil && rec != nil {
 					e.keep(e.req.Bundle, removedByYou)
 					return true, nil
 				}
