@@ -28,6 +28,11 @@ const prog = "makeit"
 var commands = []cli.Command{
 	{Name: "doctor", Summary: "check this machine against what the stack expects; changes nothing"},
 	{Name: "help", Args: "[command|exit-codes|environment]", Summary: "show help for a command or a topic"},
+	{Name: "self", Args: "install|update|rollback", Summary: "install, update or roll back makeit itself", Flags: []cli.Flag{
+		{Name: "prefix", Value: "<dir>", Help: "self install: where to put makeit (default ~/.local/bin)"},
+		{Name: "to", Value: "<version>", Help: "self update: this version instead of the latest; clears a skip"},
+		{Name: "allow-downgrade", Help: "self update: allow --to an older version"},
+	}},
 	{Name: "setup", Summary: "install the stack on this machine: prerequisites, Claude Code, the catalog, settings and global files"},
 	{Name: "uninstall", Summary: "remove what makeit put on this machine and nobody changed since", Flags: []cli.Flag{
 		{Name: "keep-settings", Help: "leave settings.json as it is"},
@@ -138,6 +143,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 			return runUninstall(ctx, p, args, stdout, stderr)
 		}
 		return runSetup(ctx, p, args, stdout, stderr)
+	case "self":
+		return runSelf(ctx, p, stdout, stderr)
 	case "version":
 		if len(p.Positionals) > 0 {
 			fmt.Fprintf(stderr, "%s: version takes no arguments\n", prog)

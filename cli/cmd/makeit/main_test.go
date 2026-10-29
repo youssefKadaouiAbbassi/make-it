@@ -140,11 +140,11 @@ func TestHelp(t *testing.T) {
 	if code, out, _ := call(t, noGather(t), "help", "exit-codes"); code != 0 || !strings.Contains(out, "143") {
 		t.Errorf("help exit-codes: exit %d, stdout %q", code, out)
 	}
-	if code, out, _ := call(t, noGather(t), "help", "environment"); code != 0 || !strings.Contains(out, "MAKEIT_DIR") {
+	if code, out, _ := call(t, noGather(t), "help", "environment"); code != 0 || !strings.Contains(out, "MAKEIT_DIR") || !strings.Contains(out, "MAKEIT_REEXEC") || !strings.Contains(out, "MAKEIT_RELEASES_URL") {
 		t.Errorf("help environment: exit %d, stdout %q", code, out)
 	}
 	_, out, _ := call(t, noGather(t), "help")
-	for _, built := range []string{"setup", "update", "uninstall"} {
+	for _, built := range []string{"self", "setup", "update", "uninstall"} {
 		if !strings.Contains(out, "  "+built+" ") {
 			t.Errorf("usage does not list %s: %q", built, out)
 		}
