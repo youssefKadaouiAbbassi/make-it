@@ -64,6 +64,8 @@ type env struct {
 	purge bool
 	// keepSettings is uninstall's --keep-settings; catalogLeft: removing the catalog failed.
 	keepSettings, catalogLeft bool
+	// reload: a plugin version or pin moved, or the catalog changed, so Claude Code must reload.
+	reload bool
 }
 
 // removedByYou is the reason update gives for not putting back what the user removed.

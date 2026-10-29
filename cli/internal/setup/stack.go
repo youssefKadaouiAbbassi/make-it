@@ -46,6 +46,7 @@ func (e *env) stackSteps() []plan.Step {
 				if err != nil {
 					return "", err
 				}
+				e.reload = true
 				e.st.Catalog = state.Catalog{Kind: "embedded", Location: e.Roots.Portable(dir), MarketplaceName: e.req.Marketplace}
 				return fmt.Sprintf("%d files", n), nil
 			}},
@@ -111,6 +112,7 @@ func (e *env) stackSteps() []plan.Step {
 				if err := e.install(ctx, e.req.Bundle); err != nil {
 					return "", err
 				}
+				e.reload = true
 				if err := e.recordNew(ctx, before); err != nil {
 					return "", err
 				}

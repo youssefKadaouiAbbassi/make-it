@@ -298,7 +298,7 @@ func (e *env) bundleDepsStep(declared []string, derr error) plan.Step {
 			if err := e.install(ctx, e.req.Bundle); err != nil {
 				return "", err
 			}
-			e.inputs = nil
+			e.inputs, e.reload = nil, true
 			return "", e.recordNew(ctx, before)
 		}}
 }
@@ -338,6 +338,9 @@ func (e *env) ownedStep(id string) plan.Step {
 				return "", fmt.Errorf("claude plugin update %s: %s", id, res.Message)
 			}
 			rec := e.st.Plugins[id]
+			if res.UpdateOutcome != "up_to_date" {
+				e.reload = true
+			}
 			if v.Rule == pluginrule.Pinned && res.UpdateOutcome == "up_to_date" && rec.Observed.GitCommitSha != "" && rec.Observed.GitCommitSha != v.Pin {
 				if p != nil && p.HasUserConfig {
 					e.keep(id, fmt.Sprintf("its pinned commit moved without a version change; reinstalling deletes its saved options and secrets, so run: "+
@@ -354,6 +357,7 @@ func (e *env) ownedStep(id string) plan.Step {
 				if err := e.install(ctx, e.req.Bundle); err != nil {
 					return "", err
 				}
+				e.reload = true
 			}
 			if v.Rule == pluginrule.Pinned {
 				rec.Observed.GitCommitSha = v.Pin
@@ -403,6 +407,9 @@ func (e *env) adoptedStep() plan.Step {
 					errs = append(errs, fmt.Errorf("claude plugin update %s: %s", id, res.Message))
 				default:
 					done = append(done, id+": "+cmp.Or(res.UpdateOutcome, res.Outcome))
+					if res.UpdateOutcome != "up_to_date" {
+						e.reload = true
+					}
 					// The pin it was updated to, so the next update leaves it alone until the pin moves.
 					if v := in.Classify(id); v.Rule == pluginrule.Pinned {
 						e.st.Plugins = initMap(e.st.Plugins)
@@ -520,7 +527,7 @@ func (e *env) dropStep(id string) plan.Step {
 			if err := e.act(e.claude.Uninstall(ctx, id)); err != nil {
 				return "", err
 			}
-			e.inputs = nil
+			e.inputs, e.reload = nil, true
 			delete(e.st.Plugins, id)
 			if e.gen != nil {
 				e.gen.Manifest.Plugins.Uninstalled = append(e.gen.Manifest.Plugins.Uninstalled, id)

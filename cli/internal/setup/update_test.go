@@ -695,3 +695,26 @@ func TestUpdateKeepsLinkedFile(t *testing.T) {
 		t.Errorf("target %q, kept %q", read(t, target), keptReason(e, "claude:rules/go.md"))
 	}
 }
+
+// The delegate's ruling: the restart hint only when a plugin version or pin actually moved.
+func TestReloadOnlyWhenSomethingMoved(t *testing.T) {
+	for outcome, want := range map[string]bool{upToDate: false, updated: true} {
+		e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+			`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+		e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": {InstalledBy: "user"}}
+		f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(outcome)
+		if _, err := step(t, e.pluginSteps(), "plugins.adopted").Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if e.reload != want {
+			t.Errorf("%s: reload = %v, want %v", outcome, e.reload, want)
+		}
+	}
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(updated)
+	if _, err := step(t, e.pluginSteps(), "plugin.superpowers@makeit").Run(context.Background()); err != nil || !e.reload {
+		t.Errorf("owned plugin updated: %v, reload = %v", err, e.reload)
+	}
+}

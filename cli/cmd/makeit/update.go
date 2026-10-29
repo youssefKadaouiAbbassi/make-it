@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/cli"
@@ -27,21 +26,10 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 			return release.Notice(ctx, http.DefaultClient, releaseBase, buildinfo.Repo, buildinfo.Version)
 		},
 		after: func(w io.Writer, rep setup.Report) {
-			if loads(rep.Plan.Outcomes) {
+			if rep.Reload {
 				fmt.Fprintln(w, "restart Claude Code or run /reload-plugins to load the changes")
 			}
 		}})
-}
-
-// loads reports whether a step that changes what Claude Code loads was done.
-func loads(outs []plan.Outcome) bool {
-	for _, o := range outs {
-		if o.Status == plan.Done && (o.ID == "catalog" || o.ID == "settings" || o.ID == "bundle" || o.ID == "bundle.deps" ||
-			strings.HasPrefix(o.ID, "plugin") || strings.HasPrefix(o.ID, "marketplace")) {
-			return true
-		}
-	}
-	return false
 }
 
 func runUninstall(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {

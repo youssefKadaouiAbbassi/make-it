@@ -27,6 +27,9 @@ type Report struct {
 	Hints []Hint
 	// Kept are the items the run left alone, each with the reason.
 	Kept []Kept
+	// Reload: a plugin version or pin moved, or the catalog changed; Claude Code needs a restart or
+	// /reload-plugins to load it.
+	Reload bool
 	// Generation is the run's generation, 0 when nothing was applied.
 	Generation int
 }
@@ -146,7 +149,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 			saveErr = errors.Join(saveErr, state.SaveState(statePath, st))
 		}
 	}})
-	rep.Hints, rep.Kept = en.hints, en.kept
+	rep.Hints, rep.Kept, rep.Reload = en.hints, en.kept, en.reload
 	rep.Generation = gen.Manifest.Generation
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()

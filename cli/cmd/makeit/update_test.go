@@ -142,6 +142,9 @@ func TestUpdateAdoptedRunsOnlyVersionUpdates(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("run %d: exit %d, stderr %q", run, code, errOut)
 		}
+		if strings.Contains(errOut, "restart Claude Code") {
+			t.Errorf("run %d asks for a restart although every plugin was up to date", run)
+		}
 		if got := mutating(calls(t)); !slices.Equal(got, want[run-1]) {
 			t.Errorf("run %d changed %q, want %q", run, got, want[run-1])
 		}
