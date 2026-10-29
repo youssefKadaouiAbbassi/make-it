@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/catalog"
+	"makeit/internal/catsrc"
 	"makeit/internal/claudecli"
 	"makeit/internal/cli"
 	"makeit/internal/execx"
@@ -18,6 +20,7 @@ import (
 	"makeit/internal/plan"
 	"makeit/internal/platform"
 	"makeit/internal/setup"
+	"makeit/internal/state"
 	"makeit/internal/ui"
 )
 
@@ -44,7 +47,7 @@ var setupEnv = func(context.Context) (setup.Env, error) {
 }
 
 func runSetup(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {
-	return runModifying(ctx, p, stdout, stderr, modifying{name: "setup", question: "Apply this plan?", yesFirst: true,
+	return runModifying(ctx, p, stdout, stderr, modifying{name: "setup", question: "Apply this plan?", yesFirst: true, prepare: prepareCatalog("setup"),
 		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
 			return setup.Run(ctx, e, mode, confirm, args)
 		}})
@@ -63,6 +66,37 @@ type modifying struct {
 	after func(w io.Writer, rep setup.Report)
 	// self is the swap update's parent made before running this binary; nil otherwise.
 	self *selfMove
+	// prepare picks the catalog the run plans with (setup and update); its lines join the notice.
+	prepare func(ctx context.Context, p cli.Parsed, e *setup.Env) ([]string, error)
+}
+
+// catalogGit runs git for --catalog; tests allow file URLs.
+var catalogGit = catsrc.Git{Run: execx.Run, Protocols: "https:ssh"}
+
+// prepareCatalog resolves --catalog, or the recorded source, into the catalog the run plans with.
+func prepareCatalog(command string) func(ctx context.Context, p cli.Parsed, e *setup.Env) ([]string, error) {
+	return func(ctx context.Context, p cli.Parsed, e *setup.Env) ([]string, error) {
+		st, _, err := state.LoadState(filepath.Join(e.Roots.Stack, "state.json"))
+		if err != nil {
+			return nil, err
+		}
+		status := platform.Status(e.Platform, e.Present)
+		prereq := func(id string) bool {
+			for _, s := range status {
+				if s.Prereq.ID == id {
+					return s.Present
+				}
+			}
+			return true // not a prerequisite here
+		}
+		prep, err := catsrc.Prepare(ctx, catsrc.Params{Arg: p.String["catalog"], AllowBranch: p.Bool["allow-branch"],
+			Offline: p.Bool["offline"], Command: command, State: st, Stack: e.Roots.Stack, Git: catalogGit, Prereq: prereq})
+		if err != nil {
+			return nil, err
+		}
+		e.Catalog, e.CatalogTree, e.CatalogRecord = prep.Source, prep.Tree, prep.Record
+		return prep.Notices, nil
+	}
 }
 
 // runModifying is what setup, update and uninstall share: the consent rule, the plan shown before
@@ -79,6 +113,13 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	mode := plan.Decide(e.Interactive, e.Yes, p.Bool["dry-run"])
 	u := ui.New(os.Stdin, stderr, e.Interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
+	var catalogNotices []string
+	if m.prepare != nil {
+		if catalogNotices, err = m.prepare(ctx, p, &e); err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", prog, err)
+			return 1
+		}
+	}
 	if m.self != nil && !asJSON {
 		fmt.Fprintf(stderr, "makeit updated from %s to %s\n", m.self.From, m.self.To)
 	}
@@ -86,6 +127,7 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	if m.notice != nil && !p.Bool["offline"] {
 		notice = m.notice(ctx)
 	}
+	notice = strings.TrimPrefix(strings.Join(append([]string{notice}, catalogNotices...), "\n"), "\n")
 	shown := false
 	confirm := func(outs []plan.Outcome) (bool, error) {
 		printOutcomes(u, outs)

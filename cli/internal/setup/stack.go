@@ -37,16 +37,20 @@ func (e *env) stackSteps() []plan.Step {
 				if e.command == "update" && !listed && rec != nil {
 					return true, nil
 				}
-				t, err := catalog.EmbeddedTree()
+				t, err := e.catalogTree()
 				if err != nil {
 					return false, err
 				}
 				up := catalog.UpToDateTree(dir, t)
 				e.catalogChanges = !up
+				if up {
+					// The same files from another source still record the switch.
+					e.st.Catalog = e.catalogRecord(dir)
+				}
 				return up, nil
 			},
 			Run: func(context.Context) (string, error) {
-				t, err := catalog.EmbeddedTree()
+				t, err := e.catalogTree()
 				if err != nil {
 					return "", err
 				}
@@ -55,7 +59,7 @@ func (e *env) stackSteps() []plan.Step {
 					return "", err
 				}
 				e.reload = true
-				e.st.Catalog = state.Catalog{Kind: "embedded", Location: e.Roots.Portable(dir), MarketplaceName: e.req.Marketplace}
+				e.st.Catalog = e.catalogRecord(dir)
 				return fmt.Sprintf("%d files", n), nil
 			}},
 		{ID: "marketplace.official", Title: "Add the " + officialMarketplace + " marketplace",
@@ -246,4 +250,23 @@ func (e *env) act(res claudecli.Result, err error) error {
 		return fmt.Errorf("%s: %s", res.Command, res.Message)
 	}
 	return nil
+}
+
+// catalogTree is the tree the catalog step writes: the prepared one, or the embedded catalog.
+func (e *env) catalogTree() (*catalog.Tree, error) {
+	if e.CatalogTree != nil {
+		return e.CatalogTree, nil
+	}
+	return catalog.EmbeddedTree()
+}
+
+// catalogRecord is what the state records for the catalog in dir. The embedded catalog's location
+// is the synced directory, as before; other sources record where they come from.
+func (e *env) catalogRecord(dir string) state.Catalog {
+	rec := e.CatalogRecord
+	if rec.Kind == "" || rec.Kind == "embedded" {
+		rec.Kind, rec.Location = "embedded", e.Roots.Portable(dir)
+	}
+	rec.MarketplaceName = e.req.Marketplace
+	return rec
 }

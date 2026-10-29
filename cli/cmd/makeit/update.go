@@ -38,7 +38,7 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 		}
 		notice, needConsent = o.notice, o.needConsent
 	}
-	code := runModifying(ctx, p, stdout, stderr, modifying{name: "update", question: "Apply this plan?", yesFirst: true, self: moved,
+	code := runModifying(ctx, p, stdout, stderr, modifying{name: "update", question: "Apply this plan?", yesFirst: true, self: moved, prepare: prepareCatalog("update"),
 		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
 			return stackUpdate(ctx, e, mode, confirm, args)
 		},

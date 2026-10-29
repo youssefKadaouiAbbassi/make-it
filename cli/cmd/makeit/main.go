@@ -24,6 +24,12 @@ import (
 
 const prog = "makeit"
 
+// catalogFlags choose where the catalog comes from (cli/CATALOG-GIT.md).
+var catalogFlags = []cli.Flag{
+	{Name: "catalog", Value: "<src>", Help: "embedded, a directory, owner/repo or a git URL, with #<tag or branch> or @<commit>; kept for later runs"},
+	{Name: "allow-branch", Help: "let --catalog follow a #<branch>: each update takes its newest commit"},
+}
+
 // commands lists only what this build has, so usage never names a command that does not exist.
 var commands = []cli.Command{
 	{Name: "doctor", Summary: "check this machine against what the stack expects; changes nothing"},
@@ -33,12 +39,12 @@ var commands = []cli.Command{
 		{Name: "to", Value: "<version>", Help: "self update: this version instead of the latest; clears a skip"},
 		{Name: "allow-downgrade", Help: "self update: allow --to an older version"},
 	}},
-	{Name: "setup", Summary: "install the stack on this machine: prerequisites, Claude Code, the catalog, settings and global files"},
+	{Name: "setup", Summary: "install the stack on this machine: prerequisites, Claude Code, the catalog, settings and global files", Flags: catalogFlags},
 	{Name: "uninstall", Summary: "remove what makeit put on this machine and nobody changed since", Flags: []cli.Flag{
 		{Name: "keep-settings", Help: "leave settings.json as it is"},
 		{Name: "purge", Help: "also delete the data of the plugins makeit installed, and the makeit directory with every backup; cannot be undone"},
 	}},
-	{Name: "update", Summary: "bring this machine to the stack this makeit carries: catalog, plugins, settings and global files"},
+	{Name: "update", Summary: "bring this machine to the stack this makeit carries: catalog, plugins, settings and global files", Flags: catalogFlags},
 	{Name: "version", Summary: "print the version"},
 }
 

@@ -30,6 +30,10 @@ type Env struct {
 	Present func(string) bool
 	Run     execx.Runner
 	Catalog catalog.Source
+	// CatalogTree is what the catalog step writes to ~/.makeit/catalog (nil: the embedded catalog),
+	// and CatalogRecord what the state records once it is there (cli/CATALOG-GIT.md).
+	CatalogTree   *catalog.Tree
+	CatalogRecord state.Catalog
 	// Locate finds the claude binaries on the machine (claudecli.Locate in production).
 	Locate func(ctx context.Context) []claudecli.Install
 	// Interactive is true when a person can answer sudo's password prompt; Yes is --yes, which
