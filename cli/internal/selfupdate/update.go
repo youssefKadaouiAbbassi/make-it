@@ -113,7 +113,7 @@ func (e Env) Update(ctx context.Context, v string, explicit bool) (Result, error
 func (e Env) replace(ctx context.Context, tmp, v string) error {
 	err := e.check(ctx, tmp, v)
 	if err == nil {
-		err = keep(filepath.Join(e.Roots.Stack, "self"), e.Exe, e.Version, e.Windows)
+		err = keep(filepath.Join(e.Roots.Stack, "self"), e.Exe, e.Version, exeSuffix(e.Target) != "")
 	}
 	if err == nil {
 		err = swap(tmp, e.Exe, e.Version, e.Windows)

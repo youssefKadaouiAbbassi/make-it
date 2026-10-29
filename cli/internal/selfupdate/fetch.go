@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -112,7 +111,7 @@ func (e Env) signedSha(ctx context.Context, v string) (string, error) {
 func (e Env) download(ctx context.Context, v, sha, dir string) (path string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	tmp := filepath.Join(dir, fmt.Sprintf(".makeit.new-%d%s", os.Getpid(), exeSuffix(e.Target)))
+	tmp := tmpPath(dir, e.Target)
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 	if err != nil {
 		return "", err
