@@ -248,11 +248,14 @@ func (r Route) Text() string {
 }
 
 // The Claude Code release signing key (setup.md 363-460). A key that fails its check makes a
-// repository script exit 3, which is never answered with the native installer.
+// repository script exit 3, which is never answered with the native installer. The gpg check
+// accepts the file only when it holds exactly one primary key and that key's fingerprint is the
+// pin: a file with the pinned key plus another would make apt trust both for the repository,
+// and rpm trust both system-wide.
 const (
 	keyFingerprint = "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
 	apkKeySha256   = "395759c1f7449ef4cdef305a42e820f3c766d6090d142634ebdb049f113168b6"
-	gpgCheck       = `gpg --show-keys --with-colons "$key" | grep -q '^fpr:*` + keyFingerprint + `:$' || { echo "makeit: the Claude Code signing key has the wrong fingerprint" >&2; exit 3; }`
+	gpgCheck       = `gpg --show-keys --with-colons "$key" 2>/dev/null | awk -F: '$1 == "pub" { n++; want = 1; next } $1 == "fpr" && want { fpr = $10; want = 0 } END { exit !(n == 1 && fpr == "` + keyFingerprint + `") }' || { echo "makeit: the Claude Code signing key is not the pinned key alone" >&2; exit 3; }`
 )
 
 // RepoScript is the shell script that installs Claude Code from the signed repository of pm
@@ -275,8 +278,10 @@ sudo apt-get install -y claude-code
 		return head + `command -v gpg >/dev/null || sudo dnf install -y gnupg2
 curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o "$key"
 ` + gpgCheck + `
-sudo rpm --import "$key"
-printf '%s\n' '[claude-code]' 'name=Claude Code' 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://downloads.claude.ai/keys/claude-code.asc' | sudo tee /etc/yum.repos.d/claude-code.repo >/dev/null
+sudo install -d -m 0755 /etc/pki/rpm-gpg
+sudo install -m 0644 "$key" /etc/pki/rpm-gpg/claude-code.asc
+sudo rpm --import /etc/pki/rpm-gpg/claude-code.asc
+printf '%s\n' '[claude-code]' 'name=Claude Code' 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' 'enabled=1' 'gpgcheck=1' 'gpgkey=file:///etc/pki/rpm-gpg/claude-code.asc' | sudo tee /etc/yum.repos.d/claude-code.repo >/dev/null
 sudo dnf install -y claude-code
 `, true
 	case APK:

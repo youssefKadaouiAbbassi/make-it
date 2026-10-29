@@ -1,6 +1,11 @@
 package platform
 
 import (
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -150,8 +155,9 @@ func TestRepoScript(t *testing.T) {
 		APT: {"https://downloads.claude.ai/keys/claude-code.asc", fpr, "exit 3",
 			"deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/latest latest main",
 			"/etc/apt/sources.list.d/claude-code.list", "sudo apt-get install -y claude-code"},
-		DNF: {"https://downloads.claude.ai/keys/claude-code.asc", fpr, "exit 3", "sudo rpm --import",
-			"baseurl=https://downloads.claude.ai/claude-code/rpm/latest", "gpgcheck=1", "sudo dnf install -y claude-code"},
+		DNF: {"https://downloads.claude.ai/keys/claude-code.asc", fpr, "exit 3", "sudo rpm --import /etc/pki/rpm-gpg/claude-code.asc",
+			"baseurl=https://downloads.claude.ai/claude-code/rpm/latest", "gpgcheck=1", "gpgkey=file:///etc/pki/rpm-gpg/claude-code.asc",
+			"sudo dnf install -y claude-code"},
 		APK: {"https://downloads.claude.ai/keys/claude-code.rsa.pub", "395759c1f7449ef4cdef305a42e820f3c766d6090d142634ebdb049f113168b6",
 			"exit 3", "https://downloads.claude.ai/claude-code/apk/latest", "sudo apk add claude-code"},
 	} {
@@ -167,6 +173,9 @@ func TestRepoScript(t *testing.T) {
 		if strings.Contains(script, "/stable") {
 			t.Errorf("%s script uses the stable channel", pm)
 		}
+		if strings.Contains(script, "gpgkey=https") {
+			t.Errorf("%s: dnf would fetch and import a key the script never checked", pm)
+		}
 	}
 	if _, ok := RepoScript(Pacman); ok {
 		t.Error("pacman has no signed repository")
@@ -179,5 +188,60 @@ func TestAutoRoute(t *testing.T) {
 	}
 	if r, ok := AutoRoute(Platform{OS: "darwin"}, only("brew")); !ok || r.Name != "brew" {
 		t.Errorf("got %+v %v", r, ok)
+	}
+}
+
+// The repository scripts' key check, run by a real shell and a real gpg on the real Claude Code
+// key (testdata/claude-code.asc, from downloads.claude.ai) and a throwaway key: only the pinned
+// key alone may pass. A file with the pinned key plus another would make apt trust both for the
+// repository and rpm trust both system-wide.
+func TestRepoKeyCheck(t *testing.T) {
+	if _, err := exec.LookPath("gpg"); err != nil || runtime.GOOS == "windows" {
+		t.Skip("needs sh and gpg")
+	}
+	real, err := os.ReadFile("testdata/claude-code.asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := os.ReadFile("testdata/other-key.asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := map[string][]byte{
+		"pinned key":            real,
+		"pinned key plus other": append(append([]byte{}, real...), other...),
+		"other key":             other,
+		"html page":             []byte("<html>not a key</html>\n"),
+	}
+	for _, pm := range []PM{APT, DNF} {
+		script, _ := RepoScript(pm)
+		for name, key := range keys {
+			bin := t.TempDir()
+			fixture := filepath.Join(bin, "key.fixture")
+			if err := os.WriteFile(fixture, key, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			// curl -fsSL <url> -o <file>: the fake copies the fixture to <file>.
+			if err := os.WriteFile(filepath.Join(bin, "curl"), []byte("#!/bin/sh\ncp "+fixture+" \"$4\"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// The check comes before every sudo step, so reaching sudo means the key passed.
+			guard := "sudo() { exit 9; }\n"
+			cmd := exec.Command("sh", "-c", guard+script)
+			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+			err := cmd.Run()
+			code := 0
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				code = ee.ExitCode()
+			}
+			want := 3
+			if name == "pinned key" {
+				want = 9
+			}
+			if code != want {
+				t.Errorf("%s, %s: exit %d, want %d", pm, name, code, want)
+			}
+		}
 	}
 }
