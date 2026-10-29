@@ -165,7 +165,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 			fmt.Fprintf(stderr, "%s: version takes no arguments\n", prog)
 			return 2
 		}
-		return version(p.Bool["json"], stdout, stderr)
+		return version(ctx, p.Bool["json"], stdout, stderr)
 	default:
 		if len(p.Positionals) > 0 {
 			fmt.Fprintf(stderr, "%s: doctor takes no arguments yet; repository checks come with init\n", prog)
@@ -201,9 +201,20 @@ func help(args []string, stdout, stderr io.Writer) int {
 	return 2
 }
 
-func version(asJSON bool, stdout, stderr io.Writer) int {
+func version(ctx context.Context, asJSON bool, stdout, stderr io.Writer) int {
+	// A rollback's skip, from the receipt of this copy only; a receipt that cannot be read shows none.
+	skipped := ""
+	if e, err := selfEnv(ctx); err == nil {
+		if s := e.Status(); s.Ours {
+			skipped = s.Skipped
+		}
+	}
 	if !asJSON {
-		fmt.Fprintf(stdout, "%s %s\n", prog, buildinfo.Version)
+		if skipped != "" {
+			fmt.Fprintf(stdout, "%s %s (%s skipped: you rolled back from it)\n", prog, buildinfo.Version, skipped)
+		} else {
+			fmt.Fprintf(stdout, "%s %s\n", prog, buildinfo.Version)
+		}
 		return 0
 	}
 	digest, err := catalogDigest()
@@ -226,7 +237,8 @@ func version(asJSON bool, stdout, stderr io.Writer) int {
 		Target        string   `json:"target"`
 		Go            string   `json:"go"`
 		CatalogDigest string   `json:"catalogDigest"`
-	}{buildinfo.Version, buildinfo.Commit, buildinfo.Repo, keys, buildinfo.Target(), runtime.Version(), digest}, 0)
+		Skipped       string   `json:"skipped,omitempty"`
+	}{buildinfo.Version, buildinfo.Commit, buildinfo.Repo, keys, buildinfo.Target(), runtime.Version(), digest, skipped}, 0)
 }
 
 // emit writes v as one JSON document on stdout and returns code.

@@ -627,3 +627,28 @@ func TestAdoptedChangedValueReportedAfterApply(t *testing.T) {
 		t.Errorf("the changed value is not in the run's kept list: %+v", rep.Kept)
 	}
 }
+
+// The binary's files are not the stack's: uninstall, even with --purge, leaves receipt.json and
+// self/ for `self uninstall` (cli/SELF-UPDATE.md).
+func TestUninstallPurgeKeepsBinaryFiles(t *testing.T) {
+	m := installed(t)
+	receipt := filepath.Join(m.env.Roots.Stack, "receipt.json")
+	kept := filepath.Join(m.env.Roots.Stack, "self", "makeit-1.0.0")
+	for _, p := range []string{receipt, kept} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	uninstall(t, m, UninstallOptions{Purge: true})
+	if _, err := os.Stat(state.GenerationsDir(m.env.Roots.Stack)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the purge did not run: %v", err)
+	}
+	for _, p := range []string{receipt, kept} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s: %v", p, err)
+		}
+	}
+}

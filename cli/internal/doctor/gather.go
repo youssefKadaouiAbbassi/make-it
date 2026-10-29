@@ -7,11 +7,13 @@ import (
 	"runtime"
 	"strings"
 
+	"makeit/internal/buildinfo"
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/execx"
 	"makeit/internal/paths"
 	"makeit/internal/platform"
+	"makeit/internal/selfupdate"
 )
 
 // Gather reads this machine for Run, against the catalog compiled into the binary.
@@ -34,6 +36,14 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 		StatePath:    filepath.Join(roots.Stack, "state.json"),
 		ClaudeDir:    roots.Claude,
 	}
+	if exe, err := os.Executable(); err == nil {
+		if r, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = r
+		}
+		m.Exe = exe
+	}
+	self := selfupdate.Env{Roots: roots, Exe: m.Exe, Version: version, Repo: buildinfo.Repo, Keys: buildinfo.Keys()}
+	m.Self, m.Dev = self.Status(), self.Dev()
 	man, err := catalog.EmbeddedManifest()
 	if err != nil {
 		return Machine{}, err

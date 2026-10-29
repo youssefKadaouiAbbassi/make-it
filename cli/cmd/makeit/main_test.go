@@ -22,6 +22,7 @@ import (
 	"makeit/internal/doctor"
 	"makeit/internal/execx"
 	"makeit/internal/platform"
+	"makeit/internal/state"
 )
 
 // fakeRunner answers each claude argv (joined by spaces, without the binary). The doctor
@@ -175,12 +176,14 @@ func TestUsageErrors(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
+	t.Setenv("MAKEIT_DIR", t.TempDir())
 	if code, out, _ := call(t, noGather(t), "version"); code != 0 || out != "makeit "+buildinfo.Version+"\n" {
 		t.Errorf("exit %d, stdout %q", code, out)
 	}
 }
 
 func TestVersionJSON(t *testing.T) {
+	t.Setenv("MAKEIT_DIR", t.TempDir())
 	code, out, _ := call(t, noGather(t), "version", "--json")
 	var v map[string]any
 	if err := json.Unmarshal([]byte(out), &v); code != 0 || err != nil {
@@ -204,6 +207,30 @@ func TestVersionJSON(t *testing.T) {
 	}
 	if v["target"] != buildinfo.Target() || v["catalogDigest"] != catalog.Digest(m) || v["go"] != runtime.Version() || v["version"] != buildinfo.Version {
 		t.Errorf("version --json = %v", v)
+	}
+}
+
+func TestVersionSkip(t *testing.T) {
+	e, _ := selfMachine(t, true)
+	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: e.Roots.Portable(e.Exe), Version: "1.1.0", Skipped: "1.3.0"})
+	if code, out, _ := call(t, noGather(t), "version"); code != 0 || out != "makeit "+buildinfo.Version+" (1.3.0 skipped: you rolled back from it)\n" {
+		t.Errorf("exit %d, stdout %q", code, out)
+	}
+	var v map[string]any
+	_, out, _ := call(t, noGather(t), "version", "--json")
+	if err := json.Unmarshal([]byte(out), &v); err != nil || v["skipped"] != "1.3.0" {
+		t.Errorf("%v: %q", err, out)
+	}
+}
+
+func TestVersionReceiptOtherPath(t *testing.T) {
+	e, _ := selfMachine(t, true)
+	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: "home:elsewhere/makeit", Version: "1.1.0", Skipped: "1.3.0"})
+	if _, out, _ := call(t, noGather(t), "version"); out != "makeit "+buildinfo.Version+"\n" {
+		t.Errorf("stdout %q: a skip from another copy's receipt", out)
+	}
+	if _, out, _ := call(t, noGather(t), "version", "--json"); strings.Contains(out, "skipped") {
+		t.Errorf("stdout %q", out)
 	}
 }
 

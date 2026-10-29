@@ -2,8 +2,10 @@ package doctor
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 	"makeit/internal/claudecli"
 	"makeit/internal/execx"
 	"makeit/internal/platform"
+	"makeit/internal/selfupdate"
 )
 
 // answer is the fake claude's reply to one argv.
@@ -104,7 +107,7 @@ func byID(t *testing.T, checks []Check, id string) Check {
 func TestRunOrder(t *testing.T) {
 	m, _ := healthy(t)
 	checks := Run(context.Background(), m)
-	want := []string{"makeit.build", "platform", "prereq.git", "claude.installed", "claude.on-path", "claude.other-installs", "claude.version",
+	want := []string{"makeit.build", "makeit.receipt", "platform", "prereq.git", "claude.installed", "claude.on-path", "claude.other-installs", "claude.version",
 		"settings.parse", "settings.valid", "settings.stack", "marketplace", "plugin.makeit-bundle@makeit", "plugin.makeit@makeit",
 		"plugin.superpowers@makeit", "plugin.typescript-lsp@claude-plugins-official", "state"}
 	if len(checks) != len(want) {
@@ -215,5 +218,44 @@ func TestOnPathAndOtherInstalls(t *testing.T) {
 	if got.Level != Warn || !strings.Contains(got.Message, "/opt/homebrew/bin/claude (brew)") || !strings.Contains(got.Message, nativePath+" (native)") ||
 		got.Fix != "keep one: https://code.claude.com/docs/en/troubleshoot-install.md#check-for-conflicting-installations" {
 		t.Errorf("claude.other-installs = %+v", got)
+	}
+}
+
+func TestSelfChecks(t *testing.T) {
+	ours := selfupdate.Status{Receipt: true, BinPath: "/b/makeit", Ours: true}
+	skipping := ours
+	skipping.Skipped = "1.3.0"
+	cases := []struct {
+		name          string
+		m             Machine
+		level         Level
+		msg, fix, skp string
+	}{
+		{"installed", Machine{Exe: "/b/makeit", Self: ours}, Info, "installed by its script at /b/makeit", "", ""},
+		{"no receipt", Machine{Exe: "/b/makeit"}, Info, "no receipt: self update is off for this copy", "/b/makeit self install", ""},
+		{"development build", Machine{Exe: "/b/makeit", Dev: true}, Info, "development build: it does not update itself", "", ""},
+		{"another copy", Machine{Exe: "/b/makeit", Self: selfupdate.Status{Receipt: true, BinPath: "/o/makeit"}}, Info,
+			"the receipt names /o/makeit; this makeit is /b/makeit", "", ""},
+		{"unreadable", Machine{Exe: "/b/makeit", Self: selfupdate.Status{Receipt: true, Err: errors.New("bad JSON")}}, Warn,
+			"receipt.json: bad JSON", "", ""},
+		{"skip", Machine{Exe: "/b/makeit", Self: skipping}, Info, "installed by its script at /b/makeit", "",
+			"makeit 1.3.0 is skipped: you rolled back from it"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := &report{}
+			r.self(c.m)
+			got := byID(t, r.checks, "makeit.receipt")
+			if got.Level != c.level || got.Message != c.msg || got.Fix != c.fix {
+				t.Errorf("receipt check %+v", got)
+			}
+			skip := slices.IndexFunc(r.checks, func(k Check) bool { return k.ID == "makeit.skip" })
+			switch {
+			case c.skp == "" && skip >= 0:
+				t.Errorf("a skip line: %+v", r.checks[skip])
+			case c.skp != "" && (skip < 0 || r.checks[skip].Message != c.skp || r.checks[skip].Fix != "makeit self update --to 1.3.0"):
+				t.Errorf("skip line missing or wrong: %+v", r.checks)
+			}
+		})
 	}
 }

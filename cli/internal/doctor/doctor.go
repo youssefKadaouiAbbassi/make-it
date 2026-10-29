@@ -13,6 +13,7 @@ import (
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
 	"makeit/internal/platform"
+	"makeit/internal/selfupdate"
 	"makeit/internal/state"
 )
 
@@ -56,6 +57,11 @@ type Machine struct {
 	Globals   []string
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
+	// Exe is this makeit, symlinks resolved; Self is what its receipt says; Dev is a development
+	// build, which never updates itself.
+	Exe  string
+	Self selfupdate.Status
+	Dev  bool
 }
 
 type report struct{ checks []Check }
@@ -69,6 +75,7 @@ func Run(ctx context.Context, m Machine) []Check {
 	r := &report{}
 	req, reqErr := catalog.LoadRequires(m.Catalog)
 	r.build(m)
+	r.self(m)
 	r.platform(m)
 	r.prereqs(m)
 	unusable := r.claude(ctx, m, req, reqErr)
@@ -99,6 +106,27 @@ func (r *report) build(m Machine) {
 		digest = digest[:12]
 	}
 	r.add("makeit.build", "makeit", Info, fmt.Sprintf("makeit %s (%s), catalog sha256:%s", m.Version, m.Target, digest), "")
+}
+
+// self reports how this makeit updates itself, and a rollback's skip (cli/SELF-UPDATE.md).
+func (r *report) self(m Machine) {
+	s := m.Self
+	switch {
+	case s.Err != nil:
+		r.add("makeit.receipt", "makeit", Warn, "receipt.json: "+s.Err.Error(), "")
+	case m.Dev:
+		r.add("makeit.receipt", "makeit", Info, "development build: it does not update itself", "")
+	case !s.Receipt:
+		r.add("makeit.receipt", "makeit", Info, "no receipt: self update is off for this copy", m.Exe+" self install")
+	case s.Ours:
+		r.add("makeit.receipt", "makeit", Info, "installed by its script at "+s.BinPath, "")
+	default:
+		r.add("makeit.receipt", "makeit", Info, fmt.Sprintf("the receipt names %s; this makeit is %s", s.BinPath, m.Exe), "")
+	}
+	if s.Ours && s.Skipped != "" {
+		r.add("makeit.skip", "makeit", Info, fmt.Sprintf("makeit %s is skipped: you rolled back from it", s.Skipped),
+			"makeit self update --to "+s.Skipped)
+	}
 }
 
 func (r *report) platform(m Machine) {
