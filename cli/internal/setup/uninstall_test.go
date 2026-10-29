@@ -14,8 +14,10 @@ import (
 	"testing"
 
 	"makeit/internal/catalog"
+	"makeit/internal/execx"
 	"makeit/internal/jsonx"
 	"makeit/internal/plan"
+	"makeit/internal/settings"
 	"makeit/internal/state"
 )
 
@@ -422,5 +424,79 @@ func TestPurgeDeletesOnlyMakeitsOwn(t *testing.T) {
 	}
 	if _, err := os.Stat(state.GenerationsDir(m.env.Roots.Stack)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("generations survived --purge: %v", err)
+	}
+}
+
+// Final review C2: a settings step that fails at apply time keeps the records, so a rerun finishes.
+func TestSettingsFailureKeepsState(t *testing.T) {
+	m := installed(t)
+	inner := m.env.Run
+	m.env.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Join(c.Argv, " ") == "/usr/bin/claude doctor" {
+			return execx.Result{Code: 1, Stderr: "doctor broke"}, nil
+		}
+		return inner(ctx, c)
+	}
+	if rep, _ := Uninstall(context.Background(), m.env, plan.Apply, nil, nil, UninstallOptions{}); !rep.Plan.Failed() {
+		t.Fatal("the settings step did not fail")
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); err != nil {
+		t.Fatalf("state.json removed although makeit's settings values are still there: %v", err)
+	}
+	m.env.Run = inner
+	if _, err := Uninstall(context.Background(), m.env, plan.Apply, nil, nil, UninstallOptions{}); err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+	if _, ok := settingsOf(t, m).Get("cleanupPeriodDays"); ok {
+		t.Error("the rerun left makeit's cleanupPeriodDays in settings.json")
+	}
+}
+
+// Final review C2: a catalog that could not be removed keeps state.json, so a rerun retries.
+func TestCatalogFailureKeepsState(t *testing.T) {
+	m := installed(t)
+	locked := filepath.Join(m.env.Roots.Stack, "catalog", "plugins")
+	if err := os.Chmod(locked, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	if rep, _ := Uninstall(context.Background(), m.env, plan.Apply, nil, nil, UninstallOptions{}); !rep.Plan.Failed() {
+		t.Fatal("the catalog removal did not fail")
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); err != nil {
+		t.Errorf("state.json removed although the catalog is still there: %v", err)
+	}
+}
+
+// Every value makeit's merge recorded was already there: nothing to take out, and no record keeps
+// state.json alive.
+func TestUninstallAdoptedSettingsLeaveNoRecord(t *testing.T) {
+	m := newMachine(t)
+	raw, err := catalog.Embedded.ReadFile("settings.baseline.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := jsonx.DecodeObject(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := settings.Merge(jsonx.NewObject(), settings.Desired(base, "makeit"), nil, settings.DefaultOptions()).Settings
+	saveSettings(t, m, complete)
+	apply(t, m)
+	uninstall(t, m, UninstallOptions{})
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state.json kept for settings records with nothing to take out: %v", err)
+	}
+}
+
+// The ruling: --keep-settings leaves the values, so their records do not keep state.json.
+func TestKeepSettingsRemovesState(t *testing.T) {
+	m := installed(t)
+	uninstall(t, m, UninstallOptions{KeepSettings: true})
+	if _, ok := settingsOf(t, m).Get("cleanupPeriodDays"); !ok {
+		t.Error("--keep-settings took makeit's values out")
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state.json kept after --keep-settings: %v", err)
 	}
 }

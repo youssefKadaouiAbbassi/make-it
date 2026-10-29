@@ -62,6 +62,8 @@ type env struct {
 	stateRemoved bool
 	// purge: uninstall deletes the plugins' data and the makeit directory once the run is over.
 	purge bool
+	// keepSettings is uninstall's --keep-settings; catalogLeft: removing the catalog failed.
+	keepSettings, catalogLeft bool
 }
 
 // removedByYou is the reason update gives for not putting back what the user removed.

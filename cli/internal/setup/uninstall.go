@@ -108,6 +108,7 @@ func (e *env) backupData(names ...string) error {
 
 // uninstallSteps are uninstall's steps, in order.
 func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
+	e.keepSettings = opts.KeepSettings
 	steps := []plan.Step{e.findClaudeStep()}
 	var deps []string
 	for id := range e.st.Plugins {
@@ -342,10 +343,15 @@ func (e *env) unSettingsStep() plan.Step {
 				return true, nil
 			}
 			res, _, found, err := unmerge()
-			if err != nil || !found {
-				return !found, err
+			if err != nil {
+				return false, err
 			}
-			return !res.Changed() && !emptied(res), nil
+			if !found || (!res.Changed() && !emptied(res)) {
+				// Nothing of makeit's is left to take out: its records go.
+				e.st.Settings = state.Settings{}
+				return true, nil
+			}
+			return false, nil
 		},
 		Run: func(ctx context.Context) (string, error) {
 			// Unmerged again now, not at planning time: a running Claude Code may have written the file.
@@ -524,7 +530,11 @@ func (e *env) unCatalogStep() plan.Step {
 				e.keep("catalog "+dir, "the "+names[0]+" marketplace still uses it")
 				return "", plan.ErrSkip
 			}
-			return "", os.RemoveAll(dir)
+			if err := os.RemoveAll(dir); err != nil {
+				e.catalogLeft = true
+				return "", err
+			}
+			return "", nil
 		}}
 }
 
@@ -550,6 +560,12 @@ func (e *env) remaining() []string {
 		if d.CreatedByUs {
 			left = append(left, k)
 		}
+	}
+	if !e.keepSettings && len(e.st.Settings.Paths) > 0 {
+		left = append(left, "settings")
+	}
+	if e.catalogLeft {
+		left = append(left, "catalog")
 	}
 	slices.Sort(left)
 	return left
