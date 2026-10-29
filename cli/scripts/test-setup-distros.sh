@@ -5,6 +5,8 @@
 # (no makeit plugin, settings value or global file left) and setup again. One more ubuntu pass,
 # with the prerequisites preinstalled and no sudo, must fall back to the native installer.
 # Only the binary is mounted; no credentials or tokens enter a container (--rm cleans up).
+# Checks that something is absent use `if ...; then exit 1; fi`: under set -e a failing `! cmd` line
+# does not stop the script.
 #   bash cli/scripts/test-setup-distros.sh [image...]
 set -euo pipefail
 cli=$(cd "$(dirname "$0")/.." && pwd)
@@ -19,14 +21,14 @@ set -e
 PATH="$HOME/.local/bin:$PATH"
 makeit update --yes --json > /tmp/update.json || { cat /tmp/update.json; exit 1; }
 cat /tmp/update.json
-! grep -q "\"status\": \"failed\"" /tmp/update.json
-! grep -q "\"status\": \"done\"" /tmp/update.json
+if grep -q "\"status\": \"failed\"" /tmp/update.json; then echo "update failed a step"; exit 1; fi
+if grep -q "\"status\": \"done\"" /tmp/update.json; then echo "update right after setup changed something"; exit 1; fi
 makeit uninstall --yes --json > /tmp/uninstall.json || { cat /tmp/uninstall.json; exit 1; }
 cat /tmp/uninstall.json
-! claude plugin list --json | grep -q "@makeit\""
-! grep -q -e advisorModel -e cleanupPeriodDays "$HOME/.claude/settings.json"
+if claude plugin list --json | grep -q "@makeit\""; then echo "a makeit plugin is still installed"; exit 1; fi
+if grep -q -e advisorModel -e cleanupPeriodDays "$HOME/.claude/settings.json"; then echo "makeit settings values are still there"; exit 1; fi
 test ! -e "$HOME/.claude/CLAUDE.md"
-! claude plugin marketplace list --json | grep -q "\"name\": \"makeit\""
+if claude plugin marketplace list --json | grep -q "\"name\": \"makeit\""; then echo "the makeit marketplace is still there"; exit 1; fi
 test ! -e "$HOME/.makeit/catalog"
 makeit setup --yes
 EOS
@@ -45,7 +47,7 @@ sudo -iu u makeit setup --yes
 sudo -iu u claude --version
 sudo -iu u makeit setup --yes --json > /tmp/second.json
 cat /tmp/second.json
-! grep -q "\"status\": \"done\"" /tmp/second.json
+if grep -q "\"status\": \"done\"" /tmp/second.json; then echo "the second setup changed something"; exit 1; fi
 '"$upkeep"'
 sudo -iu u sh /tmp/upkeep.sh'
 
