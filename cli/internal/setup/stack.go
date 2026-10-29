@@ -37,14 +37,15 @@ func (e *env) stackSteps() []plan.Step {
 				if e.command == "update" && !listed && rec != nil {
 					return true, nil
 				}
-				return catalog.UpToDate(dir)
+				up, err := catalog.UpToDate(dir)
+				e.catalogChanges = err == nil && !up
+				return up, err
 			},
 			Run: func(context.Context) (string, error) {
 				n, err := catalog.Sync(dir)
 				if err != nil {
 					return "", err
 				}
-				e.synced = true
 				e.st.Catalog = state.Catalog{Kind: "embedded", Location: e.Roots.Portable(dir), MarketplaceName: e.req.Marketplace}
 				return fmt.Sprintf("%d files", n), nil
 			}},

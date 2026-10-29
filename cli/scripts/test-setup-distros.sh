@@ -20,6 +20,7 @@ PATH="$HOME/.local/bin:$PATH"
 makeit update --yes --json > /tmp/update.json || { cat /tmp/update.json; exit 1; }
 cat /tmp/update.json
 ! grep -q "\"status\": \"failed\"" /tmp/update.json
+! grep -q "\"status\": \"done\"" /tmp/update.json
 makeit uninstall --yes --json > /tmp/uninstall.json || { cat /tmp/uninstall.json; exit 1; }
 cat /tmp/uninstall.json
 ! claude plugin list --json | grep -q "@makeit\""

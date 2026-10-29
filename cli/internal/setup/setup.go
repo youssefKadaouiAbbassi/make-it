@@ -54,8 +54,8 @@ type env struct {
 	// kept and hints are what the run left alone and how adopted plugins update, for the report.
 	kept  []Kept
 	hints []Hint
-	// synced is set when the catalog step wrote a new catalog in this run.
-	synced bool
+	// catalogChanges: the catalog step writes a new catalog in this run.
+	catalogChanges bool
 	// inputs caches the plugin listing for the plugin phase; a step that changes plugins clears it.
 	inputs *pluginrule.Inputs
 	// stateRemoved: uninstall removed state.json, so the journal must not write it again.

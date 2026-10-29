@@ -617,3 +617,59 @@ func TestUpdatePlanShowsPinMove(t *testing.T) {
 		}
 	}
 }
+
+// Final review I3: right after setup, with nothing new, update has nothing to do: no consent, no
+// generation, no restart.
+func TestUpdateAfterSetupIsNoop(t *testing.T) {
+	m := newMachine(t)
+	m.deps = []string{"makeit@makeit", "superpowers@makeit", "ponytail@makeit", "chrome-devtools-mcp@makeit",
+		"docs-mcp-server@makeit", "deja-vu@makeit", "security-audit@makeit",
+		"typescript-lsp@claude-plugins-official", "pyright-lsp@claude-plugins-official", "rust-analyzer-lsp@claude-plugins-official"}
+	inner := m.run
+	m.env.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Join(c.Argv, " ") == "/usr/bin/claude plugin list --json" {
+			var rows []string
+			for _, p := range m.plugins {
+				row := `{"id":"` + p + `","enabled":true,"version":"1.0.0","scope":"user"`
+				if p == "makeit-bundle@makeit" || p == "makeit@makeit" {
+					row += `,"readFromFolder":"/x"`
+				}
+				rows = append(rows, row+"}")
+			}
+			return execx.Result{Stdout: "[" + strings.Join(rows, ",") + "]"}, nil
+		}
+		return inner(ctx, c)
+	}
+	apply(t, m)
+	rep, err := Update(context.Background(), m.env, plan.NeedConsent, nil, nil)
+	if errors.Is(err, ErrConsent) {
+		for _, o := range rep.Plan.Outcomes {
+			if o.Status != plan.Already {
+				t.Logf("%s %s", o.ID, o.Status)
+			}
+		}
+		t.Fatalf("update right after setup needs consent: %s", rep.Plan.Summary())
+	}
+	if rep, _ := Update(context.Background(), m.env, plan.Apply, nil, nil); rep.Generation != 0 {
+		t.Errorf("a no-op update made generation %d", rep.Generation)
+	}
+}
+
+// An adopted plugin whose version cannot show its pin is updated once; the pin is recorded, and
+// the next update leaves it alone until the pin moves.
+func TestAdoptedUpdateRecordsPin(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": {InstalledBy: "user"}}
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(upToDate)
+	if _, err := step(t, e.pluginSteps(), "plugins.adopted").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.st.Plugins["superpowers@makeit"]; r == nil || r.InstalledBy != "user" || r.Observed.GitCommitSha != "bbb" {
+		t.Fatalf("record %+v, want the adopted plugin at pin bbb", r)
+	}
+	e.inputs = nil
+	if done, err := step(t, e.pluginSteps(), "plugins.adopted").Already(context.Background()); !done || err != nil {
+		t.Errorf("already = %v, %v; the pin did not move", done, err)
+	}
+}

@@ -24,8 +24,12 @@ func handInstalled(t *testing.T, edit func(*jsonx.Object)) (claudeDir, stack str
 	if runtime.GOOS == "windows" {
 		t.Skip("shell stubs")
 	}
-	home, bin := t.TempDir(), t.TempDir()
+	home, bin, repo := t.TempDir(), t.TempDir(), t.TempDir()
 	stack = t.TempDir()
+	// The user's own marketplace: the bundle loads in place from it, superpowers is pinned.
+	write(t, filepath.Join(repo, ".claude-plugin", "marketplace.json"), `{"name": "makeit", "plugins": [
+		{"name": "makeit-bundle", "source": "./plugins/makeit-bundle"},
+		{"name": "superpowers", "source": {"source": "github", "repo": "obra/superpowers", "sha": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b"}}]}`)
 	for _, tool := range []string{"git", "node", "jq"} {
 		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
 	}
@@ -34,8 +38,8 @@ echo "$*" >> "$CALLS"
 case "$*" in
   "--version") echo "2.1.312 (Claude Code)" ;;
   "doctor") ;;
-  "plugin marketplace list --json") echo '[{"name":"makeit","source":"directory","path":"/repo"},{"name":"claude-plugins-official","source":"github"}]' ;;
-  "plugin list --json") echo '[{"id":"makeit-bundle@makeit","version":"3.10.0","scope":"user","enabled":true}]' ;;
+  "plugin marketplace list --json") echo '[{"name":"makeit","source":"directory","path":"`+repo+`"},{"name":"claude-plugins-official","source":"github"}]' ;;
+  "plugin list --json") echo '[{"id":"makeit-bundle@makeit","version":"3.10.0","scope":"user","enabled":true,"readFromFolder":"`+repo+`/plugins/makeit-bundle"},{"id":"superpowers@makeit","version":"7.0.1","scope":"user","enabled":true}]' ;;
   "plugin marketplace update makeit --json") echo '{"command":"marketplace-update","outcome":"ok"}' ;;
   "plugin update "*) echo '{"command":"update","outcome":"ok","updateOutcome":"up_to_date"}' ;;
   "plugin prune --dry-run --scope user") ;;

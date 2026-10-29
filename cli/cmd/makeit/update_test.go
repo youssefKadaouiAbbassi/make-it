@@ -124,12 +124,16 @@ func mutating(lines []string) []string {
 	return out
 }
 
+// On an adopted machine the first update moves only versions: the refresh and `claude plugin update`
+// for the adopted pinned plugin. With its pin recorded, the second update has nothing to do.
 func TestUpdateAdoptedRunsOnlyVersionUpdates(t *testing.T) {
-	claudeDir, _ := handInstalled(t, nil)
+	claudeDir, stack := handInstalled(t, nil)
 	if code, _ := setupYes(t); code != 0 {
 		t.Fatalf("setup exit %d", code)
 	}
 	before := snapshot(t, claudeDir)
+	gens, _ := os.ReadDir(state.GenerationsDir(stack))
+	want := [][]string{{"plugin marketplace update makeit --json", "plugin update superpowers@makeit --scope user --json"}, nil}
 	for run := 1; run <= 2; run++ {
 		if err := os.WriteFile(os.Getenv("CALLS"), nil, 0o600); err != nil {
 			t.Fatal(err)
@@ -138,14 +142,12 @@ func TestUpdateAdoptedRunsOnlyVersionUpdates(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("run %d: exit %d, stderr %q", run, code, errOut)
 		}
-		for _, c := range mutating(calls(t)) {
-			if c != "plugin update makeit-bundle@makeit --scope user --json" && c != "plugin marketplace update makeit --json" {
-				t.Errorf("run %d changed more than versions: %q", run, c)
-			}
+		if got := mutating(calls(t)); !slices.Equal(got, want[run-1]) {
+			t.Errorf("run %d changed %q, want %q", run, got, want[run-1])
 		}
-		if !slices.Contains(calls(t), "plugin update makeit-bundle@makeit --scope user --json") {
-			t.Errorf("run %d: the adopted bundle's version was not updated: %v", run, calls(t))
-		}
+	}
+	if es, _ := os.ReadDir(state.GenerationsDir(stack)); len(es) != len(gens)+1 {
+		t.Errorf("%d generations after setup's %d, want one more: the second update had nothing to do", len(es), len(gens))
 	}
 	if after := snapshot(t, claudeDir); !sameFiles(before, after) {
 		t.Error("update changed a file in the Claude directory of an adopted machine")
