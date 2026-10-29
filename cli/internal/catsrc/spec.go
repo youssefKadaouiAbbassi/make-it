@@ -62,6 +62,8 @@ func Parse(arg string, allowBranch bool) (Spec, error) {
 		}
 	}
 	switch {
+	case strings.HasPrefix(loc, "-"):
+		return Spec{}, fmt.Errorf("%s is not a catalog source", arg)
 	case strings.HasPrefix(loc, "http://"):
 		return Spec{}, fmt.Errorf("%s: a git catalog needs https or ssh, not http", arg)
 	case strings.HasPrefix(loc, "https://"), strings.HasPrefix(loc, "ssh://"):

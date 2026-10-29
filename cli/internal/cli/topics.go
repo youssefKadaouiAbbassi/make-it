@@ -68,6 +68,7 @@ var Environment = []EnvVar{
 	{"MAKEIT_DIR", "where makeit keeps its catalog copy, state and generations (default ~/.makeit)"},
 	{"MAKEIT_RELEASES_URL", "where makeit looks for releases (https only; default https://github.com)"},
 	{"MAKEIT_REEXEC", "set by update for the new makeit it runs: the version it replaced"},
+	{"GIT_SSH_COMMAND", "used for a git catalog over ssh when set; otherwise ssh runs in batch mode"},
 	{"HOME", "the home directory (USERPROFILE on Windows)"},
 	{"PATH", "where claude, npm, git and the package managers are looked up"},
 	{"NO_COLOR", "when set, no colour"},

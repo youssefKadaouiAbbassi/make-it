@@ -64,7 +64,11 @@ type Catalog struct {
 	// Requested is the ref asked for; nil when none was.
 	Requested *string `json:"requested"`
 	// Resolved is "sha256:<tree digest>" or a 40-hex commit.
-	Resolved        string         `json:"resolved,omitempty"`
+	Resolved string `json:"resolved,omitempty"`
+	// RefKind is latest, tag, branch or commit for a git catalog; Tag is the tag Resolved came from.
+	RefKind         string         `json:"refKind,omitempty"`
+	Tag             string         `json:"tag,omitempty"`
+	AllowBranch     bool           `json:"allowBranch,omitempty"`
 	MarketplaceName string         `json:"marketplaceName,omitempty"`
 	Extra           jsontext.Value `json:",embed"`
 }

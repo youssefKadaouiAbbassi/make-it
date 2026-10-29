@@ -30,6 +30,7 @@ func TestParse(t *testing.T) {
 		{"https://h/x.git?token=1", false, Spec{}, ErrCredentials},
 		{"ssh://u:pw@h/x.git", false, Spec{}, ErrCredentials},
 		{"/no/such/dir", false, Spec{}, errAny},
+		{"--upload-pack=touch x;.git", false, Spec{}, errAny},
 		{"owner/repo@abc", false, Spec{}, errAny},
 		{"owner/repo#", false, Spec{}, errAny},
 		{"embedded", true, Spec{}, errAny},
