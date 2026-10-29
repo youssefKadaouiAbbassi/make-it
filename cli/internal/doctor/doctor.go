@@ -219,14 +219,20 @@ func upgradeFix(source string, pm platform.PM, cask string) string {
 	return "claude update"
 }
 
-// caskOf names the Homebrew cask a resolved bin/claude link points into: casks are staged at
-// $(brew --caskroom)/<token>/<version> (docs.brew.sh Cask-Cookbook). "" when neither token is there.
-func caskOf(resolved string) string {
-	segs := strings.Split(filepath.ToSlash(resolved), "/")
-	for _, cask := range []string{"claude-code@latest", "claude-code"} {
-		if slices.Contains(segs, cask) {
-			return cask
+// brewOrigin reads where a bin/claude link in a Homebrew prefix resolves to. Homebrew's node sets
+// npm's prefix to the Homebrew prefix (homebrew-core Formula/n/node.rb), so the link may be an
+// npm install; otherwise it points into a cask's staged directory, $(brew --caskroom)/<token>/
+// <version> (docs.brew.sh Cask-Cookbook). cask is "" when no cask token is in the path.
+func brewOrigin(resolved string) (source, cask string) {
+	slashed := filepath.ToSlash(resolved)
+	if strings.Contains(slashed, "/node_modules/@anthropic-ai/claude-code/") {
+		return "npm", ""
+	}
+	segs := strings.Split(slashed, "/")
+	for _, token := range []string{"claude-code@latest", "claude-code"} {
+		if slices.Contains(segs, token) {
+			return "brew", token
 		}
 	}
-	return ""
+	return "brew", ""
 }

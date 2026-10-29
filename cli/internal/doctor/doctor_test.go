@@ -218,15 +218,17 @@ func TestUpgradeFix(t *testing.T) {
 	}
 }
 
-func TestCaskOf(t *testing.T) {
-	for in, want := range map[string]string{
-		"/opt/homebrew/Caskroom/claude-code@latest/2.1.311/claude":       "claude-code@latest",
-		"/home/linuxbrew/.linuxbrew/Caskroom/claude-code/2.1.300/claude": "claude-code",
-		"/home/u/.local/share/claude/versions/2.1.311":                   "",
-		"": "",
+func TestBrewOrigin(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"/opt/homebrew/Caskroom/claude-code@latest/2.1.311/claude":       {"brew", "claude-code@latest"},
+		"/home/linuxbrew/.linuxbrew/Caskroom/claude-code/2.1.300/claude": {"brew", "claude-code"},
+		"/home/u/.local/share/claude/versions/2.1.311":                   {"brew", ""},
+		// npm install -g with Homebrew's node: the link sits in the Homebrew prefix.
+		"/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe": {"npm", ""},
+		"": {"brew", ""},
 	} {
-		if got := caskOf(in); got != want {
-			t.Errorf("caskOf(%q) = %q, want %q", in, got, want)
+		if source, cask := brewOrigin(in); source != want[0] || cask != want[1] {
+			t.Errorf("brewOrigin(%q) = %q, %q, want %q, %q", in, source, cask, want[0], want[1])
 		}
 	}
 }

@@ -33,10 +33,10 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 	}
 	if len(m.Installs) > 0 {
 		m.Claude = &claudecli.CLI{Path: m.Installs[0].Path, Run: execx.Run}
-		// bin/claude of a cask links into the cask's staged directory, which names the cask.
+		// A link in a Homebrew prefix is a cask's or, with Homebrew's node, npm's.
 		if m.Installs[0].Source == "brew" {
 			if resolved, err := filepath.EvalSymlinks(m.Installs[0].Path); err == nil {
-				m.BrewCask = caskOf(resolved)
+				m.Installs[0].Source, m.BrewCask = brewOrigin(resolved)
 			}
 		}
 	}
