@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"makeit/internal/catalog"
+	"makeit/internal/claudecli"
 	"makeit/internal/execx"
 	"makeit/internal/jsonx"
 	"makeit/internal/plan"
@@ -538,5 +539,91 @@ func TestUninstallChangedFileHoldsNoRecord(t *testing.T) {
 	uninstall(t, m, UninstallOptions{})
 	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("state.json kept for a file that is the user's now: %v", err)
+	}
+}
+
+// The delegate's ruling: without a usable Claude Code, uninstall removes what it can (makeit's
+// files, settings values and catalog), keeps state.json with the plugins and marketplace left,
+// says how to finish, and never touches plugin folders.
+func TestUninstallWithoutClaude(t *testing.T) {
+	m := installed(t)
+	data := dataDir(t, m, "superpowers@makeit")
+	located := m.env.Locate
+	m.env.Locate = func(context.Context) []claudecli.Install { return nil }
+	before := len(m.calls)
+	rep, err := Uninstall(context.Background(), m.env, plan.Apply, nil, nil, UninstallOptions{})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("err %v, failed %v: %+v", err, rep.Plan.Failed(), rep.Plan.Outcomes)
+	}
+	if len(m.calls) != before {
+		t.Errorf("ran claude without Claude Code: %v", m.calls[before:])
+	}
+	for _, p := range globalPaths(t, m.env.Roots.Claude) {
+		if _, err := os.Stat(p); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s still there: %v", p, err)
+		}
+	}
+	if _, ok := settingsOf(t, m).Get("cleanupPeriodDays"); ok {
+		t.Error("makeit's settings values stayed")
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "catalog")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("catalog still there: %v", err)
+	}
+	if _, err := os.Stat(data); err != nil {
+		t.Errorf("a plugin's data folder was touched: %v", err)
+	}
+	st, _, err := state.LoadState(filepath.Join(m.env.Roots.Stack, "state.json"))
+	if err != nil || st.Plugins["superpowers@makeit"] == nil || st.Marketplaces["makeit"] == nil ||
+		len(st.Files) != 0 || len(st.Dirs) != 0 || len(st.Settings.Paths) != 0 {
+		t.Errorf("state %v: plugins %v, marketplaces %v, files %v, dirs %v, settings %d; want only the plugins and marketplace",
+			err, st.Plugins, st.Marketplaces, st.Files, st.Dirs, len(st.Settings.Paths))
+	}
+	if r := reasonOf(rep, "claude"); !strings.Contains(r, "makeit uninstall") {
+		t.Errorf("kept claude: %q, want the command that finishes the job", r)
+	}
+	m.env.Locate = located
+	rep = uninstall(t, m, UninstallOptions{})
+	if rep.Plan.Failed() || called(m, "marketplace remove makeit") < 0 {
+		t.Errorf("the rerun with Claude Code back did not finish: %+v", rep.Plan.Outcomes)
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state.json still there after the rerun: %v", err)
+	}
+}
+
+// The delegate's ruling: --keep-settings hands the values to the user, and the output says so.
+func TestKeepSettingsSaysTheyAreYours(t *testing.T) {
+	m := installed(t)
+	m.needed = map[string]bool{"superpowers@makeit": true} // something stays, so state.json stays
+	rep := uninstall(t, m, UninstallOptions{KeepSettings: true})
+	if r := reasonOf(rep, "settings"); r != "now yours; makeit no longer tracks them" {
+		t.Errorf("kept settings: %q", r)
+	}
+	st, _, err := state.LoadState(filepath.Join(m.env.Roots.Stack, "state.json"))
+	if err != nil || len(st.Settings.Paths) != 0 {
+		t.Errorf("state %v keeps %d settings records after --keep-settings", err, len(st.Settings.Paths))
+	}
+}
+
+// A value the user had before makeit and changed since is kept, and the run's report says so even
+// when nothing else in settings.json changes.
+func TestAdoptedChangedValueReportedAfterApply(t *testing.T) {
+	m := newMachine(t)
+	raw, err := catalog.Embedded.ReadFile("settings.baseline.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := jsonx.DecodeObject(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveSettings(t, m, settings.Merge(jsonx.NewObject(), settings.Desired(base, "makeit"), nil, settings.DefaultOptions()).Settings)
+	apply(t, m)
+	o := settingsOf(t, m)
+	o.Set("cleanupPeriodDays", json.Number("999"))
+	saveSettings(t, m, o)
+	rep := uninstall(t, m, UninstallOptions{})
+	if reasonOf(rep, "/cleanupPeriodDays") == "" {
+		t.Errorf("the changed value is not in the run's kept list: %+v", rep.Kept)
 	}
 }

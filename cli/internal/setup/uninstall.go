@@ -124,7 +124,15 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 		steps = append(steps, e.unPluginStep(id, true))
 	}
 	steps = append(steps, e.yoursStep(), e.unMarketplaceStep())
-	if !opts.KeepSettings {
+	if opts.KeepSettings {
+		steps = append(steps, plan.Step{ID: "settings", Title: "Leave settings.json as it is (--keep-settings)",
+			Already: func(context.Context) (bool, error) {
+				if len(e.st.Settings.Paths) > 0 {
+					e.keep("settings", "now yours; makeit no longer tracks them")
+				}
+				return true, nil
+			}})
+	} else {
 		steps = append(steps, e.unSettingsStep())
 	}
 	keys := make([]string, 0, len(e.st.Files))
@@ -155,10 +163,10 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 func (e *env) findClaudeStep() plan.Step {
 	return plan.Step{ID: "claude", Title: "Find Claude Code",
 		Already: func(ctx context.Context) (bool, error) {
-			if _, _, ok := e.findClaude(ctx); ok {
-				return true, nil
+			if _, _, ok := e.findClaude(ctx); !ok {
+				e.keep("claude", "not usable here, so makeit's plugins and its marketplace stay: run `makeit uninstall` again once Claude Code is back")
 			}
-			return false, errNoClaude
+			return true, nil
 		}}
 }
 
@@ -169,6 +177,9 @@ func (e *env) unPluginStep(id string, dep bool) plan.Step {
 	return plan.Step{ID: "plugin." + id, Title: "Uninstall " + id + " (its data stays)",
 		Command: []string{"claude", "plugin", "uninstall", id, "--scope", "user", "--keep-data", "--json"},
 		Already: func(ctx context.Context) (bool, error) {
+			if e.claude == nil {
+				return true, nil // stays recorded: the claude line says how to finish
+			}
 			in, err := e.gather(ctx)
 			if err != nil {
 				return false, err
@@ -255,7 +266,7 @@ func (e *env) unMarketplaceStep() plan.Step {
 	return plan.Step{ID: "marketplace", Title: "Remove the " + own + " marketplace (its plugins' data is copied into the generation first)",
 		Command: []string{"claude", "plugin", "marketplace", "remove", own, "--scope", "user", "--json"},
 		Already: func(ctx context.Context) (bool, error) {
-			if rec := e.st.Marketplaces[own]; rec == nil || rec.AddedBy != "makeit" {
+			if rec := e.st.Marketplaces[own]; rec == nil || rec.AddedBy != "makeit" || e.claude == nil {
 				return true, nil
 			}
 			in, err := e.gather(ctx)
@@ -307,91 +318,108 @@ func (e *env) unMarketplaceStep() plan.Step {
 		}}
 }
 
+// unmergeSettings takes makeit's values out of the live settings.json with the merge records, the
+// claude-plugins-official declaration aside. found is false when there is no settings.json.
+func (e *env) unmergeSettings() (res settings.Result, old []byte, found bool, err error) {
+	path := filepath.Join(e.Roots.Claude, "settings.json")
+	old, found, err = fsx.ReadOptional(path)
+	if err != nil || !found {
+		return settings.Result{}, old, found, err
+	}
+	live, err := jsonx.DecodeObject(old)
+	if err != nil {
+		return settings.Result{}, old, true, fmt.Errorf("%s is not valid JSON, fix it first: %w", path, err)
+	}
+	recs := settings.State{}
+	for k, r := range e.st.Settings.Paths {
+		if k != officialDecl && !strings.HasPrefix(k, officialDecl+"/") {
+			recs[k] = r
+		}
+	}
+	return settings.Unmerge(live, recs), old, true, nil
+}
+
+// settingsEmptied: makeit created settings.json and nothing else would be left in it.
+func (e *env) settingsEmptied(res settings.Result) bool {
+	return e.st.Settings.CreatedByUs && res.Settings.Len() == 0
+}
+
+// settingsLeft reports whether settings.json still holds a value of makeit's to take out.
+func (e *env) settingsLeft() bool {
+	if len(e.st.Settings.Paths) == 0 {
+		return false
+	}
+	res, _, found, err := e.unmergeSettings()
+	return err != nil || (found && (res.Changed() || e.settingsEmptied(res)))
+}
+
 // unSettingsStep takes makeit's values out of settings.json with the merge records: a value still
 // equal to what makeit wrote returns to what was there before, and a value the user changed stays.
-// The declaration of claude-plugins-official stays. The result is validated before and after the
-// write and put back on failure; a settings.json makeit created that would be left empty is removed.
+// The declaration of claude-plugins-official stays. With Claude Code, the result is validated before
+// and after the write and put back on failure; without it (the delegate's ruling), it is written
+// unvalidated, its pre-image kept. A settings.json makeit created that would be left empty is removed.
 func (e *env) unSettingsStep() plan.Step {
 	path := filepath.Join(e.Roots.Claude, "settings.json")
-	unmerge := func() (settings.Result, []byte, bool, error) {
-		old, found, err := fsx.ReadOptional(path)
-		if err != nil || !found {
-			return settings.Result{}, old, found, err
-		}
-		live, err := jsonx.DecodeObject(old)
-		if err != nil {
-			return settings.Result{}, old, true, fmt.Errorf("%s is not valid JSON, fix it first: %w", path, err)
-		}
-		recs := settings.State{}
-		for k, r := range e.st.Settings.Paths {
-			if k != officialDecl && !strings.HasPrefix(k, officialDecl+"/") {
-				recs[k] = r
-			}
-		}
-		res := settings.Unmerge(live, recs)
-		for _, c := range res.Changes {
+	keepTheirs := func(changes []settings.Change) {
+		for _, c := range changes {
 			if c.Action == settings.KeptTheirs {
 				e.keep(c.Path, "changed since makeit set it")
 			}
 		}
-		return res, old, true, nil
 	}
-	emptied := func(res settings.Result) bool { return e.st.Settings.CreatedByUs && res.Settings.Len() == 0 }
 	return plan.Step{ID: "settings", Title: "Take makeit's values out of " + path,
 		Already: func(context.Context) (bool, error) {
 			if len(e.st.Settings.Paths) == 0 {
 				return true, nil
 			}
-			res, _, found, err := unmerge()
+			res, _, found, err := e.unmergeSettings()
 			if err != nil {
 				return false, err
 			}
-			if !found || (!res.Changed() && !emptied(res)) {
-				// Nothing of makeit's is left to take out: its records go.
-				e.st.Settings = state.Settings{}
-				return true, nil
-			}
-			return false, nil
+			keepTheirs(res.Changes)
+			return !found || (!res.Changed() && !e.settingsEmptied(res)), nil
 		},
 		Run: func(ctx context.Context) (string, error) {
 			// Unmerged again now, not at planning time: a running Claude Code may have written the file.
-			res, old, found, err := unmerge()
+			res, old, found, err := e.unmergeSettings()
 			if err != nil {
 				return "", err
 			}
+			keepTheirs(res.Changes)
 			if !found {
 				e.st.Settings = state.Settings{}
 				return "", nil
 			}
-			if emptied(res) {
+			if e.settingsEmptied(res) {
 				if err := e.remove("settings", path); err != nil {
 					return "", err
 				}
 				e.st.Settings = state.Settings{}
 				return "removed: makeit created it and nothing else is in it", nil
 			}
-			if e.claude == nil {
-				return "", errors.New("Claude Code is needed to validate settings.json and is not usable")
-			}
 			data, err := jsonx.Marshal(res.Settings)
 			if err != nil {
 				return "", err
 			}
-			if err := e.validate(ctx, data, "settings.json without makeit's values"); err != nil {
-				return "", err
+			if e.claude != nil {
+				if err := e.validate(ctx, data, "settings.json without makeit's values"); err != nil {
+					return "", err
+				}
 			}
 			if err := e.write("settings", path, data, 0o600); err != nil {
 				return "", err
 			}
-			written, _, err := fsx.ReadOptional(path)
-			if err == nil {
-				err = e.validate(ctx, written, "settings.json after the write")
-			}
-			if err != nil {
-				if rerr := e.restore(path, old); rerr != nil {
-					return "", errors.Join(err, rerr)
+			if e.claude != nil {
+				written, _, err := fsx.ReadOptional(path)
+				if err == nil {
+					err = e.validate(ctx, written, "settings.json after the write")
 				}
-				return "", fmt.Errorf("%w; the previous settings.json was put back", err)
+				if err != nil {
+					if rerr := e.restore(path, old); rerr != nil {
+						return "", errors.Join(err, rerr)
+					}
+					return "", fmt.Errorf("%w; the previous settings.json was put back", err)
+				}
 			}
 			e.st.Settings = state.Settings{}
 			return "", nil
@@ -514,6 +542,9 @@ func (e *env) unCatalogStep() plan.Step {
 			if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 				return true, nil
 			}
+			if e.claude == nil {
+				return false, nil // nothing can use it without Claude Code (the delegate's ruling)
+			}
 			in, err := e.gather(ctx)
 			if err != nil {
 				return false, err
@@ -529,10 +560,13 @@ func (e *env) unCatalogStep() plan.Step {
 			return false, nil
 		},
 		Run: func(ctx context.Context) (string, error) {
-			e.inputs = nil
-			in, err := e.gather(ctx)
-			if err != nil && !errors.Is(err, plan.ErrNotYet) {
-				return "", err
+			var in pluginrule.Inputs
+			if e.claude != nil {
+				e.inputs = nil
+				var err error
+				if in, err = e.gather(ctx); err != nil {
+					return "", err
+				}
 			}
 			if names := users(in); len(names) > 0 {
 				e.keep("catalog "+dir, "the "+names[0]+" marketplace still uses it")
@@ -569,7 +603,7 @@ func (e *env) remaining() []string {
 			left = append(left, k)
 		}
 	}
-	if !e.keepSettings && len(e.st.Settings.Paths) > 0 {
+	if !e.keepSettings && e.settingsLeft() {
 		left = append(left, "settings")
 	}
 	if e.catalogLeft {
@@ -585,6 +619,9 @@ func (e *env) unStateStep() plan.Step {
 	statePath := filepath.Join(e.Roots.Stack, "state.json")
 	return plan.Step{ID: "state", Title: "Remove makeit's record " + statePath + " (kept while anything of makeit remains)",
 		Run: func(context.Context) (string, error) {
+			if e.keepSettings || !e.settingsLeft() {
+				e.st.Settings = state.Settings{} // the values are the user's now
+			}
 			if left := e.remaining(); len(left) > 0 {
 				for id, r := range e.st.Plugins {
 					if r.InstalledBy != "makeit" {
