@@ -11,15 +11,16 @@ cli=$(cd "$(dirname "$0")/.." && pwd)
 images=("$@")
 [ ${#images[@]} -gt 0 ] || images=(ubuntu:24.04 debian:trixie-slim fedora:latest alpine:3.23)
 
-# As root: sudo and a user who may use it without a password; then setup twice as that user.
+# As root: sudo and a user who may use it without a password; then setup twice as that user
+# (sudo -iu, because fedora's image has no su).
 sudo_user='set -e
 if command -v apt-get >/dev/null; then apt-get update -qq && apt-get install -y -qq sudo >/dev/null; useradd -m u
 elif command -v dnf >/dev/null; then dnf install -y -q sudo >/dev/null; useradd -m u
 else apk add -q sudo; adduser -D u; fi
 echo "u ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/u
-su - u -c "makeit setup --yes"
-su - u -c "claude --version"
-su - u -c "makeit setup --yes --json" > /tmp/second.json
+sudo -iu u makeit setup --yes
+sudo -iu u claude --version
+sudo -iu u makeit setup --yes --json > /tmp/second.json
 cat /tmp/second.json
 ! grep -q "\"status\": \"done\"" /tmp/second.json'
 
