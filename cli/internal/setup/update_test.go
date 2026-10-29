@@ -673,3 +673,25 @@ func TestAdoptedUpdateRecordsPin(t *testing.T) {
 		t.Errorf("already = %v, %v; the pin did not move", done, err)
 	}
 }
+
+// Final review I4: an owned file the user linked into dotfiles (stow, per file) is theirs; update
+// does not rewrite the link's target.
+func TestUpdateKeepsLinkedFile(t *testing.T) {
+	e := updateEnv(t)
+	target := filepath.Join(t.TempDir(), "dotfiles", "go.md")
+	writeFile(t, target, "old rules\n")
+	link := filepath.Join(e.Roots.Claude, "rules", "go.md")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	e.st.Files = map[string]*state.File{"claude:rules/go.md": owned("old rules\n")}
+	if done, err := step(t, e.updateGlobalSteps(), "global.rules/go.md").Already(context.Background()); !done || err != nil {
+		t.Fatalf("already = %v, %v; a linked file is the user's", done, err)
+	}
+	if read(t, target) != "old rules\n" || keptReason(e, "claude:rules/go.md") != "a link, so it is yours" {
+		t.Errorf("target %q, kept %q", read(t, target), keptReason(e, "claude:rules/go.md"))
+	}
+}

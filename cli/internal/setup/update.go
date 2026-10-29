@@ -6,8 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -80,6 +78,9 @@ func (e *env) updateGlobalSteps() []plan.Step {
 						e.keep(key, "yours; the catalog's version differs")
 					}
 					return true, nil
+				case e.linked(path):
+					e.keep(key, "a link, so it is yours")
+					return true, nil
 				case bytes.Equal(cur, want):
 					rec.Sha256 = fsx.Sha256(want)
 					return true, nil
@@ -112,7 +113,7 @@ func (e *env) updateGlobalSteps() []plan.Step {
 		rel := strings.TrimPrefix(key, "claude:")
 		steps = append(steps, plan.Step{ID: "global.drop." + rel, Title: "Remove " + path + " (no longer in the catalog)",
 			Already: func(context.Context) (bool, error) {
-				if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+				if e.linked(path) {
 					e.keep(key, "a link, so it is yours")
 					return true, nil
 				}

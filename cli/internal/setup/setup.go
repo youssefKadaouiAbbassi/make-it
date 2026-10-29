@@ -82,6 +82,24 @@ func (e *env) keep(item, reason string) {
 // errSymlink: a path is a symlink, so whoever linked it owns it and makeit does not remove it.
 var errSymlink = errors.New("is a symlink, so it is yours")
 
+// linked reports whether path, or a directory between the Claude directory and it, is a symlink.
+// The user manages what is under a link (stow, home-manager), so makeit neither replaces nor
+// removes it.
+func (e *env) linked(path string) bool {
+	rel, err := filepath.Rel(e.Roots.Claude, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	cur := e.Roots.Claude
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		if fi, err := os.Lstat(cur); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // remove deletes path after keeping its pre-image in the run's generation, and records the
 // removal there. A symlink is refused with errSymlink.
 func (e *env) remove(id, path string) error {
@@ -92,7 +110,7 @@ func (e *env) remove(id, path string) error {
 	if err != nil {
 		return err
 	}
-	if fi.Mode()&fs.ModeSymlink != 0 {
+	if fi.Mode()&fs.ModeSymlink != 0 || e.linked(path) {
 		return fmt.Errorf("%s %w", path, errSymlink)
 	}
 	old, err := os.ReadFile(path)

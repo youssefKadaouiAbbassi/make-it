@@ -500,3 +500,43 @@ func TestKeepSettingsRemovesState(t *testing.T) {
 		t.Errorf("state.json kept after --keep-settings: %v", err)
 	}
 }
+
+// Final review I4: stow's tree folding links the whole rules/ directory into the user's dotfiles;
+// what is under a link is the user's.
+func TestUninstallKeepsLinkedDirectory(t *testing.T) {
+	m := installed(t)
+	rules := filepath.Join(m.env.Roots.Claude, "rules")
+	dotfiles := filepath.Join(t.TempDir(), "dotfiles", "claude", "rules")
+	if err := os.MkdirAll(filepath.Dir(dotfiles), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(rules, dotfiles); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(dotfiles, rules); err != nil {
+		t.Fatal(err)
+	}
+	rep := uninstall(t, m, UninstallOptions{})
+	if _, err := os.Stat(filepath.Join(dotfiles, "go.md")); err != nil {
+		t.Errorf("uninstall deleted go.md from the user's dotfiles: %v", err)
+	}
+	if fi, err := os.Lstat(rules); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		t.Errorf("uninstall removed the user's rules link: %v", err)
+	}
+	if r := reasonOf(rep, "claude:rules/go.md"); r != "a link, so it is yours" {
+		t.Errorf("kept %q", r)
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state.json kept for files that are the user's now: %v", err)
+	}
+}
+
+// A file makeit wrote and the user changed is theirs now: kept, and it does not hold state.json.
+func TestUninstallChangedFileHoldsNoRecord(t *testing.T) {
+	m := installed(t)
+	writeFile(t, filepath.Join(m.env.Roots.Claude, "rules", "go.md"), "mine\n")
+	uninstall(t, m, UninstallOptions{})
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "state.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state.json kept for a file that is the user's now: %v", err)
+	}
+}

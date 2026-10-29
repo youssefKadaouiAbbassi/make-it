@@ -405,13 +405,17 @@ func (e *env) unFileStep(key string) plan.Step {
 	path := e.Roots.Abs(key)
 	return plan.Step{ID: "file." + strings.TrimPrefix(key, "claude:"), Title: "Remove " + path,
 		Already: func(context.Context) (bool, error) {
-			if rec.PreExisted {
-				e.keep(key, "yours")
+			// What is kept as the user's is theirs from now on: its record goes, so it does not hold state.json.
+			yours := func(reason string) (bool, error) {
+				e.keep(key, reason)
+				delete(e.st.Files, key)
 				return true, nil
 			}
-			if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-				e.keep(key, "a link, so it is yours")
-				return true, nil
+			if rec.PreExisted {
+				return yours("yours")
+			}
+			if e.linked(path) {
+				return yours("a link, so it is yours")
 			}
 			cur, found, err := fsx.ReadOptional(path)
 			if err != nil {
@@ -422,8 +426,7 @@ func (e *env) unFileStep(key string) plan.Step {
 				return true, nil
 			}
 			if fsx.Sha256(cur) != rec.Sha256 {
-				e.keep(key, "changed since makeit wrote it")
-				return true, nil
+				return yours("changed since makeit wrote it")
 			}
 			return false, nil
 		},
@@ -469,6 +472,11 @@ func (e *env) unDirsStep() plan.Step {
 			var removed []string
 			for _, k := range e.createdDirs() {
 				dir := e.Roots.Abs(k)
+				if e.linked(dir) {
+					e.keep(k, "a link, so it is yours")
+					delete(e.st.Dirs, k)
+					continue
+				}
 				entries, err := os.ReadDir(dir)
 				switch {
 				case errors.Is(err, fs.ErrNotExist):
