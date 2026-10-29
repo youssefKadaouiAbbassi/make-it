@@ -263,3 +263,42 @@ func TestWriteFollowsRelativeSymlink(t *testing.T) {
 		t.Error("the relative symlink was replaced")
 	}
 }
+
+func writeFile(t *testing.T, path, data string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWriteRecordsCreatedDirs(t *testing.T) {
+	e, _ := newEnv(t)
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
+	if err := e.write("global.rules/deep/go.md", filepath.Join(e.Roots.Claude, "rules", "deep", "go.md"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(e.Roots.Claude, "existing", "keep.md"), "mine\n")
+	if err := e.write("global.existing/new.md", filepath.Join(e.Roots.Claude, "existing", "new.md"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"claude:rules", "claude:rules/deep"} {
+		if r := e.st.Dirs[d]; r == nil || !r.CreatedByUs {
+			t.Errorf("%s = %+v, want recorded as created by makeit", d, r)
+		}
+	}
+	for _, d := range []string{"claude:", "claude:existing"} {
+		if r := e.st.Dirs[d]; r != nil {
+			t.Errorf("%s recorded as %+v; it existed before or is the root", d, r)
+		}
+	}
+	if len(e.st.Dirs) != 2 {
+		t.Errorf("dirs %v, want only the two created under the Claude directory", e.st.Dirs)
+	}
+}

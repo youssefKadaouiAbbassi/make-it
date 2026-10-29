@@ -153,3 +153,58 @@ func TestCatalogResyncedWhenMakeitAddedIt(t *testing.T) {
 		t.Errorf("already = %v, %v; want a sync of the missing catalog", done, err)
 	}
 }
+
+// broughtIn installs the bundle with makeit's marketplace at a local catalog: x@other was there
+// before; the install adds the bundle, a@makeit (pinned at aaa) and b@makeit.
+func broughtIn(t *testing.T) *env {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".claude-plugin", "marketplace.json"), `{"name": "makeit", "plugins": [
+		{"name": "makeit-bundle", "source": "./plugins/makeit-bundle"},
+		{"name": "a", "source": {"source": "github", "repo": "o/a", "sha": "aaa"}},
+		{"name": "b", "source": "./plugins/b"}]}`)
+	e, f := stackEnv(t, `[{"name":"makeit","source":"directory","path":"`+dir+`"}]`, `[{"id":"x@other","enabled":true}]`)
+	f.answers["claude plugin install makeit-bundle@makeit --scope user --json"] = func(execx.Cmd) execx.Result {
+		f.answers["claude plugin list --json"] = text(`[{"id":"x@other","enabled":true},
+			{"id":"makeit-bundle@makeit","version":"3.10.0","enabled":true,"readFromFolder":"` + dir + `/plugins/makeit-bundle"},
+			{"id":"a@makeit","version":"1.2.0","enabled":true},{"id":"b@makeit","version":"1.0.0","enabled":true}]`)
+		return execx.Result{Stdout: ok}
+	}
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
+	if _, err := step(t, e.stackSteps(), "bundle").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func TestBundleRecordsWhatItBroughtIn(t *testing.T) {
+	e := broughtIn(t)
+	for _, id := range []string{"makeit-bundle@makeit", "a@makeit", "b@makeit"} {
+		if p := e.st.Plugins[id]; p == nil || p.InstalledBy != "makeit" || p.Scope != "user" {
+			t.Errorf("%s recorded as %+v, want installed by makeit at user scope", id, p)
+		}
+	}
+	if p := e.st.Plugins["x@other"]; p != nil {
+		t.Errorf("x@other recorded as %+v; it was there before, so it stays the user's", p)
+	}
+	got := slices.Sorted(slices.Values(e.gen.Manifest.Plugins.Installed))
+	if want := []string{"a@makeit", "b@makeit", "makeit-bundle@makeit"}; !slices.Equal(got, want) {
+		t.Errorf("generation installed %v, want %v", got, want)
+	}
+}
+
+func TestBundleRecordsPins(t *testing.T) {
+	e := broughtIn(t)
+	for id, pin := range map[string]string{"a@makeit": "aaa", "b@makeit": "", "makeit-bundle@makeit": ""} {
+		if p := e.st.Plugins[id]; p == nil || p.Observed.GitCommitSha != pin {
+			t.Errorf("%s pin = %+v, want %q", id, p, pin)
+		}
+	}
+	if v := e.st.Plugins["a@makeit"].Observed.Version; v != "1.2.0" {
+		t.Errorf("a@makeit version %q", v)
+	}
+}

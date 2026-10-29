@@ -164,3 +164,20 @@ func TestSettingsRestoresThroughSymlink(t *testing.T) {
 		t.Errorf("target %q, want the pre-image restored", got)
 	}
 }
+
+func TestSettingsRecordsCreated(t *testing.T) {
+	e, path := settingsEnv(t, `{"model":"claude-opus-5-5"}`, "", nil)
+	if _, err := e.settingsStep().Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, path) == "" || !e.st.Settings.CreatedByUs {
+		t.Errorf("created = %v, want settings.json written and recorded as created by makeit", e.st.Settings.CreatedByUs)
+	}
+	e2, _ := settingsEnv(t, `{"model":"claude-opus-5-5"}`, `{"other":1}`, nil)
+	if _, err := e2.settingsStep().Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if e2.st.Settings.CreatedByUs {
+		t.Error("an existing settings.json was recorded as created by makeit")
+	}
+}

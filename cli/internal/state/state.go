@@ -24,7 +24,7 @@ import (
 const SchemaVersion = 1
 
 // Revision counts additive changes that older binaries read on. It is not a write counter.
-const Revision = 0
+const Revision = 1
 
 // State is state.json. Paths in it use the roots claude:, stack: and home: (package paths).
 type State struct {
@@ -80,7 +80,9 @@ type Settings struct {
 	File                       string         `json:"file,omitempty"`
 	LastWrittenCanonicalSha256 string         `json:"lastWrittenCanonicalSha256,omitempty"`
 	Paths                      settings.State `json:"paths,omitempty"`
-	Extra                      jsontext.Value `json:",embed"`
+	// CreatedByUs: makeit created settings.json, so uninstall may remove it when nothing else is left.
+	CreatedByUs bool           `json:"createdByUs,omitempty"`
+	Extra       jsontext.Value `json:",embed"`
 }
 
 // File is a file makeit wrote.

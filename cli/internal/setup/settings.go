@@ -67,6 +67,9 @@ func (e *env) settingsStep() plan.Step {
 				return "", fmt.Errorf("%w; the previous settings.json was put back", err)
 			}
 			record()
+			if old == nil {
+				e.st.Settings.CreatedByUs = true
+			}
 			return diff(res.Changes), nil
 		}}
 }

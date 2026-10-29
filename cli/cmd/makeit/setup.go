@@ -38,7 +38,8 @@ var setupEnv = func(context.Context) (setup.Env, error) {
 			return claudecli.Locate(claudecli.MachineProbe(ctx, roots.Home))
 		},
 		// Geteuid is -1 on Windows, where there is no sudo.
-		Root: os.Geteuid() == 0,
+		Root:   os.Geteuid() == 0,
+		Getenv: os.Getenv,
 	}, nil
 }
 

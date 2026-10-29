@@ -9,6 +9,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/plan"
+	"makeit/internal/pluginrule"
 	"makeit/internal/state"
 )
 
@@ -72,6 +73,10 @@ func (e *env) stackSteps() []plan.Step {
 				return true, nil
 			},
 			Run: func(ctx context.Context) (string, error) {
+				before, err := e.listedIDs(ctx)
+				if err != nil {
+					return "", err
+				}
 				// No --accept-command: a marketplace-declared command is shown and refused (DESIGN 4.4).
 				res, err := e.claude.Install(ctx, e.req.Bundle, "")
 				if err != nil {
@@ -84,20 +89,13 @@ func (e *env) stackSteps() []plan.Step {
 				if !res.OK() {
 					return "", fmt.Errorf("claude plugin install %s: %s", e.req.Bundle, res.Message)
 				}
-				p, err := e.plugin(ctx, e.req.Bundle)
-				if err != nil {
+				if err := e.recordNew(ctx, before); err != nil {
 					return "", err
 				}
-				rec := &state.Plugin{InstalledBy: "makeit", Scope: "user", Generation: e.st.Generation}
-				if p != nil {
-					rec.Observed.Version = p.Version
+				if rec := e.st.Plugins[e.req.Bundle]; rec != nil {
+					return rec.Observed.Version, nil
 				}
-				e.st.Plugins = initMap(e.st.Plugins)
-				e.st.Plugins[e.req.Bundle] = rec
-				if e.gen != nil {
-					e.gen.Manifest.Plugins.Installed = append(e.gen.Manifest.Plugins.Installed, e.req.Bundle)
-				}
-				return rec.Observed.Version, nil
+				return "", nil
 			}},
 	}
 }
@@ -144,6 +142,45 @@ func (e *env) plugin(ctx context.Context, id string) (*claudecli.Plugin, error) 
 		return &ps[i], nil
 	}
 	return nil, nil
+}
+
+// listedIDs are the ids `claude plugin list` shows.
+func (e *env) listedIDs(ctx context.Context) ([]string, error) {
+	ps, err := e.claude.Plugins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(ps))
+	for _, p := range ps {
+		ids = append(ids, p.ID)
+	}
+	return ids, nil
+}
+
+// recordNew records every listed user-scope plugin missing from before as installed by makeit,
+// with its version and, when its marketplace pins it, that commit. A plugin that was there before
+// stays the user's.
+func (e *env) recordNew(ctx context.Context, before []string) error {
+	in, err := pluginrule.Gather(ctx, e.claude, filepath.Join(e.Roots.Claude, "settings.json"), e.Getenv)
+	if err != nil {
+		return err
+	}
+	for _, p := range in.Plugins {
+		if slices.Contains(before, p.ID) || (p.Scope != "" && p.Scope != "user") {
+			continue
+		}
+		rec := &state.Plugin{InstalledBy: "makeit", Scope: "user", Generation: e.st.Generation,
+			Observed: state.PluginObserved{Version: p.Version}}
+		if v := in.Classify(p.ID); v.Rule == pluginrule.Pinned {
+			rec.Observed.GitCommitSha = v.Pin
+		}
+		e.st.Plugins = initMap(e.st.Plugins)
+		e.st.Plugins[p.ID] = rec
+		if e.gen != nil {
+			e.gen.Manifest.Plugins.Installed = append(e.gen.Manifest.Plugins.Installed, p.ID)
+		}
+	}
+	return nil
 }
 
 // act turns a claude action's result into an error when it did not succeed.

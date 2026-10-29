@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -33,6 +34,8 @@ type Env struct {
 	// Interactive is true when a person can answer sudo's password prompt; Yes is --yes, which
 	// makes sudo run with -n. Root skips sudo.
 	Interactive, Yes, Root bool
+	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
+	Getenv func(string) string
 }
 
 // env is one run: the machine plus what earlier steps learned and the run's record.
@@ -84,12 +87,34 @@ func (e *env) write(id, path string, data []byte, perm fs.FileMode) error {
 		pre := fsx.Sha256(old)
 		op.PreSha256 = &pre
 	}
+	created := e.missingDirs(filepath.Dir(dst))
 	if err := fsx.WriteAtomic(dst, data, perm); err != nil {
 		return err
+	}
+	for _, d := range created {
+		e.st.Dirs = initMap(e.st.Dirs)
+		e.st.Dirs[e.Roots.Portable(d)] = &state.Dir{CreatedByUs: true}
 	}
 	post := fsx.Sha256(data)
 	op.PostSha256 = &post
 	return e.gen.Record(op)
+}
+
+// missingDirs are the directories from dir up that do not exist yet and lie strictly inside the
+// Claude directory: the ones a write there creates, which uninstall may remove when empty.
+func (e *env) missingDirs(dir string) []string {
+	var out []string
+	for {
+		rel, err := filepath.Rel(e.Roots.Claude, dir)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return out
+		}
+		if _, err := os.Lstat(dir); !errors.Is(err, fs.ErrNotExist) {
+			return out
+		}
+		out = append(out, dir)
+		dir = filepath.Dir(dir)
+	}
 }
 
 // landing is where a write to path lands, and with which mode. A symlink (stow and home-manager
