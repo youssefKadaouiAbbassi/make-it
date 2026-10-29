@@ -62,6 +62,9 @@ type Machine struct {
 	Exe  string
 	Self selfupdate.Status
 	Dev  bool
+	// CatalogRecord is the catalog source state.json records, and CatalogDir its synced copy.
+	CatalogRecord state.Catalog
+	CatalogDir    string
 }
 
 type report struct{ checks []Check }
@@ -76,6 +79,7 @@ func Run(ctx context.Context, m Machine) []Check {
 	req, reqErr := catalog.LoadRequires(m.Catalog)
 	r.build(m)
 	r.self(m)
+	r.catalogSource(m)
 	r.platform(m)
 	r.prereqs(m)
 	unusable := r.claude(ctx, m, req, reqErr)
@@ -127,6 +131,45 @@ func (r *report) self(m Machine) {
 		r.add("makeit.skip", "makeit", Info, fmt.Sprintf("makeit %s is skipped: you rolled back from it", s.Skipped),
 			"makeit self update --to "+s.Skipped)
 	}
+}
+
+// catalogSource reports a directory or git catalog: where it comes from, git when it needs it,
+// and whether its synced copy still matches what makeit wrote (cli/CATALOG-GIT.md). doctor uses
+// no network, so a newer tag is update's notice.
+func (r *report) catalogSource(m Machine) {
+	c := m.CatalogRecord
+	if c.Kind == "" || c.Kind == "embedded" {
+		return
+	}
+	at := c.Tag
+	if at == "" {
+		at = strings.TrimPrefix(c.Resolved, "sha256:")
+		at = at[:min(12, len(at))]
+	}
+	msg := fmt.Sprintf("catalog %s %s at %s", c.Kind, c.Location, at)
+	if c.Requested != nil && *c.Requested != "" {
+		msg += " (" + *c.Requested + ")"
+	}
+	if c.Kind == "git" && !prereqPresent(m, "git") {
+		r.add("catalog.source", "catalog", Error, fmt.Sprintf("the catalog %s needs git: install git", c.Location), "")
+		return
+	}
+	if mk := catalog.ReadMarker(m.CatalogDir); mk.Digest != "" {
+		if t, err := catalog.DirTree(m.CatalogDir); err != nil || catalog.Digest(t.Manifest) != mk.Digest {
+			r.add("catalog.source", "catalog", Warn, msg+": "+m.CatalogDir+" changed since makeit wrote it", "makeit update")
+			return
+		}
+	}
+	r.add("catalog.source", "catalog", Info, msg, "")
+}
+
+func prereqPresent(m Machine, id string) bool {
+	for _, s := range m.Prereqs {
+		if s.Prereq.ID == id {
+			return s.Present
+		}
+	}
+	return false
 }
 
 func (r *report) platform(m Machine) {

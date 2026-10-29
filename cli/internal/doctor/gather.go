@@ -14,6 +14,7 @@ import (
 	"makeit/internal/paths"
 	"makeit/internal/platform"
 	"makeit/internal/selfupdate"
+	"makeit/internal/state"
 )
 
 // Gather reads this machine for Run, against the catalog compiled into the binary.
@@ -44,6 +45,14 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 	}
 	self := selfupdate.Env{Roots: roots, Exe: m.Exe, Version: version, Repo: buildinfo.Repo, Keys: buildinfo.Keys()}
 	m.Self, m.Dev = self.Status(), self.Dev()
+	// A directory or git catalog is checked against its synced copy, not the embedded one.
+	m.CatalogDir = filepath.Join(roots.Stack, "catalog")
+	if st, _, err := state.LoadState(m.StatePath); err == nil {
+		m.CatalogRecord = st.Catalog
+		if k := st.Catalog.Kind; k != "" && k != "embedded" && catalog.ReadMarker(m.CatalogDir).Digest != "" {
+			m.Catalog = catalog.Dir(m.CatalogDir)
+		}
+	}
 	man, err := catalog.EmbeddedManifest()
 	if err != nil {
 		return Machine{}, err

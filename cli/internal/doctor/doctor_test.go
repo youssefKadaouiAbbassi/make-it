@@ -14,6 +14,7 @@ import (
 	"makeit/internal/execx"
 	"makeit/internal/platform"
 	"makeit/internal/selfupdate"
+	"makeit/internal/state"
 )
 
 // answer is the fake claude's reply to one argv.
@@ -257,5 +258,75 @@ func TestSelfChecks(t *testing.T) {
 				t.Errorf("skip line missing or wrong: %+v", r.checks)
 			}
 		})
+	}
+}
+
+func TestCatalogSourceCheck(t *testing.T) {
+	sha := strings.Repeat("ab", 20)
+	latest := "latest"
+	git := state.Catalog{Kind: "git", Location: "https://h/cat.git", Requested: &latest, RefKind: "latest", Tag: "v1.0.0", Resolved: sha}
+	synced := func(t *testing.T) string {
+		dir := filepath.Join(t.TempDir(), "catalog")
+		tr, err := catalog.TreeOf(map[string][]byte{"makeit.json": []byte("{}")}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := catalog.SyncTree(dir, tr); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	withGit := []platform.State{{Prereq: platform.Prereq{ID: "git"}, Present: true}}
+	cases := []struct {
+		name   string
+		rec    state.Catalog
+		git    bool
+		change bool
+		level  Level
+		msg    string
+	}{
+		{"embedded", state.Catalog{Kind: "embedded"}, true, false, "", ""},
+		{"git", git, true, false, Info, "catalog git https://h/cat.git at v1.0.0 (latest)"},
+		{"git without git", git, false, false, Error, "the catalog https://h/cat.git needs git: install git"},
+		{"changed since the sync", git, true, true, Warn, "changed since makeit wrote it"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := Machine{CatalogRecord: c.rec, CatalogDir: synced(t)}
+			if c.git {
+				m.Prereqs = withGit
+			}
+			if c.change {
+				if err := os.WriteFile(filepath.Join(m.CatalogDir, "makeit.json"), []byte("{\"x\":1}"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			r := &report{}
+			r.catalogSource(m)
+			i := slices.IndexFunc(r.checks, func(k Check) bool { return k.ID == "catalog.source" })
+			if c.level == "" {
+				if i >= 0 {
+					t.Errorf("a line for an embedded catalog: %+v", r.checks)
+				}
+				return
+			}
+			if i < 0 || r.checks[i].Level != c.level || !strings.Contains(r.checks[i].Message, c.msg) {
+				t.Errorf("checks %+v, want %s %q", r.checks, c.level, c.msg)
+			}
+		})
+	}
+}
+
+// On a git-catalog machine the source line follows the receipt line.
+func TestRunOrderGitCatalog(t *testing.T) {
+	m, _ := healthy(t)
+	latest := "latest"
+	m.CatalogRecord = state.Catalog{Kind: "git", Location: "https://h/cat.git", Requested: &latest, Tag: "v1.0.0", Resolved: strings.Repeat("a", 40)}
+	m.Prereqs = append(m.Prereqs, platform.State{Prereq: platform.Prereq{ID: "git"}, Present: true})
+	checks := Run(context.Background(), m)
+	r := slices.IndexFunc(checks, func(c Check) bool { return c.ID == "makeit.receipt" })
+	s := slices.IndexFunc(checks, func(c Check) bool { return c.ID == "catalog.source" })
+	if r < 0 || s != r+1 {
+		t.Errorf("makeit.receipt at %d, catalog.source at %d", r, s)
 	}
 }
