@@ -163,4 +163,22 @@ run claude plugin install b4@m4 --scope user --json
 echo "same@m4 commit after the bundle reinstall: $(sha same@m4) (B is $B)"
 run claude plugin uninstall b4@m4 --scope user --keep-data --json
 run claude plugin prune --dry-run </dev/null
+
+echo; echo "=== (i) remove --scope user from / (no project settings): the marketplace is gone"
+mkdir -p /m5/.claude-plugin /tmp/neutral
+echo '{"name": "m5", "owner": {"name": "measure"}, "plugins": []}' > /m5/.claude-plugin/marketplace.json
+run claude plugin marketplace add /m5 --scope user --json
+run claude plugin marketplace remove m5 --scope user --json
+claude plugin marketplace list --json | jq -c '[.[].name]'
+
+echo; echo "=== (j) the same from the home directory: ~/.claude/settings.json also counts as project settings"
+cd "$HOME"
+run claude plugin marketplace add /m5 --scope user --json
+run claude plugin marketplace remove m5 --scope user --json
+claude plugin marketplace list --json | jq -c '[.[].name]'
+cd /tmp/neutral
+run claude plugin marketplace remove m5 --scope user --json
+run claude plugin marketplace remove m5 --json
+claude plugin marketplace list --json | jq -c '[.[].name]'
+cd /
 INNER

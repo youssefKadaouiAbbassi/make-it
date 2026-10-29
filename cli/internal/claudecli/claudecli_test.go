@@ -202,3 +202,24 @@ func TestUpdateOutcomeParsed(t *testing.T) {
 		t.Errorf("Update = %+v, %v", r, err)
 	}
 }
+
+// From the user's home (or a project), Claude Code reads that directory's .claude/settings.json as
+// project settings too, so a user-scope remove is not the last scope and the marketplace stays
+// registered (measured). Every command runs outside any project.
+func TestCommandsRunOutsideAnyProject(t *testing.T) {
+	c, f := newCLI(map[string]execx.Result{
+		"plugin list --json": {Stdout: "[]"},
+		"plugin marketplace remove makeit --scope user --json": {Stdout: `{"command":"marketplace-remove","outcome":"ok"}`},
+	})
+	if _, err := c.Plugins(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.RemoveMarketplace(context.Background(), "makeit"); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range f.calls {
+		if call.Dir != os.TempDir() {
+			t.Errorf("%v ran in %q, want %q", call.Argv, call.Dir, os.TempDir())
+		}
+	}
+}

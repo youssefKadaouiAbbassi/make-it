@@ -112,8 +112,13 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 			m.onRemove()
 		}
 		name := c.Argv[4]
-		m.markets = slices.DeleteFunc(m.markets, func(n string) bool { return n == name })
 		m.plugins = slices.DeleteFunc(m.plugins, func(p string) bool { return strings.HasSuffix(p, "@"+name) })
+		// Measured: from the home directory (or a project), ~/.claude/settings.json also counts as
+		// project settings, so the marketplace stays registered after a user-scope remove.
+		if c.Dir == "" || strings.HasPrefix(c.Dir, m.env.Roots.Home) {
+			return execx.Result{Stdout: `{"command":"marketplace-remove","outcome":"ok"}`}, nil
+		}
+		m.markets = slices.DeleteFunc(m.markets, func(n string) bool { return n == name })
 		return execx.Result{Stdout: `{"command":"marketplace-remove","outcome":"ok"}`}, nil
 	case cmd == "/usr/bin/claude plugin prune --dry-run --scope user":
 		var out strings.Builder

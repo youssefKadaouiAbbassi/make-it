@@ -44,8 +44,13 @@ const (
 	actionTimeout = 10 * time.Minute
 )
 
+// run runs claude outside any project: from the user's home or a project, Claude Code also reads
+// that directory's .claude/settings.json as project settings, so makeit would see project
+// declarations and a user-scope marketplace remove would leave the marketplace registered
+// (cli/research/plugin-cli-measured-2026-10-29.md). makeit manages user scope only.
 func (c *CLI) run(ctx context.Context, timeout time.Duration, env []string, args ...string) (execx.Result, error) {
-	return c.Run(ctx, execx.Cmd{Argv: append([]string{c.Path}, args...), Env: append(append([]string{}, c.Env...), env...), Timeout: timeout})
+	return c.Run(ctx, execx.Cmd{Argv: append([]string{c.Path}, args...), Dir: os.TempDir(),
+		Env: append(append([]string{}, c.Env...), env...), Timeout: timeout})
 }
 
 // Version returns the version `claude --version` prints, such as 2.1.311.
