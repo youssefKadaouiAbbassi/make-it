@@ -182,3 +182,28 @@ func TestClaudeBelowFloorFromRepository(t *testing.T) {
 		t.Errorf("calls %v, want the non-interactive apt upgrade", f.argvs())
 	}
 }
+
+// At a terminal, a user who cannot or will not give sudo its password gets the native installer
+// (SETUP.md: "the user declines the sudo step").
+func TestClaudeRepoDeclinedSudoFallsBack(t *testing.T) {
+	var found []claudecli.Install
+	e, f := claudeEnv(t, &found, "apt-get", "sudo")
+	e.Interactive, e.Yes = true, false
+	f.answers["sudo -v"] = func(execx.Cmd) execx.Result {
+		return execx.Result{Code: 1, Stderr: "sudo: 3 incorrect password attempts"}
+	}
+	f.answers["bash -c curl -fsSL https://claude.ai/install.sh | bash"] = func(execx.Cmd) execx.Result {
+		found = []claudecli.Install{{Path: nativeClaude, Source: "native"}}
+		f.answers[nativeClaude+" --version"] = version("2.1.312")
+		return execx.Result{}
+	}
+	if _, err := e.claudeStep().Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.calls) == 0 || strings.Join(f.calls[0].Argv, " ") != "sudo -v" || !f.calls[0].Inherit {
+		t.Fatalf("calls %v, want sudo -v on the terminal first", f.argvs())
+	}
+	if !slices.Contains(f.argvs(), "bash -c curl -fsSL https://claude.ai/install.sh | bash") {
+		t.Errorf("calls %v, want the native installer", f.argvs())
+	}
+}

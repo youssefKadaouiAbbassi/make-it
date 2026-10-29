@@ -108,17 +108,21 @@ func (e *env) installClaude(ctx context.Context, first, native platform.Route) (
 	return native.Name, e.runAll(ctx, []execx.Cmd{{Argv: native.Argv, Inherit: e.prompting(), Timeout: installTimeout}})
 }
 
-// canSudo reports whether sudo can run without a person when none is there to type a password.
+// canSudo reports whether the repository route's sudo steps can run. At a terminal sudo asks for
+// the password now (sudo -v); a refusal or a cancel picks the native installer, as does sudo -n
+// failing when no one is there to type a password.
 func (e *env) canSudo(ctx context.Context) bool {
 	switch {
 	case e.Root:
 		return true
 	case !e.Present("sudo"):
 		return false
-	case e.prompting():
-		return true
 	}
-	r, err := e.Run(ctx, execx.Cmd{Argv: []string{"sudo", "-n", "true"}})
+	c := execx.Cmd{Argv: []string{"sudo", "-n", "true"}}
+	if e.prompting() {
+		c = execx.Cmd{Argv: []string{"sudo", "-v"}, Inherit: true}
+	}
+	r, err := e.Run(ctx, c)
 	return err == nil && r.Code == 0
 }
 
