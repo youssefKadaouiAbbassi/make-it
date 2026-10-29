@@ -328,3 +328,25 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// A value that was there before makeit managed it stays the user's, also on an enforced path, on
+// the first run and every run after; the enforcement covers only a value makeit introduced
+// (TestK_StrippedFieldIsReasserted). Taking a value over is Force.
+func TestEnforcedKeepsAPreexistingValue(t *testing.T) {
+	key := "/extraKnownMarketplaces/claude-plugins-official/autoUpdate"
+	desired := `{"extraKnownMarketplaces":{"claude-plugins-official":{"source":{"source":"github","repo":"anthropics/claude-plugins-official"},"autoUpdate":true}}}`
+	live := `{"extraKnownMarketplaces":{"claude-plugins-official":{"source":{"source":"github","repo":"anthropics/claude-plugins-official"},"autoUpdate":false}}}`
+	first := Merge(obj(t, live), obj(t, desired), nil, DefaultOptions())
+	if str(t, first.Settings, key) != "false" || action(first, key) != KeptTheirs {
+		t.Fatalf("first run: %s, %v", str(t, first.Settings, key), first.Changes)
+	}
+	second := Merge(first.Settings, obj(t, desired), first.State, DefaultOptions())
+	if str(t, second.Settings, key) != "false" {
+		t.Fatalf("second run overwrote the user's value: %v", second.Changes)
+	}
+	force := DefaultOptions()
+	force.Force = true
+	if taken := Merge(first.Settings, obj(t, desired), first.State, force); str(t, taken.Settings, key) != "true" {
+		t.Fatalf("Force did not take it over: %v", taken.Changes)
+	}
+}

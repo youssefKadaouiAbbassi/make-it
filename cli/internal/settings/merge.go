@@ -74,8 +74,9 @@ type Change struct {
 type Options struct {
 	// SetPaths are arrays merged element by element; every other array is one value.
 	SetPaths map[string]bool
-	// Enforced paths are re-asserted every run, because a known writer strips them
-	// (claude plugin marketplace add drops autoUpdate).
+	// Enforced paths are re-asserted every run when makeit introduced the value, because a known
+	// writer strips them (claude plugin marketplace add drops autoUpdate). A value the user had
+	// before makeit managed the path is kept, like any other.
 	Enforced map[string]bool
 	// External path patterns are left to the claude CLI and never merged.
 	External []*regexp.Regexp
@@ -452,7 +453,6 @@ func sortedKeys(m map[string]bool) []string {
 
 func (m *merger) mergeValue(key string, path []string, d *leaf, r *Record) {
 	t, present := get(m.result, path)
-	enforced := m.opts.Enforced[key] || m.opts.Force
 	if r == nil {
 		if d == nil {
 			return
@@ -464,10 +464,11 @@ func (m *merger) mergeValue(key string, path []string, d *leaf, r *Record) {
 			m.add(Change{Path: key, Action: Set, After: d.value})
 		case jsonx.Equal(t, d.value):
 			m.add(Change{Path: key, Action: Noop})
-		case enforced:
+		case m.opts.Force:
 			set(m.result, path, jsonx.Clone(d.value))
 			m.add(Change{Path: key, Action: ReAsserted, Before: t, After: d.value})
 		default:
+			// Also on an enforced path: a value that was there before makeit is the user's.
 			m.add(Change{Path: key, Action: KeptTheirs, Before: t, After: d.value, Note: "value existed before makeit managed it"})
 			rec.Held = true
 			rec.Notified = notice(d.value, rec.Secret)
@@ -489,7 +490,8 @@ func (m *merger) mergeValue(key string, path []string, d *leaf, r *Record) {
 	next := &cur
 	m.next[key] = next
 	equalWant := present && jsonx.Equal(t, want)
-	if enforced {
+	// Enforcement re-asserts only a value makeit introduced (no Original); Force takes any over.
+	if m.opts.Force || (m.opts.Enforced[key] && r.Original == nil) {
 		if !equalWant {
 			set(m.result, path, jsonx.Clone(want))
 			m.add(Change{Path: key, Action: ReAsserted, Before: t, After: want})
