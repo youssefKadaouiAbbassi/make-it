@@ -17,6 +17,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/cli"
 	"makeit/internal/doctor"
+	"makeit/internal/minisign"
 	"makeit/internal/state"
 	"makeit/internal/ui"
 )
@@ -188,14 +189,22 @@ func version(asJSON bool, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return 1
 	}
+	// The release key IDs: a self update refuses a new binary without any (cli/SELF-UPDATE.md, step 7).
+	keys := []string{}
+	for _, k := range buildinfo.Keys() {
+		if pk, err := minisign.ParsePublicKey(k); err == nil {
+			keys = append(keys, pk.IDText())
+		}
+	}
 	return emit(stdout, stderr, struct {
-		Version       string `json:"version"`
-		Commit        string `json:"commit"`
-		Repo          string `json:"repo"`
-		Target        string `json:"target"`
-		Go            string `json:"go"`
-		CatalogDigest string `json:"catalogDigest"`
-	}{buildinfo.Version, buildinfo.Commit, buildinfo.Repo, buildinfo.Target(), runtime.Version(), digest}, 0)
+		Version       string   `json:"version"`
+		Commit        string   `json:"commit"`
+		Repo          string   `json:"repo"`
+		Keys          []string `json:"keys"`
+		Target        string   `json:"target"`
+		Go            string   `json:"go"`
+		CatalogDigest string   `json:"catalogDigest"`
+	}{buildinfo.Version, buildinfo.Commit, buildinfo.Repo, keys, buildinfo.Target(), runtime.Version(), digest}, 0)
 }
 
 // emit writes v as one JSON document on stdout and returns code.

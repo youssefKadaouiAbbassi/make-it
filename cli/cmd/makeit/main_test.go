@@ -182,7 +182,7 @@ func TestVersion(t *testing.T) {
 
 func TestVersionJSON(t *testing.T) {
 	code, out, _ := call(t, noGather(t), "version", "--json")
-	var v map[string]string
+	var v map[string]any
 	if err := json.Unmarshal([]byte(out), &v); code != 0 || err != nil {
 		t.Fatalf("exit %d, %v: %q", code, err, out)
 	}
@@ -191,8 +191,12 @@ func TestVersionJSON(t *testing.T) {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
-	if want := []string{"catalogDigest", "commit", "go", "repo", "target", "version"}; !slices.Equal(keys, want) {
+	if want := []string{"catalogDigest", "commit", "go", "keys", "repo", "target", "version"}; !slices.Equal(keys, want) {
 		t.Errorf("keys %v, want %v", keys, want)
+	}
+	// A default build carries no release keys: an empty array, not null.
+	if ks, ok := v["keys"].([]any); !ok || len(ks) != 0 {
+		t.Errorf("keys = %#v, want []", v["keys"])
 	}
 	m, err := catalog.EmbeddedManifest()
 	if err != nil {
@@ -200,6 +204,13 @@ func TestVersionJSON(t *testing.T) {
 	}
 	if v["target"] != buildinfo.Target() || v["catalogDigest"] != catalog.Digest(m) || v["go"] != runtime.Version() || v["version"] != buildinfo.Version {
 		t.Errorf("version --json = %v", v)
+	}
+}
+
+// The delegate's rule: test keys never get into a default build.
+func TestDefaultBuildHasNoKeys(t *testing.T) {
+	if buildinfo.KeyCurrent != "" || buildinfo.KeyNext != "" {
+		t.Errorf("a default build carries release keys %q and %q", buildinfo.KeyCurrent, buildinfo.KeyNext)
 	}
 }
 

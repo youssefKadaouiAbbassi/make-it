@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -18,6 +19,11 @@ import (
 type PublicKey struct {
 	ID  [8]byte
 	Key ed25519.PublicKey
+}
+
+// IDText is the key ID as minisign prints it: the 8 bytes read as a little-endian number, in hex.
+func (k PublicKey) IDText() string {
+	return fmt.Sprintf("%016X", binary.LittleEndian.Uint64(k.ID[:]))
 }
 
 // ParsePublicKey reads the key from its file text or its bare base64 line.

@@ -49,3 +49,16 @@ func TestVerify(t *testing.T) {
 		}
 	}
 }
+
+// IDText is the key ID as minisign prints it in the public key's comment.
+func TestIDText(t *testing.T) {
+	text := fixture(t, "pub.key")
+	pk, err := ParsePublicKey(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.Fields(strings.Split(text, "\n")[0])
+	if got, want := pk.IDText(), fields[len(fields)-1]; got != want {
+		t.Errorf("IDText() = %q, want %q", got, want)
+	}
+}
