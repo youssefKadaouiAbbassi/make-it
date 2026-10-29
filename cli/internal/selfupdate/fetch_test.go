@@ -68,9 +68,9 @@ func (s *server) seen() []string {
 	return append([]string(nil), s.requests...)
 }
 
-// release is the files of release v: a binary for linux-x64 and one for darwin-arm64, checksums.txt
+// releaseFiles is the files of release v: a binary for linux-x64 and one for darwin-arm64, checksums.txt
 // and its signature by k with the trusted comment comment ("" for the right one).
-func release(k minisigntest.Key, v, comment string, bin []byte) map[string][]byte {
+func releaseFiles(k minisigntest.Key, v, comment string, bin []byte) map[string][]byte {
 	if comment == "" {
 		comment = "makeit " + v + " checksums.txt"
 	}
@@ -117,13 +117,13 @@ func TestAsset(t *testing.T) {
 func TestSignedSha(t *testing.T) {
 	k, other := minisigntest.NewKey(), minisigntest.NewKey()
 	bin := []byte("new makeit")
-	noLine := release(k, "1.1.0", "", bin)
+	noLine := releaseFiles(k, "1.1.0", "", bin)
 	list := strings.ReplaceAll(string(noLine["v1.1.0/checksums.txt"]), "linux-x64", "linux-arm64")
 	noLine["v1.1.0/checksums.txt"], noLine["v1.1.0/checksums.txt.minisig"] = []byte(list), []byte(k.Sign([]byte(list), "makeit 1.1.0 checksums.txt"))
-	big := release(k, "1.1.0", "", bin)
+	big := releaseFiles(k, "1.1.0", "", bin)
 	bigList := string(big["v1.1.0/checksums.txt"]) + strings.Repeat("#", 64)
 	big["v1.1.0/checksums.txt"], big["v1.1.0/checksums.txt.minisig"] = []byte(bigList), []byte(k.Sign([]byte(bigList), "makeit 1.1.0 checksums.txt"))
-	toHTTP := release(k, "1.1.0", "", bin)
+	toHTTP := releaseFiles(k, "1.1.0", "", bin)
 	toHTTP["v1.1.0/checksums.txt"] = []byte("redirect:http://127.0.0.1:1/checksums.txt")
 	cases := []struct {
 		name  string
@@ -131,10 +131,10 @@ func TestSignedSha(t *testing.T) {
 		keys  []string
 		want  string // "" for success, else part of the error
 	}{
-		{"good", release(k, "1.1.0", "", bin), nil, ""},
-		{"another key", release(other, "1.1.0", "", bin), nil, "made by a key this binary does not trust"},
-		{"older version in the comment", release(k, "1.1.0", "makeit 1.0.0 checksums.txt", bin), nil, "trusted comment"},
-		{"another file in the comment", release(k, "1.1.0", "makeit 1.1.0 install.sh", bin), nil, "trusted comment"},
+		{"good", releaseFiles(k, "1.1.0", "", bin), nil, ""},
+		{"another key", releaseFiles(other, "1.1.0", "", bin), nil, "made by a key this binary does not trust"},
+		{"older version in the comment", releaseFiles(k, "1.1.0", "makeit 1.0.0 checksums.txt", bin), nil, "trusted comment"},
+		{"another file in the comment", releaseFiles(k, "1.1.0", "makeit 1.1.0 install.sh", bin), nil, "trusted comment"},
 		{"no line for this target", noLine, nil, "no line for makeit-1.1.0-linux-x64"},
 		{"list over the limit", big, nil, "larger than"},
 		{"redirect to http", toHTTP, nil, "not https"},
@@ -178,7 +178,7 @@ func TestDownload(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			s := serve(t, release(k, "1.1.0", "", bin), "1.1.0")
+			s := serve(t, releaseFiles(k, "1.1.0", "", bin), "1.1.0")
 			e := online(t, s, k)
 			saved := maxBinary
 			maxBinary = c.limit
