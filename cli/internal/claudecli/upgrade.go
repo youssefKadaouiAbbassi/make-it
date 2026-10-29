@@ -8,8 +8,10 @@ import (
 	"makeit/internal/platform"
 )
 
-// UpgradeCommand is the upgrade command for an install (setup.md 78-82, 92, 291, 409, 435, 457, 471).
-// A claude on PATH at no route's location is taken to come from the package manager.
+// UpgradeCommand is the upgrade command for an install (setup.md 78-82, 92, 291, 409, 435, 457,
+// 471), in the forms that need no answer: setup runs it under --yes with no terminal, and doctor
+// shows the same command. A claude on PATH at no route's location is taken to come from the
+// package manager.
 func UpgradeCommand(source string, pm platform.PM, cask string) string {
 	switch source {
 	case "native":
@@ -24,13 +26,13 @@ func UpgradeCommand(source string, pm platform.PM, cask string) string {
 	}
 	switch pm {
 	case platform.APT:
-		return "sudo apt update && sudo apt upgrade claude-code"
+		return "sudo apt-get update && sudo apt-get install -y --only-upgrade claude-code"
 	case platform.DNF:
-		return "sudo dnf upgrade claude-code"
+		return "sudo dnf upgrade -y claude-code"
 	case platform.APK:
-		return "apk update && apk upgrade claude-code"
+		return "sudo apk update && sudo apk upgrade claude-code"
 	case platform.WinGet:
-		return "winget upgrade Anthropic.ClaudeCode"
+		return "winget upgrade --exact --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements --disable-interactivity"
 	}
 	return "claude update"
 }

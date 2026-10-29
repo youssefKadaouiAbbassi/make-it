@@ -163,3 +163,22 @@ func TestClaudeRepoApkHash(t *testing.T) {
 		t.Errorf("exit %d, stderr %q, want 3 before any sudo", r.Code, r.Stderr)
 	}
 }
+
+// A claude from the apt repository below the floor is upgraded without a second prompt: under
+// --yes no one can answer apt's "Do you want to continue?".
+func TestClaudeBelowFloorFromRepository(t *testing.T) {
+	found := []claudecli.Install{{Path: "/usr/bin/claude", Source: "path", OnPath: true}}
+	e, f := claudeEnv(t, &found, "apt-get", "sudo")
+	f.answers["/usr/bin/claude --version"] = version("2.1.200")
+	upgrade := "sh -c " + e.shell("sudo apt-get update && sudo apt-get install -y --only-upgrade claude-code")
+	f.answers[upgrade] = func(execx.Cmd) execx.Result {
+		f.answers["/usr/bin/claude --version"] = version("2.1.312")
+		return execx.Result{}
+	}
+	if _, err := e.claudeStep().Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(f.argvs(), upgrade) {
+		t.Errorf("calls %v, want the non-interactive apt upgrade", f.argvs())
+	}
+}
