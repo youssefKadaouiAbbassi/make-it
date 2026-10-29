@@ -11,6 +11,7 @@ import (
 	"makeit/internal/claudecli"
 	"makeit/internal/execx"
 	"makeit/internal/plan"
+	"makeit/internal/state"
 )
 
 func text(out string) func(execx.Cmd) execx.Result {
@@ -140,5 +141,15 @@ func TestBundleInstalled(t *testing.T) {
 	}
 	if done, _ := s.Already(context.Background()); !done {
 		t.Error("installed bundle not seen as installed")
+	}
+}
+
+// A marketplace makeit added itself is not adopted: setup keeps its catalog in sync and repairs
+// a deleted one (SETUP.md skips the catalog only for an adopted marketplace).
+func TestCatalogResyncedWhenMakeitAddedIt(t *testing.T) {
+	e, _ := stackEnv(t, `[{"name":"makeit","source":"directory"}]`, "[]")
+	e.st.Marketplaces = map[string]*state.Marketplace{"makeit": {AddedBy: "makeit", Kind: "directory"}}
+	if done, err := step(t, e.stackSteps(), "catalog").Already(context.Background()); done || err != nil {
+		t.Errorf("already = %v, %v; want a sync of the missing catalog", done, err)
 	}
 }

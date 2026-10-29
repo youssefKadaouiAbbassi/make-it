@@ -22,9 +22,14 @@ func (e *env) stackSteps() []plan.Step {
 	return []plan.Step{
 		{ID: "catalog", Title: "Write the catalog to " + dir,
 			Already: func(ctx context.Context) (bool, error) {
-				adopted, err := e.marketplaceListed(ctx, e.req.Marketplace)
-				if err != nil || adopted {
-					return adopted, err
+				// Only a marketplace the user added makes the catalog theirs; one makeit added keeps
+				// its catalog in sync, and a deleted catalog is written again.
+				listed, err := e.marketplaceListed(ctx, e.req.Marketplace)
+				if err != nil {
+					return false, err
+				}
+				if rec := e.st.Marketplaces[e.req.Marketplace]; listed && rec != nil && rec.AddedBy == "user" {
+					return true, nil
 				}
 				return catalog.UpToDate(dir)
 			},
