@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -30,6 +31,16 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 		Catalog:      catalog.Embedded,
 		SettingsPath: filepath.Join(roots.Claude, "settings.json"),
 		StatePath:    filepath.Join(roots.Stack, "state.json"),
+		ClaudeDir:    roots.Claude,
+	}
+	man, err := catalog.EmbeddedManifest()
+	if err != nil {
+		return Machine{}, err
+	}
+	for _, f := range man.Files {
+		if strings.HasPrefix(f.Path, "templates/global/") {
+			m.Globals = append(m.Globals, f.Path)
+		}
 	}
 	if len(m.Installs) > 0 {
 		m.Claude = &claudecli.CLI{Path: m.Installs[0].Path, Run: execx.Run}

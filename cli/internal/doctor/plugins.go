@@ -15,12 +15,12 @@ import (
 )
 
 // plugins checks the makeit marketplace and the bundle with every plugin it depends on.
-func (r *report) plugins(ctx context.Context, m Machine, req catalog.Requires, reqErr error, unusable string) {
+func (r *report) plugins(ctx context.Context, m Machine, req catalog.Requires, reqErr error, unusable string, st *state.State) {
 	const g = "plugins"
 	if unusable != "" {
 		r.add("marketplace", g, Skipped, unusable, "")
 	} else {
-		r.marketplace(ctx, m, req)
+		r.marketplace(ctx, m, req, st)
 	}
 	ids, err := bundleIDs(m.Catalog, req, reqErr)
 	if err != nil {
@@ -53,7 +53,7 @@ func (r *report) plugins(ctx context.Context, m Machine, req catalog.Requires, r
 	}
 }
 
-func (r *report) marketplace(ctx context.Context, m Machine, req catalog.Requires) {
+func (r *report) marketplace(ctx context.Context, m Machine, req catalog.Requires, st *state.State) {
 	const id, g = "marketplace", "plugins"
 	markets, err := m.Claude.Marketplaces(ctx)
 	if err != nil {
@@ -62,6 +62,10 @@ func (r *report) marketplace(ctx context.Context, m Machine, req catalog.Require
 	}
 	for _, mk := range markets {
 		if mk.Name == req.Marketplace {
+			if rec := st.Marketplaces[mk.Name]; rec != nil && rec.AddedBy == "user" {
+				r.add(id, g, Info, fmt.Sprintf("marketplace %s (%s %s) is yours (adopted)", mk.Name, mk.Source, cmp.Or(mk.Path, mk.Repo, mk.URL)), "")
+				return
+			}
 			r.add(id, g, OK, fmt.Sprintf("marketplace %s (%s %s)", mk.Name, mk.Source, cmp.Or(mk.Path, mk.Repo, mk.URL)), "")
 			return
 		}
@@ -97,9 +101,8 @@ func bundleIDs(src catalog.Source, req catalog.Requires, reqErr error) ([]string
 }
 
 // record checks makeit's own record of what it did on this machine.
-func (r *report) record(m Machine) {
+func (r *report) record(s *state.State, info state.Info, err error) {
 	const id, g = "state", "state"
-	s, info, err := state.LoadState(m.StatePath)
 	switch {
 	case err != nil:
 		r.add(id, g, Error, err.Error(), "")

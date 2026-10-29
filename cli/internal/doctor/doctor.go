@@ -11,7 +11,9 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/execx"
+	"makeit/internal/fsx"
 	"makeit/internal/platform"
+	"makeit/internal/state"
 )
 
 // Level is how a check came out.
@@ -48,6 +50,10 @@ type Machine struct {
 	Claude                  *claudecli.CLI
 	Catalog                 catalog.Source
 	SettingsPath, StatePath string
+	// ClaudeDir is Claude Code's configuration directory; Globals are the catalog paths of the
+	// global files setup writes into it (templates/global/...).
+	ClaudeDir string
+	Globals   []string
 }
 
 type report struct{ checks []Check }
@@ -65,8 +71,10 @@ func Run(ctx context.Context, m Machine) []Check {
 	r.prereqs(m)
 	unusable := r.claude(ctx, m, req, reqErr)
 	r.settings(ctx, m, req.Marketplace, unusable)
-	r.plugins(ctx, m, req, reqErr, unusable)
-	r.record(m)
+	st, info, stErr := state.LoadState(m.StatePath)
+	r.plugins(ctx, m, req, reqErr, unusable, st)
+	r.global(m)
+	r.record(st, info, stErr)
 	return r.checks
 }
 
@@ -189,4 +197,31 @@ func (r *report) version(ctx context.Context, m Machine, req catalog.Requires, r
 		r.add(id, g, OK, "Claude Code "+v, "")
 	}
 	return ""
+}
+
+// global checks the global files setup writes: ok when equal to the template, info when the
+// user's own file is there instead (adopted), warn when missing.
+func (r *report) global(m Machine) {
+	const g = "global"
+	for _, src := range m.Globals {
+		rel := strings.TrimPrefix(src, "templates/global/")
+		id := "global." + rel
+		want, err := m.Catalog.ReadFile(src)
+		if err != nil {
+			r.add(id, g, Error, "the catalog's "+src+": "+err.Error(), "")
+			continue
+		}
+		path := filepath.Join(m.ClaudeDir, filepath.FromSlash(rel))
+		have, found, err := fsx.ReadOptional(path)
+		switch {
+		case err != nil:
+			r.add(id, g, Error, path+" cannot be read: "+err.Error(), "")
+		case !found:
+			r.add(id, g, Warn, path+" is missing", "makeit setup")
+		case string(have) == string(want):
+			r.add(id, g, OK, path+" is the stack's", "")
+		default:
+			r.add(id, g, Info, path+" is yours (adopted): it differs from the stack's and setup leaves it alone", "")
+		}
+	}
 }
