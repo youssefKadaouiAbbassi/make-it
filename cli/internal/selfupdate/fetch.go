@@ -24,6 +24,10 @@ var (
 	maxBinary int64 = 64 << 20
 )
 
+// syncFile flushes a new binary to disk before it is renamed over the old one, so a power loss
+// cannot leave an empty binary behind a receipt that names it; tests count the calls.
+var syncFile = func(f *os.File) error { return f.Sync() }
+
 // asset is the release file of version v for target.
 func asset(v, target string) string { return "makeit-" + v + "-" + target + exeSuffix(target) }
 
@@ -123,6 +127,9 @@ func (e Env) download(ctx context.Context, v, sha, dir string) (path string, err
 	}()
 	h := sha256.New()
 	err = e.get(ctx, e.url(v, asset(v, e.Target)), maxBinary, io.MultiWriter(f, h))
+	if err == nil {
+		err = syncFile(f)
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

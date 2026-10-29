@@ -237,3 +237,27 @@ func TestCheck(t *testing.T) {
 		})
 	}
 }
+
+// Both ways a new binary reaches the bin dir flush it before the rename.
+func TestNewBinariesSynced(t *testing.T) {
+	var synced []string
+	saved := syncFile
+	syncFile = func(f *os.File) error { synced = append(synced, filepath.Base(f.Name())); return f.Sync() }
+	t.Cleanup(func() { syncFile = saved })
+	k := minisigntest.NewKey()
+	bin := []byte("new makeit")
+	e := online(t, serve(t, releaseFiles(k, "1.1.0", "", bin), "1.1.0"), k)
+	if _, err := e.download(context.Background(), "1.1.0", hexSha(bin), filepath.Dir(e.Exe)); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "kept")
+	if err := os.WriteFile(src, []byte("kept"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := copyTemp(src, t.TempDir(), "linux-x64"); err != nil {
+		t.Fatal(err)
+	}
+	if len(synced) != 2 {
+		t.Errorf("synced %v, want the download and the copy", synced)
+	}
+}

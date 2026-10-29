@@ -113,14 +113,25 @@ func tmpPath(dir, target string) string {
 	return filepath.Join(dir, fmt.Sprintf(".makeit.new-%d%s", os.Getpid(), exeSuffix(target)))
 }
 
-// copyTemp copies src to tmpPath(dir, target) with mode 0755; a failure leaves no file.
+// copyTemp copies src to tmpPath(dir, target) with mode 0755, flushed to disk; a failure leaves no
+// file.
 func copyTemp(src, dir, target string) (string, error) {
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return "", err
 	}
 	tmp := tmpPath(dir, target)
-	err = os.WriteFile(tmp, data, 0o755)
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return "", err
+	}
+	_, err = f.Write(data)
+	if err == nil {
+		err = syncFile(f)
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
 	if err == nil {
 		err = os.Chmod(tmp, 0o755)
 	}
