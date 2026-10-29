@@ -22,6 +22,10 @@ for v in 1.0.0 1.1.0 1.2.0; do
   "$cli/scripts/go.sh" go build -o "dist/rel/makeit-$v" -ldflags "-X makeit/internal/buildinfo.Version=$v \
 -X makeit/internal/buildinfo.Repo=test/makeit -X makeit/internal/buildinfo.KeyCurrent=$pub" ./cmd/makeit
 done
+# What makeit writes into an empty settings.json: the merge of settings.Desired, for uninstall's check.
+"$cli/scripts/go.sh" sh -c 'printf "{}\n" > /tmp/empty.json && go run ./tools/applysettings -theirs /tmp/empty.json \
+-baseline internal/catalog/data/files/settings.baseline.json -out dist/rel/settings-desired.json -state /tmp/state.json' >/dev/null
+chmod 644 "$cli/dist/rel/settings-desired.json"
 for v in 1.1.0 1.2.0; do
   "$cli/dist/rel/fakerelease" release -seed "$seed" -repo test/makeit -version "$v" -target linux-x64 \
     -binary "$cli/dist/rel/makeit-$v" -dir "$cli/dist/rel/site"
@@ -41,7 +45,9 @@ if grep -q "\"status\": \"done\"" /tmp/update.json; then echo "update right afte
 makeit uninstall --yes --json > /tmp/uninstall.json || { cat /tmp/uninstall.json; exit 1; }
 cat /tmp/uninstall.json
 if claude plugin list --json | grep -q "@makeit\""; then echo "a makeit plugin is still installed"; exit 1; fi
-if grep -q -e advisorModel -e cleanupPeriodDays "$HOME/.claude/settings.json"; then echo "makeit settings values are still there"; exit 1; fi
+# Every value makeit writes (settings-desired.json, from settings.Desired) must be gone; the
+# claude-plugins-official declaration stays by design (cli/UPDATE-UNINSTALL.md).
+s="$HOME/.claude/settings.json"; if [ -f "$s" ]; then left=$(jq -c -n --slurpfile w /opt/rel/settings-desired.json --slurpfile l "$s" '($w[0] | del(.extraKnownMarketplaces)) as $want | [$want | paths(type != "object") | select(all(.[]; type == "string"))] | map(. as $p | ($want | getpath($p)) as $v | ($l[0] | try getpath($p) catch null) as $x | select($x != null) | select(($v | type) != "array" or (($x | type) == "array" and any($x[]; . as $e | $v | index([$e]) != null))) | join("/"))') || { echo "could not compare $s"; exit 1; }; if [ "$left" != "[]" ]; then echo "values makeit wrote are still in settings.json: $left"; exit 1; fi; fi
 test ! -e "$HOME/.claude/CLAUDE.md"
 if claude plugin marketplace list --json | grep -q "\"name\": \"makeit\""; then echo "the makeit marketplace is still there"; exit 1; fi
 test ! -e "$HOME/.makeit/catalog"

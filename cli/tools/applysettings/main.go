@@ -54,14 +54,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	desired, err := jsonx.DecodeObject(baseRaw)
+	baseline, err := jsonx.DecodeObject(baseRaw)
 	if err != nil {
 		return fmt.Errorf("%s: %w", *baselinePath, err)
 	}
-	// A directory catalog is added by claude plugin marketplace add and never auto-updates.
-	if m, ok := desired.Get("extraKnownMarketplaces"); ok {
-		m.(*jsonx.Object).Delete("makeit")
-	}
+	desired := settings.Desired(baseline, "makeit")
 	var prev settings.State
 	if b, ok, err := fsx.ReadOptional(*statePath); err != nil {
 		return err
