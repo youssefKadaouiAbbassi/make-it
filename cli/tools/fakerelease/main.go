@@ -5,6 +5,7 @@
 //	fakerelease pub -seed <64 hex>
 //	fakerelease release -seed <hex> -repo test/makeit -version V -target linux-x64 -binary <file> -dir <site>
 //	fakerelease serve -dir <site> -repo test/makeit -addr 127.0.0.1:8443 -ca <file> -latest <file>
+//	fakerelease serve-git -root <dir> -addr 127.0.0.1:8444 -ca <file>
 package main
 
 import (
@@ -22,7 +23,9 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/cgi"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -99,6 +102,43 @@ func serve(dir, repo, addr, caFile, latestFile string) error {
 	return srv.ServeTLS(ln, "", "")
 }
 
+// gitHandler serves the bare repositories under root with git's smart HTTP protocol, through
+// git http-backend, which git --exec-path locates on each distribution.
+func gitHandler(root string) (http.Handler, error) {
+	out, err := exec.Command("git", "--exec-path").Output()
+	if err != nil {
+		return nil, fmt.Errorf("git --exec-path: %w", err)
+	}
+	backend := filepath.Join(strings.TrimSpace(string(out)), "git-http-backend")
+	if _, err := os.Stat(backend); err != nil {
+		return nil, fmt.Errorf("git http-backend is not installed (%w); on Alpine it is in git-daemon", err)
+	}
+	return &cgi.Handler{Path: backend, Env: []string{"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1"}}, nil
+}
+
+// serveGit listens on addr, writes a throwaway certificate for its IP to caFile, and serves the
+// bare repositories under root over HTTPS.
+func serveGit(root, addr, caFile string) error {
+	h, err := gitHandler(root)
+	if err != nil {
+		return err
+	}
+	cert, err := selfSigned(addr)
+	if err != nil {
+		return err
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0o644); err != nil {
+		return err
+	}
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second,
+		TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}}
+	return srv.ServeTLS(ln, "", "")
+}
+
 // selfSigned is a one-day certificate for addr's IP that is its own CA.
 func selfSigned(addr string) (tls.Certificate, error) {
 	host, _, err := net.SplitHostPort(addr)
@@ -126,7 +166,7 @@ func selfSigned(addr string) (tls.Certificate, error) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: fakerelease pub|release|serve [flags]")
+		fmt.Fprintln(os.Stderr, "usage: fakerelease pub|release|serve|serve-git [flags]")
 		os.Exit(2)
 	}
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
@@ -139,6 +179,7 @@ func main() {
 	addr := fs.String("addr", "127.0.0.1:8443", "where to listen")
 	ca := fs.String("ca", "", "where to write the certificate to trust")
 	latest := fs.String("latest", "", "the file naming the latest version")
+	root := fs.String("root", "", "serve-git: the directory holding bare repositories")
 	_ = fs.Parse(os.Args[2:])
 	var err error
 	switch os.Args[1] {
@@ -151,6 +192,8 @@ func main() {
 		err = release(*seed, *repo, *version, *target, *binary, *dir)
 	case "serve":
 		err = serve(*dir, *repo, *addr, *ca, *latest)
+	case "serve-git":
+		err = serveGit(*root, *addr, *ca)
 	default:
 		err = fmt.Errorf("unknown subcommand %q", os.Args[1])
 	}

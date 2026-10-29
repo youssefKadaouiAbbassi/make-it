@@ -110,6 +110,71 @@ chmod 755 /tmp/selfchain.sh
 SELFCHAIN
 )
 
+# As the user, after the self chain: the stack switches to a git catalog served over HTTPS (the
+# embedded files, tagged v1.0.0), follows a newer tag, stays on a pin with the newer-tag line, refuses
+# a moved tag, and goes back to the embedded catalog with plugin data kept (cli/CATALOG-GIT.md).
+catchain=$(cat <<'CATCHAIN'
+cat > /tmp/catchain.sh <<"EOS"
+set -e
+PATH="$HOME/.local/bin:$PATH"
+M=/usr/local/bin/makeit
+st=$HOME/.makeit/state.json
+work=/tmp/catchain-work
+cp -r /opt/catsrc "$work"
+g() { git -C "$work" -c user.name=t -c user.email=t@t -c init.defaultBranch=main "$@"; }
+g init -q
+g add -A
+g commit -q -m catalog
+g tag -a v1.0.0 -m v1.0.0
+mkdir -p /tmp/catchain-srv
+git clone -q --bare "$work" /tmp/catchain-srv/cat.git
+/opt/rel/fakerelease serve-git -root /tmp/catchain-srv -addr 127.0.0.1:8444 -ca /tmp/catchain-ca.pem &
+srv=$!
+trap 'kill "$srv" 2>/dev/null' EXIT
+i=0
+while [ ! -s /tmp/catchain-ca.pem ]; do i=$((i + 1)); [ "$i" -lt 30 ] || exit 1; sleep 1; done
+for b in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt; do
+  if [ -f "$b" ]; then cat "$b" > /tmp/catchain-bundle.pem; break; fi
+done
+cat /tmp/catchain-ca.pem >> /tmp/catchain-bundle.pem
+URL=https://127.0.0.1:8444/cat.git
+m() { GIT_SSL_CAINFO=/tmp/catchain-bundle.pem "$M" "$@"; }
+data=$HOME/.claude/plugins/data/superpowers-makeit
+mkdir -p "$data"
+echo keep > "$data/catchain-marker"
+m update --catalog "$URL" --yes > /tmp/catchain-1.log 2>&1 || { cat /tmp/catchain-1.log; exit 1; }
+grep -q "\"kind\": \"git\"" "$st"
+grep -q "\"tag\": \"v1.0.0\"" "$st"
+echo "catalog from git: ok"
+echo chain > "$work/templates/catalog-chain.md"
+g add -A
+g commit -q -m v1.1.0
+g tag -a v1.1.0 -m v1.1.0
+g push -q /tmp/catchain-srv/cat.git main v1.1.0
+m update --yes > /tmp/catchain-2.log 2>&1 || { cat /tmp/catchain-2.log; exit 1; }
+grep -q "\"tag\": \"v1.1.0\"" "$st"
+test -f "$HOME/.makeit/catalog/templates/catalog-chain.md"
+echo "catalog follows the newest tag: ok"
+m update --catalog "$URL#v1.0.0" --yes > /tmp/catchain-3.log 2>&1 || { cat /tmp/catchain-3.log; exit 1; }
+m update --yes > /tmp/catchain-4.log 2>&1 || { cat /tmp/catchain-4.log; exit 1; }
+grep -q "catalog v1.1.0 is newer than v1.0.0" /tmp/catchain-4.log
+echo "a pinned catalog stays, with the newer-tag line: ok"
+before=$(grep -o "\"resolved\": \"[0-9a-f]*\"" "$st")
+g tag -f -a v1.0.0 -m moved >/dev/null
+g push -q -f /tmp/catchain-srv/cat.git v1.0.0
+m update --yes > /tmp/catchain-5.log 2>&1 || { cat /tmp/catchain-5.log; exit 1; }
+grep -q "catalog tag v1.0.0 now points to" /tmp/catchain-5.log
+[ "$(grep -o "\"resolved\": \"[0-9a-f]*\"" "$st")" = "$before" ]
+echo "a moved tag is refused: ok"
+m update --catalog embedded --yes > /tmp/catchain-6.log 2>&1 || { cat /tmp/catchain-6.log; exit 1; }
+grep -q "\"kind\": \"embedded\"" "$st"
+if [ "$(cat "$data/catchain-marker")" != keep ]; then echo "a plugin lost its data"; exit 1; fi
+echo "back to embedded, plugin data kept: ok"
+EOS
+chmod 755 /tmp/catchain.sh
+CATCHAIN
+)
+
 # As root: sudo and a user who may use it without a password; then setup twice as that user
 # (sudo -iu, because fedora's image has no su).
 sudo_user='set -e
@@ -125,7 +190,11 @@ if grep -q "\"status\": \"done\"" /tmp/second.json; then echo "the second setup 
 '"$upkeep"'
 sudo -iu u sh /tmp/upkeep.sh
 '"$selfchain"'
-sudo -iu u sh /tmp/selfchain.sh'
+sudo -iu u sh /tmp/selfchain.sh
+'"$catchain"'
+# Alpine ships git http-backend, which the fake catalog server needs, in git-daemon.
+if command -v apk >/dev/null; then apk add -q git-daemon; fi
+sudo -iu u sh /tmp/catchain.sh'
 
 # As root: the prerequisites only, no sudo; setup must install Claude Code natively.
 no_sudo='set -e
@@ -136,13 +205,15 @@ su - u -c "~/.local/bin/claude --version"
 '"$upkeep"'
 su - u -c "sh /tmp/upkeep.sh"
 '"$selfchain"'
-su - u -c "sh /tmp/selfchain.sh"'
+su - u -c "sh /tmp/selfchain.sh"
+'"$catchain"'
+su - u -c "sh /tmp/catchain.sh"'
 
 run() { # name image script
   local log="$cli/dist/setup-$1.log"
-  if docker run --rm -v "$cli/dist/makeit:/usr/local/bin/makeit:ro" -v "$cli/dist/rel:/opt/rel:ro" "$2" sh -c "$3" >"$log" 2>&1; then
+  if docker run --rm -v "$cli/dist/makeit:/usr/local/bin/makeit:ro" -v "$cli/dist/rel:/opt/rel:ro" -v "$cli/internal/catalog/data/files:/opt/catsrc:ro" "$2" sh -c "$3" >"$log" 2>&1; then
     echo "PASS $1"
-    grep -E '^(self update|self rollback|update keeps the skip|update re-exec): ok$' "$log" | sed 's/^/  /' || true
+    grep -E ': ok$' "$log" | sed 's/^/  /' || true
   else
     echo "FAIL $1 (log: $log)"
     status=1

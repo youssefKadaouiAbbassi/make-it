@@ -3,8 +3,11 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/pem"
 	"io/fs"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,5 +79,43 @@ func TestTestPackagesNotShipped(t *testing.T) {
 	}
 	if walked < 20 {
 		t.Fatalf("walked %d files: the walk is looking in the wrong place", walked)
+	}
+}
+
+func TestServeGitClones(t *testing.T) {
+	root, work := t.TempDir(), t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(work, "makeit.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(work, "init", "-q")
+	run(work, "add", "-A")
+	run(work, "commit", "-q", "-m", "one")
+	run(root, "clone", "-q", "--bare", work, filepath.Join(root, "cat.git"))
+	h, err := gitHandler(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewTLSServer(h)
+	defer srv.Close()
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "clone")
+	cmd := exec.Command("git", "clone", "-q", "--depth", "1", srv.URL+"/cat.git", dst)
+	cmd.Env = append(os.Environ(), "GIT_SSL_CAINFO="+ca)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clone: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "makeit.json")); err != nil {
+		t.Errorf("clone has no makeit.json: %v", err)
 	}
 }
