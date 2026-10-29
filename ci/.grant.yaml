@@ -1,0 +1,27 @@
+# grant: licence allowlist over the syft SBOM (optional part; core for projects that distribute
+# code under licence obligations). Anything not listed fails; a missing licence fails by default.
+#   grant check sbom.spdx.json --config .grant.yaml
+require-known-license: true
+rules:
+  - pattern: "MIT"
+    name: allow-mit
+    mode: allow
+  - pattern: "Apache-2.0"
+    name: allow-apache
+    mode: allow
+  - pattern: "BSD-2-Clause"
+    name: allow-bsd2
+    mode: allow
+  - pattern: "BSD-3-Clause"
+    name: allow-bsd3
+    mode: allow
+  - pattern: "ISC"
+    name: allow-isc
+    mode: allow
+  - pattern: "MPL-2.0"
+    name: allow-mpl
+    mode: allow
+  - pattern: "*GPL*"
+    name: deny-copyleft
+    mode: deny
+    reason: "copyleft needs a review before it ships in a distributed artifact"

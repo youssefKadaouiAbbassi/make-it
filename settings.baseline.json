@@ -1,0 +1,45 @@
+{
+  "$comment": "Diff to merge into ~/.claude/settings.json by hand (v3.5, 2026-10-20). Keys a plugin cannot carry: mode, ask rules, model, env, marketplaces.",
+  "model": "claude-opus-5-5",
+  "advisorModel": "claude-fable-5-1",
+  "cleanupPeriodDays": 3650,
+  "skipDangerousModePermissionPrompt": true,
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "ask": [
+      "Bash(gh pr merge *)", "Bash(gh stack merge *)",
+      "Bash(gh api *merge-async*)", "Bash(gh api *DELETE*)",
+      "Bash(git push * main)", "Bash(git push * master)", "Bash(git push *:main)", "Bash(git push *:master)",
+      "Bash(git push -f *)", "Bash(git push *--force*)",
+      "Bash(git reset --hard *)",
+      "Bash(npm publish *)", "Bash(cargo publish *)", "Bash(uv publish *)", "Bash(twine upload *)",
+      "Bash(gh release create *)", "Bash(eas submit *)", "Bash(npx *eas-cli* submit *)",
+      "Bash(eas update *)", "Bash(npx *eas-cli* update *)",
+      "Bash(gh pr comment *)",
+      "Bash(rm -rf ~*)", "Bash(rm -rf $HOME*)", "Bash(rm -rf /*)", "Bash(rm -rf ..*)",
+      "mcp__dbhub__execute_sql_write"
+    ],
+    "deny": []
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": { "source": "github", "repo": "anthropics/claude-plugins-official" },
+      "autoUpdate": true
+    },
+    "makeit": {
+      "source": { "source": "github", "repo": "<org>/makeit" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "makeit-bundle@makeit": true
+  },
+  "env": {
+    "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1",
+    "DOCS_MCP_TELEMETRY": "false",
+    "FASTLANE_OPT_OUT_USAGE": "1",
+    "MAESTRO_CLI_NO_ANALYTICS": "1",
+    "PONYTAIL_DEFAULT_MODE": "full",
+    "REDOCLY_TELEMETRY": "off"
+  }
+}

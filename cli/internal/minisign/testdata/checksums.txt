@@ -1,0 +1,1 @@
+sha256:abc  claude-stack-1.2.3-linux-x64

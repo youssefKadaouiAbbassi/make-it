@@ -1,0 +1,6 @@
+{
+  "$comment": "Copy to <repo>/.claude/settings.json in a UI repository. It takes effect after the folder is trusted. The makeit marketplace is declared in user settings; the ask rules and the mode live there too and cannot be set here.",
+  "enabledPlugins": {
+    "makeit-ui@makeit": true
+  }
+}

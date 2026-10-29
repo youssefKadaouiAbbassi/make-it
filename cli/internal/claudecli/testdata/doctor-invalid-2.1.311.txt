@@ -1,0 +1,34 @@
+Claude Code doctor
+
+Running: native (2.1.311)
+Commit: e7d3b8365a0f
+Platform: linux-x64
+Path: /home/user/.local/share/claude/versions/2.1.311
+Config install method: not set
+Search: OK (bundled)
+Auto-updates: enabled
+Auto-update channel: latest
+Last update attempt: none recorded
+Managed settings (remote): not fetched — no usable credentials for the settings fetch
+Organization policy: not fetched: no API key or claude.ai sign-in for the policy lookup (apiKeyHelper keys are not used for it)
+
+Invalid settings
+- /CFG/settings.json › permissions.allow: Expected array, but received string
+  Suggested fix: Permission rules must be in an array. Format: ["Tool(specifier)"]. Examples: ["Bash(npm run build)", "Edit(docs/**)", "Read(~/.zshrc)"]. Use * for wildcards.
+- /CFG/settings.json › permissions.defaultMode: Invalid value. Expected one of: "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan"
+  Suggested fix: Valid modes: "acceptEdits" (ask before file changes), "plan" (analysis only), "bypassPermissions" (auto-accept all), or "default" (standard behavior)
+- /CFG/settings.json › model: Expected string, but received number
+
+Remote Control
+Remote Control requires a claude.ai subscription. Run claude auth login to sign in with your claude.ai account.
+- Not signed in to claude.ai
+- claude.ai subscription auth not active
+- Sign-in is missing the user:profile scope
+- Organization not resolved
+- Remote Control availability could not be verified (no server response this session)
+
+1 warning found
+- Running native installation but config install method is 'not set'
+  Fix: Run claude install to update configuration
+
+For a full setup checkup that can also fix issues, run /doctor in a Claude Code session.

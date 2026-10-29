@@ -1,0 +1,74 @@
+# release-please keeps a release PR open; merging it (which asks) tags and releases. A tag
+# created with GITHUB_TOKEN triggers no other workflow, so publish, SBOM and attestation run
+# here, keyed on release_created. With immutable releases on, the release is created as a
+# draft and published after the assets are attached.
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # release-please creates tags and releases
+      pull-requests: write # release-please opens the release PR
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write # upload the SBOM to the release
+      id-token: write # keyless attestation and npm provenance
+      attestations: write # actions/attest stores the attestation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: build
+        run: npm ci && npm run build
+      - name: sbom (syft)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+      - name: attest provenance and sbom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/**
+          predicate-type: https://spdx.dev/Document/v2.3
+          predicate-path: sbom.spdx.json
+      - name: publish (the ecosystem's command; npm shown)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+      - name: attach sbom and publish the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          gh release upload "$TAG" sbom.spdx.json --clobber
+          gh release edit "$TAG" --draft=false

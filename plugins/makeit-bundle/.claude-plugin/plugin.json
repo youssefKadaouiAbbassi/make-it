@@ -1,0 +1,20 @@
+{
+  "name": "makeit-bundle",
+  "version": "3.10.0",
+  "author": {
+    "name": "makeit owners"
+  },
+  "description": "Bundle: the day-to-day layer for every developer. No content of its own; it only depends on the parts.",
+  "dependencies": [
+    "makeit",
+    "superpowers",
+    "ponytail",
+    "chrome-devtools-mcp",
+    "docs-mcp-server",
+    "deja-vu",
+    "security-audit",
+    "typescript-lsp@claude-plugins-official",
+    "pyright-lsp@claude-plugins-official",
+    "rust-analyzer-lsp@claude-plugins-official"
+  ]
+}

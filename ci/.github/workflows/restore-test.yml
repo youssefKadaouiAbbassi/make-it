@@ -1,0 +1,53 @@
+# Monthly restore test: restore the latest backup into a scratch instance, run the migration
+# status check and the smoke test, fail if either fails. The three scripts are the repository's
+# (backup/restore-latest.sh, the migration status task, the smoke task); credentials come from
+# AWS through OIDC, never from long-lived keys. RPO and RTO are written in CONSTRAINTS.md.
+name: restore-test
+
+on:
+  schedule:
+    - cron: "17 4 1 * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: restore-test
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write # OIDC exchange for the restore-test role
+    services:
+      postgres:
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.RESTORE_TEST_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: restore the latest backup into the scratch database
+        env:
+          DATABASE_URL: postgres://postgres:scratch@localhost:5432/postgres
+        run: ./backup/restore-latest.sh
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: migration status and smoke
+        env:
+          DATABASE_URL: postgres://postgres:scratch@localhost:5432/postgres
+        run: |
+          npm ci
+          npm run check:drift
+          npm run test:smoke

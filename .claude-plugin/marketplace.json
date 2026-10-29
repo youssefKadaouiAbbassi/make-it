@@ -1,0 +1,114 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "makeit",
+  "description": "Private pinned catalog for the Claude Code build stack (v3.12, 2026-10-26). Every external plugin is re-listed at the commit that was measured; the bundles install them in one command.",
+  "owner": {
+    "name": "makeit owners"
+  },
+  "metadata": {
+    "version": "3.9.0"
+  },
+  "allowCrossMarketplaceDependenciesOn": [
+    "claude-plugins-official"
+  ],
+  "plugins": [
+    {
+      "name": "makeit-bundle",
+      "description": "Bundle: the day-to-day layer for every developer (makeit, superpowers, ponytail, chrome-devtools-mcp, deja-vu, security-audit, the three LSP plugins). Install at user scope.",
+      "version": "3.10.0",
+      "source": "./plugins/makeit-bundle"
+    },
+    {
+      "name": "makeit-ui",
+      "description": "Bundle: what a UI repository adds (impeccable). Enable per project.",
+      "version": "3.9.0",
+      "source": "./plugins/makeit-ui"
+    },
+    {
+      "name": "makeit",
+      "description": "Our own plugin: the MCP servers with telemetry off (chrome-devtools without CrUX, docs-mcp-server read-only); hooks, skills and evals land here in later bricks.",
+      "version": "3.12.1",
+      "source": "./plugins/makeit"
+    },
+    {
+      "name": "superpowers",
+      "description": "obra/superpowers 7.0.1, tag v7.0.1, peeled commit pinned. MIT.",
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers",
+        "ref": "v7.0.1",
+        "sha": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b"
+      }
+    },
+    {
+      "name": "ponytail",
+      "description": "DietrichGebert/ponytail 5.3.2, tag v5.3.2 (lightweight; the commit is the pin), the commit measured on the hard test. MIT. Level full comes from PONYTAIL_DEFAULT_MODE in settings.baseline.json.",
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail",
+        "ref": "v5.3.2",
+        "sha": "16352ac229eb08a9598dcae48fe9f2b342567d86"
+      }
+    },
+    {
+      "name": "impeccable",
+      "description": "pbakaus/impeccable skill-v4.8.0 (the plugin lives under plugin/; 4.6.0 measured in stage 2, 2026-10-20). Apache-2.0.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/pbakaus/impeccable.git",
+        "path": "plugin",
+        "ref": "skill-v4.8.0",
+        "sha": "414603bf14c7a344edb466bb1f85690c77ce8b7d"
+      }
+    },
+    {
+      "name": "chrome-devtools-mcp",
+      "description": "ChromeDevTools/chrome-devtools-mcp 1.12.0: the 7 skills only. The source is the skills/ folder, which has no plugin.json, so this entry is the manifest and the upstream server (no CrUX flag) is never declared; makeit runs the one server, with telemetry and CrUX off. Apache-2.0.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ChromeDevTools/chrome-devtools-mcp.git",
+        "path": "skills",
+        "ref": "chrome-devtools-mcp-v1.12.0",
+        "sha": "af2834411a564d366f9cab63efb046d9084f4dba"
+      },
+      "skills": [
+        "./"
+      ]
+    },
+    {
+      "name": "docs-mcp-server",
+      "description": "arabold/docs-mcp-server 3.4.1: the docs-search and docs-manage skills only (skills/ has no plugin.json, so this entry is the manifest). The server itself runs from makeit, read-only, telemetry off. The skills call `npx @arabold/docs-mcp-server@latest`; the catalog keeps the server pin on the latest release, so both use the same store format. MIT.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/arabold/docs-mcp-server.git",
+        "path": "skills",
+        "ref": "v3.4.1",
+        "sha": "4e35baa7e82c3ec447405c48a301c8a4185e715f"
+      },
+      "skills": [
+        "./"
+      ]
+    },
+    {
+      "name": "deja-vu",
+      "description": "vshulcz/deja-vu v0.23.1 (the plugin lives under claude-plugin/; its plugin.json still says 0.23.0 at that tag). MIT. The plugin route writes no settings file; never run `deja install`.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/vshulcz/deja-vu.git",
+        "path": "claude-plugin",
+        "ref": "v0.23.1",
+        "sha": "9ce7c980b9b805c7c4a4f07ffea544a423690eda"
+      }
+    },
+    {
+      "name": "security-audit",
+      "description": "cloudflare/security-audit-skill, commit c1c8a8c on main (2026-09-14; no releases, no plugin.json: this entry is the manifest, the skills/ folder is scanned). MIT. Full codebase audit on request beside /security-review; added unmeasured (owner, 2026-10-26).",
+      "source": {
+        "source": "github",
+        "repo": "cloudflare/security-audit-skill",
+        "ref": "main",
+        "sha": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8"
+      }
+    }
+  ]
+}

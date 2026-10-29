@@ -1,0 +1,11 @@
+{
+  "name": "makeit-ui",
+  "version": "3.9.0",
+  "author": {
+    "name": "makeit owners"
+  },
+  "description": "Bundle: what a UI repository adds. Enable per project in .claude/settings.json.",
+  "dependencies": [
+    "impeccable"
+  ]
+}

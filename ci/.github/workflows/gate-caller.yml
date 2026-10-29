@@ -1,0 +1,31 @@
+# Copy to <repo>/.github/workflows/gate.yml. Replace <org> and the sha with the makeit
+# commit you pin (a reusable workflow is called as owner/repo/.github/workflows/file@sha).
+name: gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    uses: <org>/makeit/.github/workflows/gate.yml@0000000000000000000000000000000000000000 # v3.5.0
+    permissions:
+      contents: read
+      security-events: write # the zizmor job uploads SARIF
+    with:
+      runner: npm run
+      setup: npm ci
+      node-version: "24"
+      egress-policy: audit
+      has-web-ui: false
+      has-openapi: false
+      has-migrations: false
+      run-mutation: false
+      budget-url: ""

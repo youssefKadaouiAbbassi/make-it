@@ -1,0 +1,7 @@
+# grype configuration for the gate and the local command. Ignore rules are reviewable here,
+# each with a reason and an owner; the gate fails at `--fail-on high` (gate.yml input grype-fail-on).
+check-for-app-update: false
+fail-on-severity: high
+ignore: []
+# - vulnerability: GHSA-xxxx-xxxx-xxxx
+#   reason: "dev dependency, not shipped; tracked in <issue>; owner @<name>; expires 2027-01-01"

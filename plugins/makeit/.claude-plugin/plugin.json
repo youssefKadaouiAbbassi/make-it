@@ -1,0 +1,10 @@
+{
+  "name": "makeit",
+  "version": "3.12.1",
+  "author": {
+    "name": "makeit owners"
+  },
+  "description": "Our own plugin. Today: the two user-wide MCP servers with telemetry off (.mcp.json). Later bricks add hooks/ (ntfy, HANDOFF, the optional variant ask hook), skills/ (expand/contract) and evals/.",
+  "license": "MIT",
+  "mcpServers": "./.mcp.json"
+}

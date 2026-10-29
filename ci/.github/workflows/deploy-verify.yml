@@ -1,0 +1,36 @@
+# Deploy verification: on a successful deployment status, run the Playwright smoke project
+# against the deployed URL; on failure call the host's fixed rollback command.
+name: deploy-verify
+
+on: deployment_status
+
+permissions: {}
+
+concurrency:
+  group: deploy-verify-${{ github.event.deployment.environment }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write # the rollback script posts a deployment status
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - run: npm ci && npx playwright install --with-deps chromium
+      - name: smoke against the deployed URL
+        env:
+          BASE_URL: ${{ github.event.deployment_status.environment_url }}
+        run: npx playwright test --project=smoke
+      - name: rollback
+        if: failure()
+        env:
+          DEPLOY_ENV: ${{ github.event.deployment.environment }}
+        run: ./deploy/rollback.sh "$DEPLOY_ENV"

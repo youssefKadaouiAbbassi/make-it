@@ -1,0 +1,33 @@
+[
+  {
+    "id": "chrome-devtools-mcp@makeit",
+    "version": "af2834411a56-32c1cf49",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/makeit/chrome-devtools-mcp/af2834411a56-32c1cf49",
+    "installedAt": "2026-10-27T02:51:33.654Z",
+    "lastUpdated": "2026-10-27T02:51:33.654Z",
+    "projectEnabled": false
+  },
+  {
+    "id": "ponytail@makeit",
+    "version": "5.3.2",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/makeit/ponytail/5.3.2",
+    "installedAt": "2026-10-27T02:14:56.202Z",
+    "lastUpdated": "2026-10-27T02:14:56.202Z",
+    "projectEnabled": false,
+    "hasUserConfig": true
+  },
+  {
+    "id": "makeit-bundle@makeit",
+    "version": "1.0.0",
+    "scope": "user",
+    "enabled": false,
+    "installPath": "/home/user/.claude/plugins/cache/makeit/makeit-bundle/1.0.0",
+    "errors": [
+      "Dependency \"lsp-go@claude-plugins-official\" is not installed"
+    ]
+  }
+]
