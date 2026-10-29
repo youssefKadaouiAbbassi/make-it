@@ -72,6 +72,11 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   summaries are for a reader who did not watch the work.
 - Audit each claim against a tool result from this session before reporting.
 - Do not end a turn on a promise; if the last paragraph is a plan, do it now.
+- The owner reads only the end of a long reply. Close any work that took more than a few steps
+  with a short conversational paragraph, under 100 words: what changed, in plain words; what
+  waits on the owner; and the next step as the exact prompt or command to run. Lists of
+  decisions, rulings or logs go in a file the reply names, not in the reply. Offering a next
+  step for the owner to start is not a promise.
 - Plain, factual language. No emojis. Exact commands and absolute paths.
 
 ## Sourcing
