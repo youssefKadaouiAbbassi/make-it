@@ -211,13 +211,14 @@ func InstallCommand(r Prereq, pm PM, interactive, root bool) (execx.Cmd, bool) {
 
 // Route is one way to install Claude Code.
 type Route struct {
-	Name string // brew, winget, npm, native: the --claude-route values
+	Name string // brew, winget, apt, dnf, apk, native
 	Argv []string
 	Note string
 }
 
-// ClaudeRoutes lists the routes for p in preference order (setup.md). native is last and is
-// taken only when named, because it runs a downloaded script.
+// ClaudeRoutes lists the routes for p in preference order: a package manager that updates
+// Claude Code, then the signed repository of the distribution's package manager, then the
+// native installer, which runs a downloaded script. npm is not offered (DESIGN.md 4.9).
 func ClaudeRoutes(p Platform, present func(string) bool) []Route {
 	var rs []Route
 	if (p.OS == "darwin" || p.OS == "linux") && present("brew") {
@@ -226,8 +227,8 @@ func ClaudeRoutes(p Platform, present func(string) bool) []Route {
 	if p.OS == "windows" && present("winget") {
 		rs = append(rs, Route{Name: "winget", Argv: append([]string{"winget", "install", "--exact", "--id", "Anthropic.ClaudeCode"}, wingetAccept...)})
 	}
-	if present("npm") {
-		rs = append(rs, Route{Name: "npm", Argv: []string{"npm", "install", "-g", "@anthropic-ai/claude-code@latest"}, Note: "never with sudo"})
+	if script, ok := RepoScript(p.PM); ok && p.OS == "linux" {
+		rs = append(rs, Route{Name: string(p.PM), Argv: []string{"sh", "-c", script}, Note: "signed repository, latest channel"})
 	}
 	if p.OS == "windows" {
 		rs = append(rs, Route{Name: "native", Argv: []string{"powershell", "-NoProfile", "-Command", "irm https://claude.ai/install.ps1 | iex"}})
@@ -235,6 +236,50 @@ func ClaudeRoutes(p Platform, present func(string) bool) []Route {
 		rs = append(rs, Route{Name: "native", Argv: []string{"bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"}})
 	}
 	return rs
+}
+
+// The Claude Code release signing key (setup.md 363-460). A key that fails its check makes a
+// repository script exit 3, which is never answered with the native installer.
+const (
+	keyFingerprint = "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
+	apkKeySha256   = "395759c1f7449ef4cdef305a42e820f3c766d6090d142634ebdb049f113168b6"
+	gpgCheck       = `gpg --show-keys --with-colons "$key" | grep -q '^fpr:*` + keyFingerprint + `:$' || { echo "makeit: the Claude Code signing key has the wrong fingerprint" >&2; exit 3; }`
+)
+
+// RepoScript is the shell script that installs Claude Code from the signed repository of pm
+// on the latest channel (setup.md 363-460). doctor shows it as is and setup runs it, with sudo
+// as a shell function so --yes can add -n. ok is false for a manager with no repository.
+func RepoScript(pm PM) (script string, ok bool) {
+	head := "set -e\nexport GNUPGHOME=\"$(mktemp -d)\"\nkey=\"$(mktemp)\"\n"
+	switch pm {
+	case APT:
+		return head + `command -v curl >/dev/null && command -v gpg >/dev/null || { sudo apt-get update && sudo apt-get install -y curl gnupg; }
+curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o "$key"
+` + gpgCheck + `
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo install -m 0644 "$key" /etc/apt/keyrings/claude-code.asc
+echo 'deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/latest latest main' | sudo tee /etc/apt/sources.list.d/claude-code.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y claude-code
+`, true
+	case DNF:
+		return head + `command -v gpg >/dev/null || sudo dnf install -y gnupg2
+curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o "$key"
+` + gpgCheck + `
+sudo rpm --import "$key"
+printf '%s\n' '[claude-code]' 'name=Claude Code' 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://downloads.claude.ai/keys/claude-code.asc' | sudo tee /etc/yum.repos.d/claude-code.repo >/dev/null
+sudo dnf install -y claude-code
+`, true
+	case APK:
+		return head + `wget -qO "$key" https://downloads.claude.ai/keys/claude-code.rsa.pub
+echo "` + apkKeySha256 + `  $key" | sha256sum -c - >/dev/null 2>&1 || { echo "makeit: the Claude Code signing key has the wrong sha256" >&2; exit 3; }
+sudo install -m 0644 "$key" /etc/apk/keys/claude-code.rsa.pub
+grep -qx 'https://downloads.claude.ai/claude-code/apk/latest' /etc/apk/repositories || echo 'https://downloads.claude.ai/claude-code/apk/latest' | sudo tee -a /etc/apk/repositories >/dev/null
+sudo apk update
+sudo apk add claude-code
+`, true
+	}
+	return "", false
 }
 
 // AutoRoute is the first package route; false when only native is left.

@@ -146,13 +146,23 @@ func TestClaudeMissing(t *testing.T) {
 	m, _ := healthy(t)
 	m.Installs, m.Claude = nil, nil
 	checks := Run(context.Background(), m)
-	if got := byID(t, checks, "claude.installed"); got.Level != Error || got.Fix != "bash -c 'curl -fsSL https://claude.ai/install.sh | bash'" {
+	if got := byID(t, checks, "claude.installed"); got.Level != Error || got.Fix != "curl -fsSL https://claude.ai/install.sh | bash" {
 		t.Errorf("claude.installed = %+v", got)
 	}
 	for _, id := range []string{"claude.on-path", "claude.other-installs", "claude.version"} {
 		if got := byID(t, checks, id); got.Level != Skipped {
 			t.Errorf("%s = %+v, want skipped", id, got)
 		}
+	}
+}
+
+func TestClaudeMissingShowsTheRepositoryScript(t *testing.T) {
+	m, _ := healthy(t)
+	m.Installs, m.Claude = nil, nil
+	m.Routes = platform.ClaudeRoutes(platform.Platform{OS: "linux", PM: platform.APT}, func(string) bool { return false })
+	script, _ := platform.RepoScript(platform.APT)
+	if got := byID(t, Run(context.Background(), m), "claude.installed"); got.Fix != script {
+		t.Errorf("fix = %q, want the apt script setup runs", got.Fix)
 	}
 }
 
@@ -190,46 +200,6 @@ func TestVersionFixNamesTheCask(t *testing.T) {
 	m.BrewCask = "claude-code@latest"
 	if got := byID(t, Run(context.Background(), m), "claude.version"); got.Fix != "brew upgrade claude-code@latest" {
 		t.Errorf("fix = %q", got.Fix)
-	}
-}
-
-func TestUpgradeFix(t *testing.T) {
-	for _, c := range []struct {
-		source string
-		pm     platform.PM
-		cask   string
-		want   string
-	}{
-		{"native", platform.APT, "", "claude update"},
-		{"brew", platform.Brew, "claude-code", "brew upgrade claude-code"},
-		{"brew", platform.Brew, "claude-code@latest", "brew upgrade claude-code@latest"},
-		{"brew", platform.Brew, "", "brew upgrade claude-code"},
-		{"npm", platform.APT, "", "npm install -g @anthropic-ai/claude-code@latest"},
-		{"path", platform.APT, "", "sudo apt update && sudo apt upgrade claude-code"},
-		{"path", platform.DNF, "", "sudo dnf upgrade claude-code"},
-		{"path", platform.APK, "", "apk update && apk upgrade claude-code"},
-		{"path", platform.WinGet, "", "winget upgrade Anthropic.ClaudeCode"},
-		{"path", platform.Pacman, "", "claude update"},
-		{"path", platform.None, "", "claude update"},
-	} {
-		if got := upgradeFix(c.source, c.pm, c.cask); got != c.want {
-			t.Errorf("upgradeFix(%s, %s, %q) = %q, want %q", c.source, c.pm, c.cask, got, c.want)
-		}
-	}
-}
-
-func TestBrewOrigin(t *testing.T) {
-	for in, want := range map[string][2]string{
-		"/opt/homebrew/Caskroom/claude-code@latest/2.1.311/claude":       {"brew", "claude-code@latest"},
-		"/home/linuxbrew/.linuxbrew/Caskroom/claude-code/2.1.300/claude": {"brew", "claude-code"},
-		"/home/u/.local/share/claude/versions/2.1.311":                   {"brew", ""},
-		// npm install -g with Homebrew's node: the link sits in the Homebrew prefix.
-		"/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe": {"npm", ""},
-		"": {"brew", ""},
-	} {
-		if source, cask := brewOrigin(in); source != want[0] || cask != want[1] {
-			t.Errorf("brewOrigin(%q) = %q, %q, want %q, %q", in, source, cask, want[0], want[1])
-		}
 	}
 }
 

@@ -36,7 +36,7 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 		// A link in a Homebrew prefix is a cask's or, with Homebrew's node, npm's.
 		if m.Installs[0].Source == "brew" {
 			if resolved, err := filepath.EvalSymlinks(m.Installs[0].Path); err == nil {
-				m.Installs[0].Source, m.BrewCask = brewOrigin(resolved)
+				m.Installs[0].Source, m.BrewCask = claudecli.BrewOrigin(resolved)
 			}
 		}
 	}

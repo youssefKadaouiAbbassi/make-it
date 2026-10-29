@@ -2,6 +2,7 @@ package platform
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -116,10 +117,13 @@ func TestClaudeRoutes(t *testing.T) {
 		present []string
 		want    []string
 	}{
-		{Platform{OS: "darwin"}, []string{"brew", "npm"}, []string{"brew", "npm", "native"}},
-		{Platform{OS: "linux", PM: APT}, []string{"apt-get", "brew"}, []string{"brew", "native"}},
-		{Platform{OS: "linux", PM: APT}, nil, []string{"native"}},
-		{Platform{OS: "windows", PM: WinGet}, []string{"winget", "npm"}, []string{"winget", "npm", "native"}},
+		{Platform{OS: "darwin"}, []string{"brew", "npm"}, []string{"brew", "native"}},
+		{Platform{OS: "linux", PM: APT}, []string{"apt-get", "brew", "npm"}, []string{"brew", "apt", "native"}},
+		{Platform{OS: "linux", PM: APT}, nil, []string{"apt", "native"}},
+		{Platform{OS: "linux", PM: DNF}, nil, []string{"dnf", "native"}},
+		{Platform{OS: "linux", PM: APK}, nil, []string{"apk", "native"}},
+		{Platform{OS: "linux", PM: Pacman}, []string{"npm"}, []string{"native"}},
+		{Platform{OS: "windows", PM: WinGet}, []string{"winget", "npm"}, []string{"winget", "native"}},
 	}
 	for _, c := range cases {
 		if got := names(ClaudeRoutes(c.p, only(c.present...))); !slices.Equal(got, c.want) {
@@ -134,9 +138,38 @@ func TestClaudeRoutes(t *testing.T) {
 	if !slices.Equal(win[0].Argv, []string{"winget", "install", "--exact", "--id", "Anthropic.ClaudeCode", "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity"}) {
 		t.Errorf("winget route %v", win[0].Argv)
 	}
-	npm := ClaudeRoutes(Platform{OS: "linux"}, only("npm"))[0]
-	if npm.Name != "npm" || !slices.Equal(npm.Argv, []string{"npm", "install", "-g", "@anthropic-ai/claude-code@latest"}) {
-		t.Errorf("npm route %+v, never under sudo", npm)
+	apt := ClaudeRoutes(Platform{OS: "linux", PM: APT}, only())[0]
+	if script, _ := RepoScript(APT); !slices.Equal(apt.Argv, []string{"sh", "-c", script}) {
+		t.Errorf("apt route %v, want the repository script", apt.Argv)
+	}
+}
+
+func TestRepoScript(t *testing.T) {
+	const fpr = "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
+	for pm, want := range map[PM][]string{
+		APT: {"https://downloads.claude.ai/keys/claude-code.asc", fpr, "exit 3",
+			"deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/latest latest main",
+			"/etc/apt/sources.list.d/claude-code.list", "sudo apt-get install -y claude-code"},
+		DNF: {"https://downloads.claude.ai/keys/claude-code.asc", fpr, "exit 3", "sudo rpm --import",
+			"baseurl=https://downloads.claude.ai/claude-code/rpm/latest", "gpgcheck=1", "sudo dnf install -y claude-code"},
+		APK: {"https://downloads.claude.ai/keys/claude-code.rsa.pub", "395759c1f7449ef4cdef305a42e820f3c766d6090d142634ebdb049f113168b6",
+			"exit 3", "https://downloads.claude.ai/claude-code/apk/latest", "sudo apk add claude-code"},
+	} {
+		script, ok := RepoScript(pm)
+		if !ok {
+			t.Fatalf("%s: no script", pm)
+		}
+		for _, w := range want {
+			if !strings.Contains(script, w) {
+				t.Errorf("%s script lacks %q", pm, w)
+			}
+		}
+		if strings.Contains(script, "/stable") {
+			t.Errorf("%s script uses the stable channel", pm)
+		}
+	}
+	if _, ok := RepoScript(Pacman); ok {
+		t.Error("pacman has no signed repository")
 	}
 }
 
