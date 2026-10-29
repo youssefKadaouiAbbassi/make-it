@@ -66,6 +66,8 @@ type EnvVar struct {
 var Environment = []EnvVar{
 	{"CLAUDE_CONFIG_DIR", "Claude Code's configuration directory (default ~/.claude)"},
 	{"MAKEIT_DIR", "where makeit keeps its catalog copy, state and generations (default ~/.makeit)"},
+	{"MAKEIT_RELEASES_URL", "where makeit looks for releases (https only; default https://github.com)"},
+	{"MAKEIT_REEXEC", "set by update for the new makeit it runs: the version it replaced"},
 	{"HOME", "the home directory (USERPROFILE on Windows)"},
 	{"PATH", "where claude, npm, git and the package managers are looked up"},
 	{"NO_COLOR", "when set, no colour"},

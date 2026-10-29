@@ -151,16 +151,18 @@ type MigrationRun struct {
 // Receipt is receipt.json, written only by `self install`, so a binary placed by a package
 // manager has none and never updates itself.
 type Receipt struct {
-	SchemaVersion int            `json:"schemaVersion"`
-	Method        string         `json:"method"` // script
-	BinPath       string         `json:"binPath"`
-	Version       string         `json:"version"`
-	Target        string         `json:"target"`
-	InstalledAt   time.Time      `json:"installedAt,omitzero"`
-	Previous      *string        `json:"previous"`
-	ModifyPath    bool           `json:"modifyPath"`
-	Migrations    []MigrationRun `json:"migrations,omitempty"`
-	Extra         jsontext.Value `json:",embed"`
+	SchemaVersion int       `json:"schemaVersion"`
+	Method        string    `json:"method"` // script
+	BinPath       string    `json:"binPath"`
+	Version       string    `json:"version"`
+	Target        string    `json:"target"`
+	InstalledAt   time.Time `json:"installedAt,omitzero"`
+	Previous      *string   `json:"previous"`
+	ModifyPath    bool      `json:"modifyPath"`
+	// Skipped is the highest version a rollback left: update does not take it again by itself.
+	Skipped    string         `json:"skipped,omitempty"`
+	Migrations []MigrationRun `json:"migrations,omitempty"`
+	Extra      jsontext.Value `json:",embed"`
 }
 
 // Repo is <repo>/.makeit.json, the committed record of what `init` seeded.
