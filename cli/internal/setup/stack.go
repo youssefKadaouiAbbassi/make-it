@@ -102,17 +102,8 @@ func (e *env) stackSteps() []plan.Step {
 				if err != nil {
 					return "", err
 				}
-				// No --accept-command: a marketplace-declared command is shown and refused (DESIGN 4.4).
-				res, err := e.claude.Install(ctx, e.req.Bundle, "")
-				if err != nil {
+				if err := e.install(ctx, e.req.Bundle); err != nil {
 					return "", err
-				}
-				if res.ShownCommand != nil {
-					return "", fmt.Errorf("%s wants to run a command makeit did not show you (sha256 %s); install it by hand to review it:\n%s",
-						e.req.Bundle, res.ShownCommand.Sha256, res.Output)
-				}
-				if !res.OK() {
-					return "", fmt.Errorf("claude plugin install %s: %s", e.req.Bundle, res.Message)
 				}
 				if err := e.recordNew(ctx, before); err != nil {
 					return "", err
@@ -167,6 +158,28 @@ func (e *env) plugin(ctx context.Context, id string) (*claudecli.Plugin, error) 
 		return &ps[i], nil
 	}
 	return nil, nil
+}
+
+// install installs id at user scope. No --accept-command: a marketplace-declared command is shown
+// and refused, never accepted for the user (DESIGN 4.4).
+func (e *env) install(ctx context.Context, id string) error {
+	res, err := e.claude.Install(ctx, id, "")
+	if err != nil {
+		return err
+	}
+	if res.ShownCommand != nil {
+		return shown(id, res)
+	}
+	if !res.OK() {
+		return fmt.Errorf("claude plugin install %s: %s", id, res.Message)
+	}
+	return nil
+}
+
+// shown is the refusal of a command a marketplace declared and makeit did not show the user.
+func shown(id string, res claudecli.Result) error {
+	return fmt.Errorf("%s wants to run a command makeit did not show you (sha256 %s); install it by hand to review it:\n%s",
+		id, res.ShownCommand.Sha256, res.Output)
 }
 
 // listedIDs are the ids `claude plugin list` shows.

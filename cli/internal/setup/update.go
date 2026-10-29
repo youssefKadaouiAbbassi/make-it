@@ -2,7 +2,10 @@ package setup
 
 import (
 	"bytes"
+	"cmp"
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,8 +13,10 @@ import (
 	"strings"
 
 	"makeit/internal/catalog"
+	"makeit/internal/claudecli"
 	"makeit/internal/fsx"
 	"makeit/internal/plan"
+	"makeit/internal/pluginrule"
 	"makeit/internal/state"
 )
 
@@ -136,5 +141,339 @@ func (e *env) updateGlobalSteps() []plan.Step {
 	return steps
 }
 
-// pluginSteps are update's plugin phase.
-func (e *env) pluginSteps() []plan.Step { return nil }
+// errNoClaude: a plugin step needs Claude Code, which is not usable.
+var errNoClaude = errors.New("Claude Code is not usable, so the plugin steps cannot run")
+
+// gather lists marketplaces and plugins once and keeps the answer until a step changes plugins.
+func (e *env) gather(ctx context.Context) (pluginrule.Inputs, error) {
+	if e.claude == nil {
+		return pluginrule.Inputs{}, plan.ErrNotYet
+	}
+	if e.inputs == nil {
+		in, err := pluginrule.Gather(ctx, e.claude, filepath.Join(e.Roots.Claude, "settings.json"), e.Getenv)
+		if err != nil {
+			return in, err
+		}
+		e.inputs = &in
+	}
+	return *e.inputs, nil
+}
+
+// owned reports whether makeit installed the plugin id.
+func (e *env) owned(id string) bool {
+	r := e.st.Plugins[id]
+	return r != nil && r.InstalledBy == "makeit"
+}
+
+// listed is the listed plugin with id, or nil.
+func listed(in pluginrule.Inputs, id string) *claudecli.Plugin {
+	for i := range in.Plugins {
+		if in.Plugins[i].ID == id {
+			return &in.Plugins[i]
+		}
+	}
+	return nil
+}
+
+// hint says how an adopted stack plugin gets its updates, once per plugin.
+func (e *env) hint(h Hint) {
+	for _, x := range e.hints {
+		if x.ID == h.ID {
+			return
+		}
+	}
+	e.hints = append(e.hints, h)
+}
+
+// pluginSteps are update's plugin phase: refresh the makeit marketplace, install the dependencies
+// the bundle gained, update what makeit installed, update the versions of adopted plugins from
+// the makeit marketplace, and remove what the bundle no longer declares when nothing needs it.
+func (e *env) pluginSteps() []plan.Step {
+	declared, derr := pluginrule.BundleIDs(e.Catalog, e.req)
+	steps := []plan.Step{e.refreshStep()}
+	if e.owned(e.req.Bundle) {
+		steps = append(steps, e.bundleDepsStep(declared, derr))
+	}
+	var owned, drop []string
+	for id := range e.st.Plugins {
+		switch {
+		case !e.owned(id) || id == e.req.Bundle:
+		case derr == nil && !slices.Contains(declared, id):
+			drop = append(drop, id)
+		default:
+			owned = append(owned, id)
+		}
+	}
+	slices.Sort(owned)
+	slices.Sort(drop)
+	if e.owned(e.req.Bundle) {
+		owned = append([]string{e.req.Bundle}, owned...)
+	}
+	for _, id := range owned {
+		steps = append(steps, e.ownedStep(id))
+	}
+	steps = append(steps, e.adoptedStep())
+	for _, id := range drop {
+		steps = append(steps, e.dropStep(id))
+	}
+	return steps
+}
+
+// refreshStep refreshes the makeit marketplace, so the steps after it see its current pins and
+// dependency lists (measured: a reinstall without a refresh sees the old list). It also hints how
+// each adopted stack plugin that makeit does not update gets its updates.
+func (e *env) refreshStep() plan.Step {
+	own := e.req.Marketplace
+	return plan.Step{ID: "marketplace.refresh", Title: "Refresh the " + own + " marketplace",
+		Command: []string{"claude", "plugin", "marketplace", "update", own, "--json"},
+		Already: func(ctx context.Context) (bool, error) {
+			e.inputs = nil // each pass starts from a fresh listing
+			in, err := e.gather(ctx)
+			if err != nil {
+				return false, err
+			}
+			if ids, err := pluginrule.BundleIDs(e.Catalog, e.req); err == nil {
+				for _, id := range ids {
+					if e.owned(id) || listed(in, id) == nil {
+						continue
+					}
+					v := in.Classify(id)
+					if strings.HasSuffix(id, "@"+own) && v.Rule != pluginrule.InPlace {
+						continue // makeit updates its version
+					}
+					e.hint(Hint{ID: id, Rule: string(v.Rule), Text: v.Text})
+				}
+			}
+			if !slices.ContainsFunc(in.Markets, func(m claudecli.Marketplace) bool { return m.Name == own }) {
+				return true, nil
+			}
+			for _, p := range in.Plugins {
+				if strings.HasSuffix(p.ID, "@"+own) && in.Classify(p.ID).Rule != pluginrule.InPlace {
+					return false, nil
+				}
+			}
+			return true, nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			defer func() { e.inputs = nil }()
+			return "", e.act(e.claude.UpdateMarketplace(ctx, own))
+		}}
+}
+
+// bundleDepsStep installs the dependencies the bundle declares and lacks by installing the bundle
+// again, which keeps them auto-installed (measured: plugin update alone does not install them).
+func (e *env) bundleDepsStep(declared []string, derr error) plan.Step {
+	return plan.Step{ID: "bundle.deps", Title: "Install the dependencies " + e.req.Bundle + " gained",
+		Command: []string{"claude", "plugin", "install", e.req.Bundle, "--scope", "user", "--json"},
+		Already: func(ctx context.Context) (bool, error) {
+			if derr != nil {
+				return false, derr
+			}
+			in, err := e.gather(ctx)
+			if err != nil {
+				return false, err
+			}
+			if listed(in, e.req.Bundle) == nil {
+				return true, nil // the bundle itself is gone; setup's step reported that
+			}
+			for _, id := range declared {
+				if listed(in, id) == nil {
+					return false, nil
+				}
+			}
+			return true, nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			before, err := e.listedIDs(ctx)
+			if err != nil {
+				return "", err
+			}
+			if err := e.install(ctx, e.req.Bundle); err != nil {
+				return "", err
+			}
+			e.inputs = nil
+			return "", e.recordNew(ctx, before)
+		}}
+}
+
+// ownedStep updates a plugin makeit installed. When its pin moved and its version did not, plugin
+// update reports up_to_date (measured), so makeit uninstalls it and installs the bundle again,
+// which brings it back at the new pin as an auto-installed dependency; a plugin with saved
+// options is kept, because the uninstall would delete them.
+func (e *env) ownedStep(id string) plan.Step {
+	return plan.Step{ID: "plugin." + id, Title: "Update " + id,
+		Command: []string{"claude", "plugin", "update", id, "--scope", "user", "--json"},
+		Already: func(ctx context.Context) (bool, error) {
+			in, err := e.gather(ctx)
+			if err != nil {
+				return false, err
+			}
+			if listed(in, id) == nil {
+				return true, nil
+			}
+			switch v := in.Classify(id); v.Rule {
+			case pluginrule.InPlace, pluginrule.AutoUpdate:
+				return true, nil
+			case pluginrule.Pinned:
+				return v.Pin == e.st.Plugins[id].Observed.GitCommitSha, nil
+			}
+			return false, nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			in, err := e.gather(ctx)
+			if err != nil {
+				return "", err
+			}
+			v, p := in.Classify(id), listed(in, id)
+			res, err := e.claude.Update(ctx, id, "")
+			e.inputs = nil
+			if err != nil {
+				return "", err
+			}
+			if res.ShownCommand != nil {
+				return "", shown(id, res)
+			}
+			if !res.OK() {
+				return "", fmt.Errorf("claude plugin update %s: %s", id, res.Message)
+			}
+			rec := e.st.Plugins[id]
+			if v.Rule == pluginrule.Pinned && res.UpdateOutcome == "up_to_date" && rec.Observed.GitCommitSha != "" && rec.Observed.GitCommitSha != v.Pin {
+				if p != nil && p.HasUserConfig {
+					e.keep(id, fmt.Sprintf("its pinned commit moved without a version change; reinstalling deletes its saved options and secrets, so run: "+
+						"claude plugin uninstall %s --scope user --keep-data && claude plugin marketplace update %s && claude plugin install %s --scope user",
+						id, e.req.Marketplace, e.req.Bundle))
+					return "", plan.ErrSkip
+				}
+				if err := e.act(e.claude.Uninstall(ctx, id)); err != nil {
+					return "", err
+				}
+				if err := e.install(ctx, e.req.Bundle); err != nil {
+					return "", err
+				}
+			}
+			if v.Rule == pluginrule.Pinned {
+				rec.Observed.GitCommitSha = v.Pin
+			}
+			if in, err := e.gather(ctx); err == nil {
+				if p := listed(in, id); p != nil {
+					rec.Observed.Version = p.Version
+				}
+			}
+			if e.gen != nil {
+				e.gen.Manifest.Plugins.Updated = append(e.gen.Manifest.Plugins.Updated, id)
+			}
+			return rec.Observed.Version, nil
+		}}
+}
+
+// adoptedStep updates the versions of the plugins from the makeit marketplace that makeit did not
+// install (the owner's decision): `claude plugin update` only, never a reinstall, uninstall,
+// disable or configure.
+func (e *env) adoptedStep() plan.Step {
+	return plan.Step{ID: "plugins.adopted", Title: "Update the versions of your plugins from the " + e.req.Marketplace + " marketplace",
+		Already: func(ctx context.Context) (bool, error) {
+			ids, err := e.adoptedToUpdate(ctx)
+			return len(ids) == 0, err
+		},
+		Run: func(ctx context.Context) (string, error) {
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			ids, err := e.adoptedToUpdate(ctx)
+			if err != nil {
+				return "", err
+			}
+			var done []string
+			var errs []error
+			for _, id := range ids {
+				res, err := e.claude.Update(ctx, id, "")
+				switch {
+				case err != nil:
+					errs = append(errs, err)
+				case res.ShownCommand != nil:
+					errs = append(errs, shown(id, res))
+				case !res.OK():
+					errs = append(errs, fmt.Errorf("claude plugin update %s: %s", id, res.Message))
+				default:
+					done = append(done, id+": "+cmp.Or(res.UpdateOutcome, res.Outcome))
+				}
+			}
+			e.inputs = nil
+			return strings.Join(done, ", "), errors.Join(errs...)
+		}}
+}
+
+// adoptedToUpdate are the listed plugins from the makeit marketplace that makeit did not install
+// and that do not load in place, except those whose version shows their pin (the 12-character
+// commit Claude Code uses when the manifest pins no version).
+func (e *env) adoptedToUpdate(ctx context.Context) ([]string, error) {
+	in, err := e.gather(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, p := range in.Plugins {
+		if !strings.HasSuffix(p.ID, "@"+e.req.Marketplace) || e.owned(p.ID) {
+			continue
+		}
+		v := in.Classify(p.ID)
+		if v.Rule == pluginrule.InPlace {
+			continue
+		}
+		if head, _, _ := strings.Cut(p.Version, "-"); v.Rule == pluginrule.Pinned && len(v.Pin) >= 12 && head == v.Pin[:12] {
+			continue
+		}
+		ids = append(ids, p.ID)
+	}
+	return ids, nil
+}
+
+// dropStep uninstalls a plugin makeit installed that the bundle no longer declares, when Claude
+// Code lists it as no longer needed (`claude plugin prune --dry-run`); one another plugin still
+// needs is kept.
+func (e *env) dropStep(id string) plan.Step {
+	return plan.Step{ID: "plugin.drop." + id, Title: "Remove " + id + " (the bundle no longer declares it)",
+		Command: []string{"claude", "plugin", "uninstall", id, "--scope", "user", "--keep-data", "--json"},
+		Already: func(ctx context.Context) (bool, error) {
+			in, err := e.gather(ctx)
+			if err != nil {
+				return false, err
+			}
+			if listed(in, id) == nil {
+				delete(e.st.Plugins, id)
+				return true, nil
+			}
+			return false, nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			unneeded, err := e.claude.Unneeded(ctx)
+			if err != nil {
+				return "", err
+			}
+			if !slices.Contains(unneeded, id) {
+				e.keep(id, "another installed plugin still needs it")
+				return "", plan.ErrSkip
+			}
+			if err := e.act(e.claude.Uninstall(ctx, id)); err != nil {
+				return "", err
+			}
+			e.inputs = nil
+			delete(e.st.Plugins, id)
+			if e.gen != nil {
+				e.gen.Manifest.Plugins.Uninstalled = append(e.gen.Manifest.Plugins.Uninstalled, id)
+			}
+			return "", nil
+		}}
+}

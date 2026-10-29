@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"makeit/internal/catalog"
+	"makeit/internal/execx"
 	"makeit/internal/fsx"
 	"makeit/internal/plan"
 	"makeit/internal/state"
@@ -252,5 +253,254 @@ func TestLaterPhaseSkippedAfterFailure(t *testing.T) {
 	last := rep.Plan.Outcomes[len(rep.Plan.Outcomes)-1]
 	if last.ID != "b" || last.Status != plan.Skipped || !strings.Contains(last.Detail, "an earlier step failed") {
 		t.Errorf("b = %+v", last)
+	}
+}
+
+// pluginEnv is stackEnv run as update, with a local catalog: the bundle declares deps, the
+// marketplace file holds entries, and the makeit marketplace is listed from that directory.
+func pluginEnv(t *testing.T, deps, entries, listed string) (*env, *fakeRunner) {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "plugins/makeit-bundle/.claude-plugin/plugin.json"), `{"name":"makeit-bundle","dependencies":`+deps+`}`)
+	writeFile(t, filepath.Join(dir, ".claude-plugin/marketplace.json"), `{"name":"makeit","plugins":`+entries+`}`)
+	e, f := stackEnv(t, `[{"name":"makeit","source":"directory","path":"`+dir+`"},{"name":"claude-plugins-official","source":"github"}]`, listed)
+	e.Catalog = catalog.Dir(dir)
+	e.command = "update"
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "update", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
+	return e, f
+}
+
+const (
+	bundleEntry = `{"name":"makeit-bundle","source":"./plugins/makeit-bundle"}`
+	spEntry     = `{"name":"superpowers","source":{"source":"github","repo":"o/s","sha":"bbb"}}`
+	bundleRow   = `{"id":"makeit-bundle@makeit","version":"3.10.0","enabled":true,"readFromFolder":"/c/plugins/makeit-bundle"}`
+	updated     = `{"command":"update","outcome":"ok","updateOutcome":"updated"}`
+	upToDate    = `{"command":"update","outcome":"ok","updateOutcome":"up_to_date"}`
+)
+
+func ownedAt(pin string) *state.Plugin {
+	return &state.Plugin{InstalledBy: "makeit", Scope: "user", Observed: state.PluginObserved{GitCommitSha: pin}}
+}
+
+func has(argvs []string, sub string) bool {
+	for _, a := range argvs {
+		if strings.Contains(a, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOwnedCurrentIsAlready(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,{"name":"superpowers","source":{"source":"github","repo":"o/s","sha":"aaa"}}]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
+	if done, err := step(t, e.pluginSteps(), "plugin.superpowers@makeit").Already(context.Background()); !done || err != nil {
+		t.Errorf("already = %v, %v; the recorded pin equals the marketplace's", done, err)
+	}
+	if has(f.argvs(), "plugin update") {
+		t.Errorf("updated a current plugin: %v", f.argvs())
+	}
+}
+
+func TestOwnedBehindUpdates(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = func(execx.Cmd) execx.Result {
+		f.answers["claude plugin list --json"] = text(`[` + bundleRow + `,{"id":"superpowers@makeit","version":"7.1.0","enabled":true}]`)
+		return execx.Result{Stdout: updated}
+	}
+	s := step(t, e.pluginSteps(), "plugin.superpowers@makeit")
+	if done, _ := s.Already(context.Background()); done {
+		t.Fatal("a plugin behind its marketplace pin counts as current")
+	}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !has(f.argvs(), "claude plugin update superpowers@makeit --scope user --json") || has(f.argvs(), " -y") {
+		t.Errorf("argv %v, want the update without -y", f.argvs())
+	}
+	if r := e.st.Plugins["superpowers@makeit"]; r.Observed.GitCommitSha != "bbb" || r.Observed.Version != "7.1.0" {
+		t.Errorf("record %+v, want pin bbb and version 7.1.0", r.Observed)
+	}
+	if got := e.gen.Manifest.Plugins.Updated; len(got) != 1 || got[0] != "superpowers@makeit" {
+		t.Errorf("generation updated %v", got)
+	}
+}
+
+func TestOwnedShownCommandRefused(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`, `[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(`{"command":"update","outcome":"failed","shownCommand":{"sha256":"abc123"}}`)
+	if _, err := step(t, e.pluginSteps(), "plugin.superpowers@makeit").Run(context.Background()); err == nil || !strings.Contains(err.Error(), "abc123") {
+		t.Errorf("err = %v, want the refused command's sha256", err)
+	}
+}
+
+func TestStalePinReinstalls(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`, `[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(upToDate)
+	f.answers["claude plugin uninstall superpowers@makeit --scope user --keep-data --json"] = text(`{"command":"uninstall","outcome":"ok"}`)
+	f.answers["claude plugin install makeit-bundle@makeit --scope user --json"] = text(ok)
+	if _, err := step(t, e.pluginSteps(), "plugin.superpowers@makeit").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var seq []string
+	for _, a := range f.argvs() {
+		if strings.Contains(a, "plugin update") || strings.Contains(a, "plugin uninstall") || strings.Contains(a, "plugin install") {
+			seq = append(seq, a)
+		}
+	}
+	want := []string{"claude plugin update superpowers@makeit --scope user --json",
+		"claude plugin uninstall superpowers@makeit --scope user --keep-data --json",
+		"claude plugin install makeit-bundle@makeit --scope user --json"}
+	if strings.Join(seq, "\n") != strings.Join(want, "\n") {
+		t.Errorf("argv\n%s\nwant\n%s", strings.Join(seq, "\n"), strings.Join(want, "\n"))
+	}
+	if r := e.st.Plugins["superpowers@makeit"]; r.Observed.GitCommitSha != "bbb" {
+		t.Errorf("pin %q, want bbb", r.Observed.GitCommitSha)
+	}
+}
+
+func TestStalePinKeepsUserConfig(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true,"hasUserConfig":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(upToDate)
+	if _, err := step(t, e.pluginSteps(), "plugin.superpowers@makeit").Run(context.Background()); !errors.Is(err, plan.ErrSkip) {
+		t.Fatalf("err = %v, want skipped: the plugin is kept", err)
+	}
+	if has(f.argvs(), "plugin uninstall") {
+		t.Errorf("reinstalled a plugin with saved options: %v", f.argvs())
+	}
+	if r := keptReason(e, "superpowers@makeit"); !strings.Contains(r, "saved options and secrets") || !strings.Contains(r, "claude plugin uninstall superpowers@makeit") {
+		t.Errorf("kept %q, want the reason and the commands", r)
+	}
+}
+
+func TestAdoptedMakeitUpdatesOnly(t *testing.T) {
+	cdm := `{"name":"cdm","source":{"source":"git-subdir","url":"u","path":"p","sha":"bbbbbbbbbbbbcccc"}}`
+	e, f := pluginEnv(t, `["superpowers","cdm"]`, `[`+bundleEntry+`,`+spEntry+`,`+cdm+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true},{"id":"cdm@makeit","version":"bbbbbbbbbbbb-32c1cf49","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": {InstalledBy: "user"}}
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(upToDate)
+	s := step(t, e.pluginSteps(), "plugins.adopted")
+	if done, _ := s.Already(context.Background()); done {
+		t.Fatal("an adopted plugin whose version cannot show its pin counts as current")
+	}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !has(f.argvs(), "claude plugin update superpowers@makeit --scope user --json") {
+		t.Errorf("superpowers not updated: %v", f.argvs())
+	}
+	for _, bad := range []string{"cdm@makeit", "plugin uninstall", "plugin install", "disable", "configure"} {
+		if has(f.argvs(), bad) {
+			t.Errorf("an adopted plugin got more than a version update (%s): %v", bad, f.argvs())
+		}
+	}
+}
+
+func TestAdoptedOtherMarketplaceNoCommand(t *testing.T) {
+	e, f := pluginEnv(t, `["typescript-lsp@claude-plugins-official"]`, `[`+bundleEntry+`]`,
+		`[`+bundleRow+`,{"id":"typescript-lsp@claude-plugins-official","version":"1.0.0","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": {InstalledBy: "user"}}
+	runPhases(context.Background(), []phase{{steps: e.pluginSteps(), keepGoing: true}}, plan.Options{})
+	if has(f.argvs(), "typescript-lsp") && !has(f.argvs(), "plugin list") {
+		t.Errorf("a command named the plugin: %v", f.argvs())
+	}
+	for _, a := range f.argvs() {
+		if strings.Contains(a, "typescript-lsp") {
+			t.Errorf("a command named the plugin: %s", a)
+		}
+	}
+	var hint *Hint
+	for i := range e.hints {
+		if e.hints[i].ID == "typescript-lsp@claude-plugins-official" {
+			hint = &e.hints[i]
+		}
+	}
+	if hint == nil || hint.Rule != "auto-update" || hint.Text != "updated by Claude Code (claude-plugins-official auto-updates)" {
+		t.Errorf("hint %+v", hint)
+	}
+}
+
+func TestBundleDepsInstallsMissing(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers","newdep"]`, `[`+bundleEntry+`,`+spEntry+`,{"name":"newdep","source":"./plugins/newdep"}]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb")}
+	f.answers["claude plugin install makeit-bundle@makeit --scope user --json"] = func(execx.Cmd) execx.Result {
+		f.answers["claude plugin list --json"] = text(`[` + bundleRow + `,{"id":"superpowers@makeit","version":"7.0.1","enabled":true},{"id":"newdep@makeit","version":"1.0.0","enabled":true}]`)
+		return execx.Result{Stdout: ok}
+	}
+	s := step(t, e.pluginSteps(), "bundle.deps")
+	if done, _ := s.Already(context.Background()); done {
+		t.Fatal("a missing declared dependency counts as installed")
+	}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.st.Plugins["newdep@makeit"]; r == nil || r.InstalledBy != "makeit" {
+		t.Errorf("newdep recorded as %+v, want makeit's", r)
+	}
+}
+
+func TestDropUndeclaredOwned(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"old@makeit","enabled":true},{"id":"kept@makeit","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb"),
+		"old@makeit": ownedAt(""), "kept@makeit": ownedAt("")}
+	f.answers["claude plugin prune --dry-run --scope user"] = text("1 auto-installed plugin no longer needed at user scope:\n  old@makeit (1.0.0)\n(dry run — nothing removed)\n")
+	f.answers["claude plugin uninstall old@makeit --scope user --keep-data --json"] = text(`{"command":"uninstall","outcome":"ok"}`)
+	steps := e.pluginSteps()
+	if _, err := step(t, steps, "plugin.drop.old@makeit").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if e.st.Plugins["old@makeit"] != nil || len(e.gen.Manifest.Plugins.Uninstalled) != 1 {
+		t.Errorf("old@makeit still recorded or not in the generation: %+v", e.gen.Manifest.Plugins)
+	}
+	if _, err := step(t, steps, "plugin.drop.kept@makeit").Run(context.Background()); !errors.Is(err, plan.ErrSkip) {
+		t.Errorf("err = %v, want skipped: another plugin still needs it", err)
+	}
+	if has(f.argvs(), "uninstall kept@makeit") || keptReason(e, "kept@makeit") != "another installed plugin still needs it" {
+		t.Errorf("kept@makeit: %v, kept %q", f.argvs(), keptReason(e, "kept@makeit"))
+	}
+}
+
+func TestRefreshRunsBeforePluginSteps(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`, `[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true}]`)
+	f.answers["claude plugin marketplace update makeit --json"] = text(`{"command":"marketplace-update","outcome":"ok"}`)
+	steps := e.pluginSteps()
+	if steps[0].ID != "marketplace.refresh" {
+		t.Fatalf("first plugin step %s, want the refresh", steps[0].ID)
+	}
+	if done, _ := steps[0].Already(context.Background()); done {
+		t.Fatal("refresh skipped with a pinned makeit plugin installed")
+	}
+	if _, err := steps[0].Run(context.Background()); err != nil || !has(f.argvs(), "claude plugin marketplace update makeit --json") {
+		t.Errorf("refresh: %v, %v", err, f.argvs())
+	}
+	e2, _ := pluginEnv(t, `[]`, `[`+bundleEntry+`]`, `[`+bundleRow+`]`)
+	if done, _ := e2.pluginSteps()[0].Already(context.Background()); !done {
+		t.Error("refresh runs with only in-place makeit plugins installed")
+	}
+}
+
+func TestPluginFailureKeepsGoing(t *testing.T) {
+	e, f := pluginEnv(t, `["a","b"]`, `[`+bundleEntry+`,{"name":"a","source":{"source":"github","repo":"o/a","sha":"a2"}},{"name":"b","source":{"source":"github","repo":"o/b","sha":"b2"}}]`,
+		`[`+bundleRow+`,{"id":"a@makeit","enabled":true},{"id":"b@makeit","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "a@makeit": ownedAt("a1"), "b@makeit": ownedAt("b1")}
+	f.answers["claude plugin marketplace update makeit --json"] = text(`{"command":"marketplace-update","outcome":"ok"}`)
+	f.answers["claude plugin update a@makeit --scope user --json"] = text(`{"command":"update","outcome":"failed","message":"network down"}`)
+	f.answers["claude plugin update b@makeit --scope user --json"] = text(updated)
+	rep := runPhases(context.Background(), []phase{{steps: e.pluginSteps(), keepGoing: true}}, plan.Options{})
+	if !rep.Failed() || !has(f.argvs(), "claude plugin update b@makeit") {
+		t.Errorf("failed = %v, argv %v: b must still be updated after a fails", rep.Failed(), f.argvs())
 	}
 }

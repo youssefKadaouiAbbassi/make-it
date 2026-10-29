@@ -175,14 +175,17 @@ func (c *CLI) list(ctx context.Context, out any, args ...string) error {
 
 // Result is the object an action verb prints on the last stdout line under --json.
 type Result struct {
-	Command            string        `json:"command"`
-	Outcome            string        `json:"outcome"` // ok or failed
-	Message            string        `json:"message"`
-	PluginID           string        `json:"pluginId"`
-	Marketplace        string        `json:"marketplace"`
-	FailureCode        string        `json:"failureCode"`
-	AlreadyInGoalState bool          `json:"alreadyInGoalState"`
-	ShownCommand       *ShownCommand `json:"shownCommand"`
+	Command            string `json:"command"`
+	Outcome            string `json:"outcome"` // ok or failed
+	Message            string `json:"message"`
+	PluginID           string `json:"pluginId"`
+	Marketplace        string `json:"marketplace"`
+	FailureCode        string `json:"failureCode"`
+	AlreadyInGoalState bool   `json:"alreadyInGoalState"`
+	// UpdateOutcome is plugin update's "updated" or "up_to_date". up_to_date also covers a pin that
+	// moved while the plugin's version did not (measured).
+	UpdateOutcome string        `json:"updateOutcome"`
+	ShownCommand  *ShownCommand `json:"shownCommand"`
 	// Output is everything stdout printed before the result line, such as a displayed command.
 	Output string `json:"-"`
 }
@@ -258,6 +261,27 @@ func (c *CLI) Update(ctx context.Context, id, accept string) (Result, error) {
 // Uninstall removes a plugin from user scope and keeps its data directory.
 func (c *CLI) Uninstall(ctx context.Context, id string) (Result, error) {
 	return c.Action(ctx, "uninstall", id, "--scope", "user", "--keep-data")
+}
+
+// Unneeded lists the auto-installed user-scope plugins no installed plugin needs any more, from
+// `claude plugin prune --dry-run`, which removes nothing. The output is text with one
+// "  <id> (<version>)" line per plugin (cli/research/plugin-cli-measured-2026-10-29.md).
+func (c *CLI) Unneeded(ctx context.Context) ([]string, error) {
+	r, err := c.run(ctx, readTimeout, nil, "plugin", "prune", "--dry-run", "--scope", "user")
+	if err != nil {
+		return nil, fmt.Errorf("claude plugin prune --dry-run: %w", err)
+	}
+	if r.Code != 0 {
+		return nil, fmt.Errorf("claude plugin prune --dry-run exited %d: %s", r.Code, r.Text())
+	}
+	var ids []string
+	for _, line := range strings.Split(r.Stdout, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 2 && strings.HasPrefix(line, " ") && strings.Contains(f[0], "@") && strings.HasPrefix(f[1], "(") {
+			ids = append(ids, f[0])
+		}
+	}
+	return ids, nil
 }
 
 // AddMarketplace adds a marketplace at user scope from a path, owner/repo[#ref] or git URL.

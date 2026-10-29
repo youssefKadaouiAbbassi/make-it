@@ -174,3 +174,31 @@ func TestValidateSettingsUsesThrowawayConfig(t *testing.T) {
 		t.Fatalf("throwaway dir left behind: %v", err)
 	}
 }
+
+func TestUnneeded(t *testing.T) {
+	out := "2 auto-installed plugins no longer needed at user scope:\n  local2@m3 (1.0.0)\n  same@m4 (1.0.0)\n(dry run — nothing removed)\n"
+	c, f := newCLI(map[string]execx.Result{"plugin prune --dry-run --scope user": {Stdout: out}})
+	ids, err := c.Unneeded(context.Background())
+	if err != nil || !slices.Equal(ids, []string{"local2@m3", "same@m4"}) {
+		t.Errorf("Unneeded = %v, %v", ids, err)
+	}
+	if args := f.calls[0].Argv; slices.Contains(args, "-y") || slices.Contains(args, "--yes") {
+		t.Errorf("prune ran without --dry-run's guard: %v", args)
+	}
+	c, _ = newCLI(map[string]execx.Result{"plugin prune --dry-run --scope user": {Stdout: "Nothing to prune at user scope.\n"}})
+	if ids, err := c.Unneeded(context.Background()); err != nil || len(ids) != 0 {
+		t.Errorf("nothing to prune = %v, %v", ids, err)
+	}
+	c, _ = newCLI(map[string]execx.Result{"plugin prune --dry-run --scope user": {Code: 1, Stderr: "boom"}})
+	if _, err := c.Unneeded(context.Background()); err == nil {
+		t.Error("a failed prune dry run gave no error")
+	}
+}
+
+func TestUpdateOutcomeParsed(t *testing.T) {
+	c, _ := newCLI(map[string]execx.Result{"plugin update same@m2 --scope user --json": {Stdout: `{"command":"update","outcome":"ok","updateOutcome":"up_to_date","oldVersion":"1.0.0","newVersion":"1.0.0"}` + "\n"}})
+	r, err := c.Update(context.Background(), "same@m2", "")
+	if err != nil || r.UpdateOutcome != "up_to_date" {
+		t.Errorf("Update = %+v, %v", r, err)
+	}
+}

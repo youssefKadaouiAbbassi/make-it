@@ -18,6 +18,7 @@ import (
 	"makeit/internal/fsx"
 	"makeit/internal/paths"
 	"makeit/internal/platform"
+	"makeit/internal/pluginrule"
 	"makeit/internal/state"
 )
 
@@ -55,6 +56,8 @@ type env struct {
 	hints []Hint
 	// synced is set when the catalog step wrote a new catalog in this run.
 	synced bool
+	// inputs caches the plugin listing for the plugin phase; a step that changes plugins clears it.
+	inputs *pluginrule.Inputs
 }
 
 // removedByYou is the reason update gives for not putting back what the user removed.
