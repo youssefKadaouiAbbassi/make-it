@@ -61,6 +61,8 @@ type modifying struct {
 	notice func(ctx context.Context) string
 	// after prints the command's own closing lines, in text mode, after a run without error.
 	after func(w io.Writer, rep setup.Report)
+	// self is the swap update's parent made before running this binary; nil otherwise.
+	self *selfMove
 }
 
 // runModifying is what setup, update and uninstall share: the consent rule, the plan shown before
@@ -77,6 +79,9 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	mode := plan.Decide(e.Interactive, e.Yes, p.Bool["dry-run"])
 	u := ui.New(os.Stdin, stderr, e.Interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
+	if m.self != nil && !asJSON {
+		fmt.Fprintf(stderr, "makeit updated from %s to %s\n", m.self.From, m.self.To)
+	}
 	notice := ""
 	if m.notice != nil && !p.Bool["offline"] {
 		notice = m.notice(ctx)
@@ -108,10 +113,11 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 			Hints      []setup.Hint    `json:"hints,omitempty"`
 			Kept       []setup.Kept    `json:"kept,omitempty"`
 			Notice     string          `json:"notice,omitempty"`
+			Self       *selfMove       `json:"self,omitempty"`
 			Generation int             `json:"generation"`
 			Summary    string          `json:"summary"`
 			Error      string          `json:"error,omitempty"`
-		}{buildinfo.Version, rep.Plan.Outcomes, rep.Skipped, rep.Hints, rep.Kept, notice, rep.Generation, rep.Plan.Summary(), errText(err)}
+		}{buildinfo.Version, rep.Plan.Outcomes, rep.Skipped, rep.Hints, rep.Kept, notice, m.self, rep.Generation, rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
 	if !shown || rep.Generation > 0 {

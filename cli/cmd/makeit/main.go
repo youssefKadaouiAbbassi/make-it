@@ -48,18 +48,33 @@ func main() {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	done := make(chan int, 1)
 	go func() { done <- run(ctx, os.Args[1:], os.Stdout, os.Stderr, gather) }()
-	select {
-	case code := <-done:
-		os.Exit(code)
-	case sig := <-sigs:
-		// Cancelling kills the running claude child (not processes it started); a second signal
-		// does not wait for it.
-		cancel()
+	os.Exit(waitExit(done, sigs, cancel, child.Load))
+}
+
+// waitExit waits for the run and returns its exit code, or the signal's code after an interrupt.
+// While update's new binary runs as a child, an interrupt is the child's to handle (the terminal
+// sends it to both), a SIGTERM is passed on to it, and the child's code is the result.
+func waitExit(done <-chan int, sigs <-chan os.Signal, cancel func(), child func() *os.Process) int {
+	for {
 		select {
-		case <-done:
-		case <-sigs:
+		case code := <-done:
+			return code
+		case sig := <-sigs:
+			if p := child(); p != nil {
+				if sig == syscall.SIGTERM {
+					_ = p.Signal(sig)
+				}
+				continue
+			}
+			// Cancelling kills the running claude child (not processes it started); a second signal
+			// does not wait for it.
+			cancel()
+			select {
+			case <-done:
+			case <-sigs:
+			}
+			return signalCode(sig)
 		}
-		os.Exit(signalCode(sig))
 	}
 }
 
