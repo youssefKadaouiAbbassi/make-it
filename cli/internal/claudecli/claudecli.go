@@ -44,12 +44,19 @@ const (
 	actionTimeout = 10 * time.Minute
 )
 
-// run runs claude outside any project: from the user's home or a project, Claude Code also reads
-// that directory's .claude/settings.json as project settings, so makeit would see project
-// declarations and a user-scope marketplace remove would leave the marketplace registered
-// (cli/research/plugin-cli-measured-2026-10-29.md). makeit manages user scope only.
+// run runs claude in a private, empty directory made for the command and removed after it. From
+// the user's home or a project, Claude Code also reads that directory's .claude/settings.json as
+// project settings, so makeit would see project declarations and a user-scope marketplace remove
+// would leave the marketplace registered (cli/research/plugin-cli-measured-2026-10-29.md); a shared
+// directory such as /tmp would let another local user plant those settings. makeit manages user
+// scope only.
 func (c *CLI) run(ctx context.Context, timeout time.Duration, env []string, args ...string) (execx.Result, error) {
-	return c.Run(ctx, execx.Cmd{Argv: append([]string{c.Path}, args...), Dir: os.TempDir(),
+	dir, err := os.MkdirTemp("", "makeit-claude-")
+	if err != nil {
+		return execx.Result{}, err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	return c.Run(ctx, execx.Cmd{Argv: append([]string{c.Path}, args...), Dir: dir,
 		Env: append(append([]string{}, c.Env...), env...), Timeout: timeout})
 }
 

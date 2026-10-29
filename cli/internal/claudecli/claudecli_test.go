@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -205,21 +206,30 @@ func TestUpdateOutcomeParsed(t *testing.T) {
 
 // From the user's home (or a project), Claude Code reads that directory's .claude/settings.json as
 // project settings too, so a user-scope remove is not the last scope and the marketplace stays
-// registered (measured). Every command runs outside any project.
+// registered (measured). Every command runs in a private, empty directory made for it: outside any
+// project, and not /tmp itself, where another local user could plant .claude/settings.json.
 func TestCommandsRunOutsideAnyProject(t *testing.T) {
-	c, f := newCLI(map[string]execx.Result{
-		"plugin list --json": {Stdout: "[]"},
-		"plugin marketplace remove makeit --scope user --json": {Stdout: `{"command":"marketplace-remove","outcome":"ok"}`},
-	})
+	var dirs []string
+	c := &CLI{Path: "claude", Run: func(_ context.Context, cmd execx.Cmd) (execx.Result, error) {
+		fi, err := os.Stat(cmd.Dir)
+		if err != nil || !fi.IsDir() || fi.Mode().Perm() != 0o700 || filepath.Dir(cmd.Dir) != filepath.Clean(os.TempDir()) {
+			t.Errorf("%v ran in %q (%v, %v); want a private directory in %s", cmd.Argv, cmd.Dir, fi, err, os.TempDir())
+		}
+		dirs = append(dirs, cmd.Dir)
+		return execx.Result{Stdout: "[]"}, nil
+	}}
 	if _, err := c.Plugins(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.RemoveMarketplace(context.Background(), "makeit"); err != nil {
+	if _, err := c.Marketplaces(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	for _, call := range f.calls {
-		if call.Dir != os.TempDir() {
-			t.Errorf("%v ran in %q, want %q", call.Argv, call.Dir, os.TempDir())
+	if len(dirs) != 2 || dirs[0] == dirs[1] {
+		t.Errorf("directories %v, want one per command", dirs)
+	}
+	for _, d := range dirs {
+		if _, err := os.Stat(d); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s left behind: %v", d, err)
 		}
 	}
 }
