@@ -57,10 +57,24 @@ func fixtureCatalog(t *testing.T, baseline string) catalog.Dir {
 
 const nativePath = "/home/u/.local/bin/claude"
 
-// healthy is a machine on which every check passes; tests change one thing.
+// healthyPlugins is `claude plugin list --json` with the fixture bundle and its dependencies.
+const healthyPlugins = `[
+  {"id": "makeit-bundle@makeit", "version": "3.10.0", "scope": "user", "enabled": true},
+  {"id": "makeit@makeit", "version": "3.12.1", "scope": "user", "enabled": true},
+  {"id": "superpowers@makeit", "version": "7.0.1", "scope": "user", "enabled": true},
+  {"id": "typescript-lsp@claude-plugins-official", "version": "1.0.0", "scope": "user", "enabled": true}
+]`
+
+// healthy is a machine on which every check passes (no settings.json and no state.json are
+// info, not problems); tests change one thing.
 func healthy(t *testing.T) (Machine, *fakeRunner) {
 	t.Helper()
-	f := &fakeRunner{answers: map[string]answer{"--version": text("2.1.311 (Claude Code)\n")}}
+	f := &fakeRunner{answers: map[string]answer{
+		"--version":                      text("2.1.311 (Claude Code)\n"),
+		"doctor":                         text(""),
+		"plugin marketplace list --json": text(`[{"name": "makeit", "source": "directory", "path": "/repo"}]`),
+		"plugin list --json":             text(healthyPlugins),
+	}}
 	dir := t.TempDir()
 	return Machine{
 		Version: "dev", Target: "linux-x64", CatalogDigest: "sha256:0123456789abcdef0123456789abcdef",
@@ -90,9 +104,11 @@ func byID(t *testing.T, checks []Check, id string) Check {
 func TestRunOrder(t *testing.T) {
 	m, _ := healthy(t)
 	checks := Run(context.Background(), m)
-	want := []string{"makeit.build", "platform", "prereq.git", "claude.installed", "claude.on-path", "claude.other-installs", "claude.version"}
-	if len(checks) < len(want) {
-		t.Fatalf("Run = %v, want at least %v", checks, want)
+	want := []string{"makeit.build", "platform", "prereq.git", "claude.installed", "claude.on-path", "claude.other-installs", "claude.version",
+		"settings.parse", "settings.valid", "settings.stack", "marketplace", "plugin.makeit-bundle@makeit", "plugin.makeit@makeit",
+		"plugin.superpowers@makeit", "plugin.typescript-lsp@claude-plugins-official", "state"}
+	if len(checks) != len(want) {
+		t.Fatalf("Run = %v, want the ids %v", checks, want)
 	}
 	for i, id := range want {
 		if checks[i].ID != id {

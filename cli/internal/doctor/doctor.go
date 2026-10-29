@@ -64,7 +64,10 @@ func Run(ctx context.Context, m Machine) []Check {
 	r.build(m)
 	r.platform(m)
 	r.prereqs(m)
-	r.claude(ctx, m, req, reqErr)
+	unusable := r.claude(ctx, m, req, reqErr)
+	r.settings(ctx, m, unusable)
+	r.plugins(ctx, m, req, reqErr, unusable)
+	r.record(m)
 	return r.checks
 }
 
@@ -117,7 +120,9 @@ func (r *report) prereqs(m Machine) {
 	}
 }
 
-func (r *report) claude(ctx context.Context, m Machine, req catalog.Requires, reqErr error) {
+// claude checks the Claude Code install and returns why it cannot be asked anything, or "" when
+// it can: installed, --version works, and at least the catalog's floor.
+func (r *report) claude(ctx context.Context, m Machine, req catalog.Requires, reqErr error) (unusable string) {
 	const g = "claude"
 	if len(m.Installs) == 0 {
 		fix := ""
@@ -129,7 +134,7 @@ func (r *report) claude(ctx context.Context, m Machine, req catalog.Requires, re
 		for _, id := range []string{"claude.on-path", "claude.other-installs", "claude.version"} {
 			r.add(id, g, Skipped, why, "")
 		}
-		return
+		return why
 	}
 	first := m.Installs[0]
 	r.add("claude.installed", g, OK, fmt.Sprintf("Claude Code at %s (%s)", first.Path, first.Source), "")
@@ -148,40 +153,43 @@ func (r *report) claude(ctx context.Context, m Machine, req catalog.Requires, re
 	} else {
 		r.add("claude.other-installs", g, OK, "one Claude Code installation", "")
 	}
-	r.version(ctx, m, req, reqErr)
+	return r.version(ctx, m, req, reqErr)
 }
 
-func (r *report) version(ctx context.Context, m Machine, req catalog.Requires, reqErr error) {
+func (r *report) version(ctx context.Context, m Machine, req catalog.Requires, reqErr error) (unusable string) {
 	const id, g = "claude.version", "claude"
+	const badCatalog = "the catalog's version floor cannot be read"
 	if reqErr != nil {
-		r.add(id, g, Error, "the catalog's version floor cannot be read: "+reqErr.Error(), "")
-		return
+		r.add(id, g, Error, badCatalog+": "+reqErr.Error(), "")
+		return badCatalog
 	}
 	v, err := m.Claude.Version(ctx)
 	if err != nil {
 		r.add(id, g, Error, err.Error(), "")
-		return
+		return "claude --version failed"
 	}
 	hard, soft := req.Requires.ClaudeCode.Hard, req.Requires.ClaudeCode.Soft
 	fix := upgradeFix(m.Installs[0].Source, m.Platform.PM, m.BrewCask)
 	belowHard, err := claudecli.Compare(v, hard)
 	if err != nil {
 		r.add(id, g, Error, fmt.Sprintf("the catalog's floor %q: %v", hard, err), "")
-		return
+		return badCatalog
 	}
 	belowSoft, err := claudecli.Compare(v, soft)
 	if err != nil {
 		r.add(id, g, Error, fmt.Sprintf("the catalog's tested version %q: %v", soft, err), "")
-		return
+		return badCatalog
 	}
 	switch {
 	case belowHard < 0:
 		r.add(id, g, Error, fmt.Sprintf("Claude Code %s is below %s, the lowest makeit works with", v, hard), fix)
+		return fmt.Sprintf("Claude Code %s is below %s", v, hard)
 	case belowSoft < 0:
 		r.add(id, g, Warn, fmt.Sprintf("Claude Code %s is older than %s, the version this catalog was tested with", v, soft), fix)
 	default:
 		r.add(id, g, OK, "Claude Code "+v, "")
 	}
+	return ""
 }
 
 // upgradeFix is the upgrade command for an install (setup.md 78-82, 92, 291, 409, 435, 457, 471).
