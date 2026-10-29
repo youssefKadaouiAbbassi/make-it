@@ -229,3 +229,37 @@ func TestWriteRefusesDanglingSymlink(t *testing.T) {
 		t.Error("the dangling symlink was replaced")
 	}
 }
+
+// A link with a relative target (settings.json -> ../dotfiles/settings.json) resolves against the
+// link's directory (filepath.EvalSymlinks), and the write lands in that file.
+func TestWriteFollowsRelativeSymlink(t *testing.T) {
+	e, _ := newEnv(t)
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
+	dotfiles := filepath.Join(e.Roots.Home, "dotfiles")
+	if err := os.MkdirAll(dotfiles, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dotfiles, "settings.json"), []byte(`{"a":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(e.Roots.Claude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(e.Roots.Claude, "settings.json")
+	if err := os.Symlink(filepath.Join("..", "dotfiles", "settings.json"), link); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.write("settings", link, []byte(`{"a":2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dotfiles, "settings.json")); string(b) != `{"a":2}` {
+		t.Errorf("dotfiles copy %q, want the new content", b)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Error("the relative symlink was replaced")
+	}
+}

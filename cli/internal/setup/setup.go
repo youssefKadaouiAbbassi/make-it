@@ -94,7 +94,8 @@ func (e *env) write(id, path string, data []byte, perm fs.FileMode) error {
 
 // landing is where a write to path lands, and with which mode. A symlink (stow and home-manager
 // link these files) is written through, so the link survives; a symlink to a missing file is
-// refused. An existing file keeps its mode; perm applies to a new one.
+// refused. An existing file keeps its mode; perm applies to a new one, set exactly by
+// fsx.WriteAtomic's chmod (umask does not apply), so callers pass owner-only modes.
 func landing(path string, perm fs.FileMode) (string, fs.FileMode, error) {
 	fi, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {

@@ -50,7 +50,8 @@ func (e *env) globalSteps() []plan.Step {
 				if rerr != nil {
 					return "", rerr
 				}
-				if err := e.write("global."+rel, path, data, 0o644); err != nil {
+				// Owner-only: the mode is set exactly, not filtered by umask (see landing).
+				if err := e.write("global."+rel, path, data, 0o600); err != nil {
 					return "", err
 				}
 				e.st.Files = initMap(e.st.Files)

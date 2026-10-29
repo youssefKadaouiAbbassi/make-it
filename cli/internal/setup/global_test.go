@@ -53,6 +53,11 @@ func TestGlobalWritesMissing(t *testing.T) {
 	if f := e.st.Files["claude:rules/go.md"]; f == nil || f.PreExisted || f.Class != "owned" || f.Sha256 == "" {
 		t.Errorf("state %+v", f)
 	}
+	// fsx.WriteAtomic sets the mode exactly (File.Chmod ignores umask), so a new file is created
+	// owner-only: never more open than the user's umask would allow.
+	if fi, err := os.Stat(filepath.Join(e.Roots.Claude, "rules", "go.md")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("new global file mode %v (%v), want 0600", fi.Mode().Perm(), err)
+	}
 }
 
 func TestGlobalAdoptsDifferent(t *testing.T) {

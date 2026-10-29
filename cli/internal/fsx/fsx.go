@@ -18,7 +18,8 @@ import (
 )
 
 // WriteAtomic replaces path with data: a temporary file in the same directory, fsync, rename.
-// A reader sees the old file or the new one, never a partial write. On Windows the rename is
+// A reader sees the old file or the new one, never a partial write. The file gets exactly perm
+// (a chmod, which umask does not filter); the directories it creates get 0o755 before umask. On Windows the rename is
 // retried, because an editor, antivirus or a running hook may hold the target open for a moment.
 func WriteAtomic(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
