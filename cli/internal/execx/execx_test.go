@@ -2,6 +2,7 @@ package execx
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -46,5 +47,14 @@ func TestRunCodesOutputAndTimeout(t *testing.T) {
 	}
 	if _, err := Run(ctx, Cmd{}); err == nil {
 		t.Fatal("empty argv accepted")
+	}
+}
+
+// A run the caller cancels, such as on Ctrl-C, is not a timeout.
+func TestRunCancelledIsNotATimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	if _, err := Run(ctx, Cmd{Argv: []string{"sh", "-c", "sleep 5"}}); err == nil || strings.Contains(err.Error(), "timed out") || !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled run: %v, want context.Canceled and no timeout", err)
 	}
 }

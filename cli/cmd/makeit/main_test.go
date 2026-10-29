@@ -247,12 +247,16 @@ func TestSignalCode(t *testing.T) {
 	}
 }
 
+// An interrupted doctor prints no report: the checks it cut short would show as errors.
 func TestCancelledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	var out, errb bytes.Buffer
-	if code := run(ctx, []string{"doctor"}, &out, &errb, gatherOf(machine(t, true))); code == 0 {
-		t.Errorf("a cancelled doctor exits 0: %s", errb.String())
+	for _, args := range [][]string{{"doctor"}, {"doctor", "--json"}} {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var out, errb bytes.Buffer
+		code := run(ctx, args, &out, &errb, gatherOf(machine(t, true)))
+		if code == 0 || out.Len() != 0 || strings.Contains(errb.String(), "errors,") || !strings.Contains(errb.String(), "interrupted") {
+			t.Errorf("%v: exit %d, stdout %q, stderr %q", args, code, out.String(), errb.String())
+		}
 	}
 }
 

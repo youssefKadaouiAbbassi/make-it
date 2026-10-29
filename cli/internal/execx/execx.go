@@ -108,8 +108,12 @@ func Run(ctx context.Context, c Cmd) (Result, error) {
 	case err == nil:
 	case errors.As(err, &ee):
 		res.Code = ee.ExitCode()
-		if ctx.Err() != nil {
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
 			return res, fmt.Errorf("%s timed out after %s", c.Argv[0], timeout)
+		case ctx.Err() != nil:
+			// The caller cancelled, such as on Ctrl-C: not a timeout.
+			return res, fmt.Errorf("%s: %w", c.Argv[0], ctx.Err())
 		}
 		err = nil
 	default:

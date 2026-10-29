@@ -40,7 +40,8 @@ func main() {
 	case code := <-done:
 		os.Exit(code)
 	case sig := <-sigs:
-		// Cancelling stops the claude children; a second signal does not wait for them.
+		// Cancelling kills the running claude child (not processes it started); a second signal
+		// does not wait for it.
 		cancel()
 		select {
 		case <-done:
@@ -199,6 +200,11 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 		return 1
 	}
 	checks := doctor.Run(ctx, m)
+	if ctx.Err() != nil {
+		// The checks it cut short would show as errors; main exits with the signal's code.
+		fmt.Fprintf(stderr, "%s: doctor interrupted\n", prog)
+		return 1
+	}
 	errs, warns := doctor.Count(checks)
 	code := 0
 	if errs > 0 {
