@@ -76,21 +76,14 @@ func (r *report) stack(m Machine, live *jsonx.Object, marketplace, skip string) 
 		r.add(id, g, Error, "the catalog's settings.baseline.json: "+err.Error(), "")
 		return
 	}
-	// shortcut: the catalog is embedded, so its marketplace is a directory one, added by claude
-	// plugin marketplace add, which never auto-updates; the baseline's entry for it is for a git
-	// catalog and is dropped as tools/applysettings does. Keep it when --catalog <git url> lands.
-	if mk, ok := baseline.Get("extraKnownMarketplaces"); ok {
-		if o, ok := mk.(*jsonx.Object); ok {
-			o.Delete(marketplace)
-		}
-	}
+	baseline = settings.Desired(baseline, marketplace)
 	reported := 0
 	for _, c := range settings.Merge(live, baseline, nil, settings.DefaultOptions()).Changes {
 		switch c.Action {
 		case settings.Set, settings.ReAsserted:
-			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: the stack sets %s", c.Path, show(c.Path, c.After)), "makeit setup")
+			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: the stack sets %s", c.Path, settings.Show(c.Path, c.After)), "makeit setup")
 		case settings.AddItems:
-			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: the stack adds %s", c.Path, show(c.Path, c.After)), "makeit setup")
+			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: the stack adds %s", c.Path, settings.Show(c.Path, c.After)), "makeit setup")
 		case settings.KeptTheirs, settings.Held:
 			r.add(id+":"+c.Path, g, Info, c.Path+": your value is kept", "")
 		default:
@@ -101,16 +94,4 @@ func (r *report) stack(m Machine, live *jsonx.Object, marketplace, skip string) 
 	if reported == 0 {
 		r.add(id, g, OK, "settings.json has every stack value", "")
 	}
-}
-
-// show renders a settings value for a message; a secret is never printed.
-func show(path string, v any) string {
-	if settings.IsSecret(path) {
-		return "(secret)"
-	}
-	b, err := jsonx.Compact(v)
-	if err != nil {
-		return "(unprintable)"
-	}
-	return string(b)
 }
