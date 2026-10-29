@@ -56,16 +56,18 @@ func Uninstall(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.O
 	if err != nil || en == nil || !en.purge || rep.Plan.Failed() {
 		return rep, err
 	}
-	// execute has returned, so the lock in the makeit directory is released.
-	dir := e.Roots.Stack
-	if !filepath.IsAbs(dir) || filepath.Dir(dir) == dir || dir == e.Roots.Home {
-		return rep, fmt.Errorf("refusing to delete %q", dir)
-	}
-	var errs []error
+	// The purge step ran only because nothing of makeit remains. execute has returned, so the lock
+	// is released. Only makeit's own files go: the makeit directory itself only when empty, because
+	// MAKEIT_DIR may name a directory that holds other things.
+	errs := []error{os.RemoveAll(state.GenerationsDir(e.Roots.Stack))}
 	for _, id := range owned {
 		errs = append(errs, os.RemoveAll(filepath.Join(e.Roots.Claude, "plugins", "data", DataID(id))))
 	}
-	errs = append(errs, os.RemoveAll(dir))
+	if err := os.Remove(e.Roots.Stack); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if entries, rerr := os.ReadDir(e.Roots.Stack); rerr != nil || len(entries) == 0 {
+			errs = append(errs, err)
+		}
+	}
 	return rep, errors.Join(errs...)
 }
 
@@ -132,13 +134,20 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 	for _, k := range keys {
 		steps = append(steps, e.unFileStep(k))
 	}
-	steps = append(steps, e.unDirsStep(), e.unCatalogStep())
+	steps = append(steps, e.unDirsStep(), e.unCatalogStep(), e.unStateStep())
 	if opts.Purge {
 		steps = append(steps, plan.Step{ID: "purge",
-			Title: "Delete the data of the plugins makeit installed, and " + e.Roots.Stack + " with every backup (cannot be undone)",
-			Run:   func(context.Context) (string, error) { e.purge = true; return "after the run", nil }})
+			Title: "Delete the data of the plugins makeit installed, and every backup in " + e.Roots.Stack + " (cannot be undone)",
+			Run: func(context.Context) (string, error) {
+				if !e.stateRemoved {
+					e.keep("purge", "skipped: something of makeit remains, and its data and backups stay with it")
+					return "", plan.ErrSkip
+				}
+				e.purge = true
+				return "after the run", nil
+			}})
 	}
-	return append(steps, e.unStateStep())
+	return steps
 }
 
 // findClaudeStep finds a usable Claude Code; without one, nothing is uninstalled.

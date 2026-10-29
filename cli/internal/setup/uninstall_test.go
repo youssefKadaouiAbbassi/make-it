@@ -383,3 +383,44 @@ func TestUninstallPurge(t *testing.T) {
 		}
 	}
 }
+
+// Final review C1: --purge must not delete what the same run kept.
+func TestPurgeKeepsWhatTheRunKept(t *testing.T) {
+	m := installed(t)
+	m.plugins = append(m.plugins, "makeit-ui@makeit")
+	rep := uninstall(t, m, UninstallOptions{Purge: true})
+	for _, p := range []string{filepath.Join(m.env.Roots.Stack, "catalog"), filepath.Join(m.env.Roots.Stack, "state.json")} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s deleted by --purge although the marketplace stays: %v", p, err)
+		}
+	}
+	for _, o := range rep.Plan.Outcomes {
+		if o.ID == "purge" && o.Status != plan.Skipped {
+			t.Errorf("purge %s; want skipped while something of makeit remains", o.Status)
+		}
+	}
+}
+
+func TestPurgeKeepsDataOfKeptPlugin(t *testing.T) {
+	m := installed(t)
+	m.needed = map[string]bool{"superpowers@makeit": true}
+	data := dataDir(t, m, "superpowers@makeit")
+	uninstall(t, m, UninstallOptions{Purge: true})
+	if _, err := os.Stat(data); err != nil {
+		t.Errorf("data of the still-installed superpowers@makeit deleted by --purge: %v", err)
+	}
+}
+
+// Final review I5: purge deletes makeit's own files, not the directory MAKEIT_DIR names.
+func TestPurgeDeletesOnlyMakeitsOwn(t *testing.T) {
+	m := installed(t)
+	notes := filepath.Join(m.env.Roots.Stack, "notes.txt")
+	writeFile(t, notes, "mine\n")
+	uninstall(t, m, UninstallOptions{Purge: true})
+	if read(t, notes) != "mine\n" {
+		t.Error("purge deleted a file it did not write")
+	}
+	if _, err := os.Stat(state.GenerationsDir(m.env.Roots.Stack)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("generations survived --purge: %v", err)
+	}
+}
