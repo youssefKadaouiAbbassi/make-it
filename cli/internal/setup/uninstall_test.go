@@ -1,0 +1,385 @@
+package setup
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"makeit/internal/catalog"
+	"makeit/internal/jsonx"
+	"makeit/internal/plan"
+	"makeit/internal/state"
+)
+
+// installed is a machine after `makeit setup --yes`; the bundle brought in two dependencies.
+func installed(t *testing.T) *fakeMachine {
+	t.Helper()
+	m := newMachine(t)
+	m.deps = []string{"superpowers@makeit", "typescript-lsp@claude-plugins-official"}
+	apply(t, m)
+	return m
+}
+
+func uninstall(t *testing.T, m *fakeMachine, opts UninstallOptions) Report {
+	t.Helper()
+	rep, err := Uninstall(context.Background(), m.env, plan.Apply, nil, []string{"uninstall", "--yes"}, opts)
+	if err != nil {
+		t.Fatalf("uninstall: %v (%s)", err, rep.Plan.Summary())
+	}
+	return rep
+}
+
+func reasonOf(rep Report, item string) string {
+	for _, k := range rep.Kept {
+		if k.Item == item {
+			return k.Reason
+		}
+	}
+	return ""
+}
+
+func called(m *fakeMachine, sub string) int {
+	for i, c := range m.calls {
+		if strings.Contains(c, sub) {
+			return i
+		}
+	}
+	return -1
+}
+
+func globalPaths(t *testing.T, claude string) []string {
+	t.Helper()
+	man, err := catalog.EmbeddedManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, f := range man.Files {
+		if rel, ok := strings.CutPrefix(f.Path, "templates/global/"); ok {
+			out = append(out, filepath.Join(claude, filepath.FromSlash(rel)))
+		}
+	}
+	return out
+}
+
+func settingsOf(t *testing.T, m *fakeMachine) *jsonx.Object {
+	t.Helper()
+	o, err := jsonx.DecodeObject([]byte(read(t, filepath.Join(m.env.Roots.Claude, "settings.json"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return o
+}
+
+func saveSettings(t *testing.T, m *fakeMachine, o *jsonx.Object) {
+	t.Helper()
+	b, err := jsonx.Marshal(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(m.env.Roots.Claude, "settings.json"), string(b))
+}
+
+func dataDir(t *testing.T, m *fakeMachine, id string) string {
+	t.Helper()
+	dir := filepath.Join(m.env.Roots.Claude, "plugins", "data", DataID(id))
+	writeFile(t, filepath.Join(dir, "marker"), "kept\n")
+	writeFile(t, filepath.Join(dir, "pkg", "cli.js"), "x\n")
+	if err := os.MkdirAll(filepath.Join(dir, "node_modules", ".bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../pkg/cli.js", filepath.Join(dir, "node_modules", ".bin", "tool")); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestDataID(t *testing.T) {
+	for id, want := range map[string]string{"my-plugin@my-marketplace": "my-plugin-my-marketplace", "a.b@c": "a-b-c", "x_y@z": "x_y-z"} {
+		if got := DataID(id); got != want {
+			t.Errorf("DataID(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
+func TestUninstallWithoutState(t *testing.T) {
+	m := newMachine(t)
+	if _, err := Uninstall(context.Background(), m.env, plan.Apply, nil, nil, UninstallOptions{}); !errors.Is(err, ErrNothing) {
+		t.Errorf("err = %v, want ErrNothing", err)
+	}
+}
+
+func TestUninstallRoundTrip(t *testing.T) {
+	m := installed(t)
+	rep := uninstall(t, m, UninstallOptions{})
+	if rep.Plan.Failed() {
+		t.Fatalf("failed: %+v", rep.Plan.Outcomes)
+	}
+	for _, want := range []string{
+		"/usr/bin/claude plugin uninstall makeit-bundle@makeit --scope user --keep-data --json",
+		"/usr/bin/claude plugin uninstall superpowers@makeit --scope user --keep-data --json",
+		"/usr/bin/claude plugin uninstall typescript-lsp@claude-plugins-official --scope user --keep-data --json",
+		"/usr/bin/claude plugin marketplace remove makeit --scope user --json",
+	} {
+		if called(m, want) < 0 {
+			t.Errorf("missing %s in %v", want, m.calls)
+		}
+	}
+	if called(m, "--prune") >= 0 || called(m, "marketplace remove claude-plugins-official") >= 0 {
+		t.Errorf("pruned or removed the official marketplace: %v", m.calls)
+	}
+	if called(m, "uninstall makeit-bundle@makeit") > called(m, "uninstall superpowers@makeit") {
+		t.Error("a dependency was uninstalled before the bundle")
+	}
+	for _, p := range globalPaths(t, m.env.Roots.Claude) {
+		if _, err := os.Stat(p); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s still there: %v", p, err)
+		}
+	}
+	if es, _ := os.ReadDir(m.env.Roots.Stack); len(es) != 1 || es[0].Name() != "generations" {
+		t.Errorf("stack dir holds %v, want only generations/", es)
+	}
+}
+
+// The settings goal: beyond the pre-setup content (none here), only the declaration of
+// claude-plugins-official remains, because that marketplace stays.
+func TestUninstallKeepsOfficialDeclaration(t *testing.T) {
+	m := installed(t)
+	uninstall(t, m, UninstallOptions{})
+	live := settingsOf(t, m)
+	raw, err := catalog.Embedded.ReadFile("settings.baseline.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := jsonx.DecodeObject(raw)
+	mk, _ := base.Get("extraKnownMarketplaces")
+	official, _ := mk.(*jsonx.Object).Get("claude-plugins-official")
+	want := jsonx.NewObject()
+	wantMk := jsonx.NewObject()
+	wantMk.Set("claude-plugins-official", official)
+	want.Set("extraKnownMarketplaces", wantMk)
+	if !jsonx.Equal(live, want) {
+		got, _ := jsonx.Marshal(live)
+		t.Errorf("settings after uninstall:\n%s\nwant only the claude-plugins-official declaration", got)
+	}
+}
+
+func TestUninstallKeepsChangedValueAndFile(t *testing.T) {
+	m := installed(t)
+	o := settingsOf(t, m)
+	o.Set("cleanupPeriodDays", json.Number("999"))
+	saveSettings(t, m, o)
+	rules := filepath.Join(m.env.Roots.Claude, "rules", "go.md")
+	writeFile(t, rules, "mine\n")
+	rep := uninstall(t, m, UninstallOptions{})
+	if v, _ := settingsOf(t, m).Get("cleanupPeriodDays"); !jsonx.Equal(v, json.Number("999")) {
+		t.Errorf("cleanupPeriodDays = %v, want the user's 999 kept", v)
+	}
+	if read(t, rules) != "mine\n" || reasonOf(rep, "claude:rules/go.md") != "changed since makeit wrote it" {
+		t.Errorf("rules %q, kept %q", read(t, rules), reasonOf(rep, "claude:rules/go.md"))
+	}
+	if reasonOf(rep, "/cleanupPeriodDays") == "" {
+		t.Errorf("kept %+v, want the changed value listed", rep.Kept)
+	}
+}
+
+func TestUninstallKeepsAdopted(t *testing.T) {
+	m := newMachine(t)
+	m.markets = []string{"makeit", "claude-plugins-official"}
+	m.plugins = []string{"makeit-bundle@makeit"}
+	for _, p := range globalPaths(t, m.env.Roots.Claude) {
+		writeFile(t, p, "mine\n")
+	}
+	apply(t, m)
+	before := len(m.calls)
+	rep := uninstall(t, m, UninstallOptions{})
+	for _, c := range m.calls[before:] {
+		if strings.Contains(c, "plugin uninstall") || strings.Contains(c, "marketplace remove") {
+			t.Errorf("touched an adopted item: %s", c)
+		}
+	}
+	for _, item := range []string{"marketplace makeit", "makeit-bundle@makeit", "claude:CLAUDE.md", "claude:rules/go.md"} {
+		if r := reasonOf(rep, item); r != "yours" {
+			t.Errorf("%s kept as %q, want yours", item, r)
+		}
+	}
+	if read(t, filepath.Join(m.env.Roots.Claude, "CLAUDE.md")) != "mine\n" {
+		t.Error("an adopted file changed")
+	}
+}
+
+func TestUninstallBacksUpDataBeforeRemove(t *testing.T) {
+	m := installed(t)
+	dataDir(t, m, "superpowers@makeit")
+	backedUp := false
+	m.onRemove = func() {
+		marks, _ := filepath.Glob(filepath.Join(state.GenerationsDir(m.env.Roots.Stack), "*", "data", "superpowers-makeit", "marker"))
+		backedUp = len(marks) == 1
+	}
+	uninstall(t, m, UninstallOptions{})
+	if !backedUp {
+		t.Fatal("the marketplace was removed before its plugins' data was copied into the generation")
+	}
+	links, _ := filepath.Glob(filepath.Join(state.GenerationsDir(m.env.Roots.Stack), "*", "data", "superpowers-makeit", "node_modules", ".bin", "tool"))
+	if len(links) != 1 {
+		t.Fatalf("symlink not copied: %v", links)
+	}
+	if fi, err := os.Lstat(links[0]); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		t.Errorf("the backup's link is %v, %v; want a symlink", fi, err)
+	}
+}
+
+func TestUninstallUserPluginKeepsMarketplace(t *testing.T) {
+	m := installed(t)
+	m.plugins = append(m.plugins, "makeit-ui@makeit")
+	rep := uninstall(t, m, UninstallOptions{})
+	if called(m, "marketplace remove") >= 0 {
+		t.Errorf("removed a marketplace a plugin of the user's comes from: %v", m.calls)
+	}
+	if r := reasonOf(rep, "marketplace makeit"); !strings.Contains(r, "makeit-ui@makeit") {
+		t.Errorf("kept %q, want the reason naming makeit-ui@makeit", r)
+	}
+	st, _, err := state.LoadState(filepath.Join(m.env.Roots.Stack, "state.json"))
+	if err != nil || st.Marketplaces["makeit"] == nil || st.Marketplaces["makeit"].AddedBy != "makeit" {
+		t.Errorf("state %v, %+v; want the marketplace still recorded as makeit's", err, st.Marketplaces)
+	}
+	if _, err := os.Stat(filepath.Join(m.env.Roots.Stack, "catalog")); err != nil {
+		t.Errorf("catalog removed while its marketplace stays: %v", err)
+	}
+}
+
+func TestUninstallDependentKept(t *testing.T) {
+	m := installed(t)
+	m.needed = map[string]bool{"superpowers@makeit": true}
+	rep := uninstall(t, m, UninstallOptions{})
+	if called(m, "uninstall superpowers@makeit") >= 0 {
+		t.Errorf("uninstalled a plugin another plugin needs: %v", m.calls)
+	}
+	if r := reasonOf(rep, "superpowers@makeit"); r != "another installed plugin still needs it" {
+		t.Errorf("kept %q", r)
+	}
+}
+
+func TestUninstallRerunAfterFailure(t *testing.T) {
+	m := installed(t)
+	m.failUninstall = "superpowers@makeit"
+	rep, err := Uninstall(context.Background(), m.env, plan.Apply, nil, nil, UninstallOptions{})
+	if err != nil || !rep.Plan.Failed() {
+		t.Fatalf("first run: %v, failed = %v", err, rep.Plan.Failed())
+	}
+	statePath := filepath.Join(m.env.Roots.Stack, "state.json")
+	st, _, err := state.LoadState(statePath)
+	if err != nil || st.Plugins["superpowers@makeit"] == nil {
+		t.Fatalf("state %v, %+v; want the failed plugin still recorded", err, st.Plugins)
+	}
+	m.failUninstall = ""
+	rep = uninstall(t, m, UninstallOptions{})
+	if rep.Plan.Failed() || called(m, "marketplace remove makeit") < 0 {
+		t.Errorf("rerun failed or kept the marketplace: %+v", rep.Plan.Outcomes)
+	}
+	if _, err := os.Stat(statePath); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state.json still there after the rerun: %v", err)
+	}
+}
+
+func TestUninstallUnmergesAtApplyTime(t *testing.T) {
+	m := installed(t)
+	confirm := func([]plan.Outcome) (bool, error) {
+		o := settingsOf(t, m)
+		o.Set("theme", "dark")
+		saveSettings(t, m, o)
+		return true, nil
+	}
+	if _, err := Uninstall(context.Background(), m.env, plan.Prompt, confirm, nil, UninstallOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := settingsOf(t, m).Get("theme"); !ok || v != "dark" {
+		t.Errorf("theme = %v, %v; a value written after the plan must stay", v, ok)
+	}
+}
+
+func TestUninstallKeepsSymlinkedFile(t *testing.T) {
+	m := installed(t)
+	path := filepath.Join(m.env.Roots.Claude, "rules", "go.md")
+	target := filepath.Join(t.TempDir(), "go.md")
+	writeFile(t, target, read(t, path))
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+	rep := uninstall(t, m, UninstallOptions{})
+	if fi, err := os.Lstat(path); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		t.Errorf("link gone: %v", err)
+	}
+	if r := reasonOf(rep, "claude:rules/go.md"); r != "a link, so it is yours" {
+		t.Errorf("kept %q", r)
+	}
+}
+
+func tree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		switch {
+		case d.Type()&fs.ModeSymlink != 0:
+			target, err := os.Readlink(p)
+			out[p] = "link:" + target
+			return err
+		case d.Type().IsRegular():
+			b, err := os.ReadFile(p)
+			sum := sha256.Sum256(b)
+			out[p] = hex.EncodeToString(sum[:])
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestUninstallDryRunChangesNothing(t *testing.T) {
+	m := installed(t)
+	before := tree(t, m.env.Roots.Home)
+	rep, err := Uninstall(context.Background(), m.env, plan.DryRunOnly, nil, nil, UninstallOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := tree(t, m.env.Roots.Home)
+	if len(before) != len(after) {
+		t.Errorf("file count %d, then %d", len(before), len(after))
+	}
+	for p, h := range before {
+		if after[p] != h {
+			t.Errorf("%s changed in a dry run", p)
+		}
+	}
+	if !slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.Status == plan.WouldChange }) {
+		t.Errorf("the dry run shows nothing to remove: %+v", rep.Plan.Outcomes)
+	}
+}
+
+func TestUninstallPurge(t *testing.T) {
+	m := installed(t)
+	data := dataDir(t, m, "superpowers@makeit")
+	uninstall(t, m, UninstallOptions{Purge: true})
+	for _, p := range []string{m.env.Roots.Stack, data} {
+		if _, err := os.Stat(p); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s still there after --purge: %v", p, err)
+		}
+	}
+}

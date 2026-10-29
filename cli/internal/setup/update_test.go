@@ -504,3 +504,25 @@ func TestPluginFailureKeepsGoing(t *testing.T) {
 		t.Errorf("failed = %v, argv %v: b must still be updated after a fails", rep.Failed(), f.argvs())
 	}
 }
+
+// The delegate's guard: the moved-pin reinstall copies the plugin's data into the generation
+// before the uninstall.
+func TestStalePinBacksUpData(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`, `[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
+	writeFile(t, filepath.Join(e.Roots.Claude, "plugins", "data", "superpowers-makeit", "marker"), "kept\n")
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(upToDate)
+	backedUp := false
+	f.answers["claude plugin uninstall superpowers@makeit --scope user --keep-data --json"] = func(execx.Cmd) execx.Result {
+		_, err := os.Stat(filepath.Join(e.gen.Dir, "data", "superpowers-makeit", "marker"))
+		backedUp = err == nil
+		return execx.Result{Stdout: `{"command":"uninstall","outcome":"ok"}`}
+	}
+	f.answers["claude plugin install makeit-bundle@makeit --scope user --json"] = text(ok)
+	if _, err := step(t, e.pluginSteps(), "plugin.superpowers@makeit").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !backedUp {
+		t.Error("the plugin was uninstalled before its data was copied into the generation")
+	}
+}

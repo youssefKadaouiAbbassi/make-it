@@ -140,14 +140,20 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 			r.Error = o.Detail
 		}
 		st.Steps[o.ID] = r
-		// The journal: after every step, so an interrupted run leaves a true record.
-		saveErr = errors.Join(saveErr, state.SaveState(statePath, st))
+		// The journal: after every step, so an interrupted run leaves a true record; never once
+		// uninstall has removed the record.
+		if !en.stateRemoved {
+			saveErr = errors.Join(saveErr, state.SaveState(statePath, st))
+		}
 	}})
 	rep.Hints, rep.Kept = en.hints, en.kept
 	rep.Generation = gen.Manifest.Generation
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
-	saveErr = errors.Join(saveErr, gen.Save(), state.SaveState(statePath, st))
+	saveErr = errors.Join(saveErr, gen.Save())
+	if !en.stateRemoved {
+		saveErr = errors.Join(saveErr, state.SaveState(statePath, st))
+	}
 	if !rep.Plan.Failed() {
 		saveErr = errors.Join(saveErr, state.Prune(e.Roots.Stack))
 	}

@@ -1,0 +1,588 @@
+package setup
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"makeit/internal/claudecli"
+	"makeit/internal/fsx"
+	"makeit/internal/jsonx"
+	"makeit/internal/plan"
+	"makeit/internal/pluginrule"
+	"makeit/internal/settings"
+	"makeit/internal/state"
+)
+
+// ErrNothing: makeit has no record on this machine, so there is nothing to uninstall.
+var ErrNothing = errors.New("makeit has no record on this machine; nothing to uninstall")
+
+// UninstallOptions are uninstall's flags.
+type UninstallOptions struct {
+	// KeepSettings leaves settings.json as it is.
+	KeepSettings bool
+	// Purge also deletes the data directories of the plugins makeit installed, and the makeit
+	// directory with every generation: nothing of makeit is left and nothing can be put back.
+	Purge bool
+}
+
+// officialDecl is where settings.json declares claude-plugins-official. Uninstall keeps it,
+// because that marketplace stays (DESIGN 4.5).
+const officialDecl = "/extraKnownMarketplaces/" + officialMarketplace
+
+// Uninstall removes what makeit put on this machine and nobody changed since
+// (cli/UPDATE-UNINSTALL.md): the plugins it installed (the bundle first, then the dependencies
+// Claude Code no longer needs), the marketplace it added once nothing from it stays, its own
+// settings values, the files it wrote, the directories it created and its catalog. Everything
+// else is kept and listed. Every step runs even when one fails.
+func Uninstall(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), argv []string, opts UninstallOptions) (Report, error) {
+	if _, err := os.Stat(filepath.Join(e.Roots.Stack, "state.json")); errors.Is(err, fs.ErrNotExist) {
+		return Report{}, ErrNothing
+	}
+	var owned []string
+	rep, en, err := execute(ctx, e, "uninstall", mode, confirm, argv, func(en *env) []phase {
+		for id := range en.st.Plugins {
+			if en.owned(id) {
+				owned = append(owned, id)
+			}
+		}
+		return []phase{{steps: en.uninstallSteps(opts), keepGoing: true}}
+	})
+	if err != nil || en == nil || !en.purge || rep.Plan.Failed() {
+		return rep, err
+	}
+	// execute has returned, so the lock in the makeit directory is released.
+	dir := e.Roots.Stack
+	if !filepath.IsAbs(dir) || filepath.Dir(dir) == dir || dir == e.Roots.Home {
+		return rep, fmt.Errorf("refusing to delete %q", dir)
+	}
+	var errs []error
+	for _, id := range owned {
+		errs = append(errs, os.RemoveAll(filepath.Join(e.Roots.Claude, "plugins", "data", DataID(id))))
+	}
+	errs = append(errs, os.RemoveAll(dir))
+	return rep, errors.Join(errs...)
+}
+
+// DataID names a plugin's data directory under ~/.claude/plugins/data/: the id with every
+// character other than an ASCII letter, a digit, '_' or '-' replaced by '-' (plugins_components.md 649).
+func DataID(id string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '_' || r == '-' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '-'
+	}, id)
+}
+
+// backupData copies the named data directories under ~/.claude/plugins/data/ into the run's
+// generation (data/<name>/) before something that could delete them; a missing one is skipped.
+func (e *env) backupData(names ...string) error {
+	if e.gen == nil {
+		return errors.New("setup: a dry run copies nothing")
+	}
+	for _, name := range names {
+		src := filepath.Join(e.Roots.Claude, "plugins", "data", name)
+		dst := filepath.Join(e.gen.Dir, "data", name)
+		if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if _, err := os.Stat(dst); err == nil {
+			continue // copied earlier in this run
+		}
+		if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+			return fmt.Errorf("copy %s into the generation: %w", src, err)
+		}
+	}
+	return nil
+}
+
+// uninstallSteps are uninstall's steps, in order.
+func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
+	steps := []plan.Step{e.findClaudeStep()}
+	var deps []string
+	for id := range e.st.Plugins {
+		if e.owned(id) && id != e.req.Bundle {
+			deps = append(deps, id)
+		}
+	}
+	slices.Sort(deps)
+	if e.owned(e.req.Bundle) {
+		steps = append(steps, e.unPluginStep(e.req.Bundle, false))
+	}
+	for _, id := range deps {
+		steps = append(steps, e.unPluginStep(id, true))
+	}
+	steps = append(steps, e.yoursStep(), e.unMarketplaceStep())
+	if !opts.KeepSettings {
+		steps = append(steps, e.unSettingsStep())
+	}
+	keys := make([]string, 0, len(e.st.Files))
+	for k := range e.st.Files {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		steps = append(steps, e.unFileStep(k))
+	}
+	steps = append(steps, e.unDirsStep(), e.unCatalogStep())
+	if opts.Purge {
+		steps = append(steps, plan.Step{ID: "purge",
+			Title: "Delete the data of the plugins makeit installed, and " + e.Roots.Stack + " with every backup (cannot be undone)",
+			Run:   func(context.Context) (string, error) { e.purge = true; return "after the run", nil }})
+	}
+	return append(steps, e.unStateStep())
+}
+
+// findClaudeStep finds a usable Claude Code; without one, nothing is uninstalled.
+func (e *env) findClaudeStep() plan.Step {
+	return plan.Step{ID: "claude", Title: "Find Claude Code",
+		Already: func(ctx context.Context) (bool, error) {
+			if _, _, ok := e.findClaude(ctx); ok {
+				return true, nil
+			}
+			return false, errNoClaude
+		}}
+}
+
+// unPluginStep uninstalls a plugin makeit installed, keeping its data. A dependency goes only
+// when Claude Code lists it as no longer needed: uninstalling one that another plugin needs is
+// not refused (measured), so makeit checks first.
+func (e *env) unPluginStep(id string, dep bool) plan.Step {
+	return plan.Step{ID: "plugin." + id, Title: "Uninstall " + id + " (its data stays)",
+		Command: []string{"claude", "plugin", "uninstall", id, "--scope", "user", "--keep-data", "--json"},
+		Already: func(ctx context.Context) (bool, error) {
+			in, err := e.gather(ctx)
+			if err != nil {
+				return false, err
+			}
+			if listed(in, id) == nil {
+				delete(e.st.Plugins, id)
+				return true, nil
+			}
+			return false, nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			if dep {
+				unneeded, err := e.claude.Unneeded(ctx)
+				if err != nil {
+					return "", err
+				}
+				if !slices.Contains(unneeded, id) {
+					e.keep(id, "another installed plugin still needs it")
+					return "", plan.ErrSkip
+				}
+			}
+			if err := e.act(e.claude.Uninstall(ctx, id)); err != nil {
+				return "", err
+			}
+			e.inputs = nil
+			delete(e.st.Plugins, id)
+			if e.gen != nil {
+				e.gen.Manifest.Plugins.Uninstalled = append(e.gen.Manifest.Plugins.Uninstalled, id)
+			}
+			return "", nil
+		}}
+}
+
+// yoursStep lists what the user installed or added: makeit leaves all of it alone.
+func (e *env) yoursStep() plan.Step {
+	return plan.Step{ID: "yours", Title: "Keep the plugins and marketplaces you installed yourself",
+		Already: func(context.Context) (bool, error) {
+			var ids, names []string
+			for id, r := range e.st.Plugins {
+				if r.InstalledBy == "user" {
+					ids = append(ids, id)
+				}
+			}
+			for name, r := range e.st.Marketplaces {
+				if r.AddedBy == "user" {
+					names = append(names, name)
+				}
+			}
+			slices.Sort(ids)
+			slices.Sort(names)
+			for _, id := range ids {
+				e.keep(id, "yours")
+			}
+			for _, name := range names {
+				e.keep("marketplace "+name, "yours")
+			}
+			return true, nil
+		}}
+}
+
+// fromMarketplace are the listed plugins from marketplace name; with users set, only those makeit
+// did not install.
+func (e *env) fromMarketplace(in pluginrule.Inputs, name string, users bool) []string {
+	var ids []string
+	for _, p := range in.Plugins {
+		if strings.HasSuffix(p.ID, "@"+name) && !(users && e.owned(p.ID)) {
+			ids = append(ids, p.ID)
+		}
+	}
+	return ids
+}
+
+// unMarketplaceStep removes the marketplace makeit added, once no plugin from it is installed:
+// removing it uninstalls them and deletes their data (measured). Its plugins' data directories
+// are copied into the generation first (DESIGN 4.5).
+func (e *env) unMarketplaceStep() plan.Step {
+	own := e.req.Marketplace
+	stays := func(left []string) {
+		e.keep("marketplace "+own, strings.Join(left, ", ")+" still installed from it, and removing it would uninstall them")
+	}
+	return plan.Step{ID: "marketplace", Title: "Remove the " + own + " marketplace (its plugins' data is copied into the generation first)",
+		Command: []string{"claude", "plugin", "marketplace", "remove", own, "--scope", "user", "--json"},
+		Already: func(ctx context.Context) (bool, error) {
+			if rec := e.st.Marketplaces[own]; rec == nil || rec.AddedBy != "makeit" {
+				return true, nil
+			}
+			in, err := e.gather(ctx)
+			if err != nil {
+				return false, err
+			}
+			if !slices.ContainsFunc(in.Markets, func(m claudecli.Marketplace) bool { return m.Name == own }) {
+				delete(e.st.Marketplaces, own)
+				return true, nil
+			}
+			if users := e.fromMarketplace(in, own, true); len(users) > 0 {
+				stays(users)
+				return true, nil
+			}
+			return false, nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			e.inputs = nil
+			in, err := e.gather(ctx)
+			if err != nil {
+				return "", err
+			}
+			if left := e.fromMarketplace(in, own, false); len(left) > 0 {
+				stays(left)
+				return "", plan.ErrSkip
+			}
+			var names []string
+			entries, err := os.ReadDir(filepath.Join(e.Roots.Claude, "plugins", "data"))
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return "", err
+			}
+			for _, d := range entries {
+				if d.IsDir() && strings.HasSuffix(d.Name(), "-"+DataID(own)) {
+					names = append(names, d.Name())
+				}
+			}
+			if err := e.backupData(names...); err != nil {
+				return "", err
+			}
+			if err := e.act(e.claude.RemoveMarketplace(ctx, own)); err != nil {
+				return "", err
+			}
+			e.inputs = nil
+			delete(e.st.Marketplaces, own)
+			return "", nil
+		}}
+}
+
+// unSettingsStep takes makeit's values out of settings.json with the merge records: a value still
+// equal to what makeit wrote returns to what was there before, and a value the user changed stays.
+// The declaration of claude-plugins-official stays. The result is validated before and after the
+// write and put back on failure; a settings.json makeit created that would be left empty is removed.
+func (e *env) unSettingsStep() plan.Step {
+	path := filepath.Join(e.Roots.Claude, "settings.json")
+	unmerge := func() (settings.Result, []byte, bool, error) {
+		old, found, err := fsx.ReadOptional(path)
+		if err != nil || !found {
+			return settings.Result{}, old, found, err
+		}
+		live, err := jsonx.DecodeObject(old)
+		if err != nil {
+			return settings.Result{}, old, true, fmt.Errorf("%s is not valid JSON, fix it first: %w", path, err)
+		}
+		recs := settings.State{}
+		for k, r := range e.st.Settings.Paths {
+			if k != officialDecl && !strings.HasPrefix(k, officialDecl+"/") {
+				recs[k] = r
+			}
+		}
+		res := settings.Unmerge(live, recs)
+		for _, c := range res.Changes {
+			if c.Action == settings.KeptTheirs {
+				e.keep(c.Path, "changed since makeit set it")
+			}
+		}
+		return res, old, true, nil
+	}
+	emptied := func(res settings.Result) bool { return e.st.Settings.CreatedByUs && res.Settings.Len() == 0 }
+	return plan.Step{ID: "settings", Title: "Take makeit's values out of " + path,
+		Already: func(context.Context) (bool, error) {
+			if len(e.st.Settings.Paths) == 0 {
+				return true, nil
+			}
+			res, _, found, err := unmerge()
+			if err != nil || !found {
+				return !found, err
+			}
+			return !res.Changed() && !emptied(res), nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			// Unmerged again now, not at planning time: a running Claude Code may have written the file.
+			res, old, found, err := unmerge()
+			if err != nil {
+				return "", err
+			}
+			if !found {
+				e.st.Settings = state.Settings{}
+				return "", nil
+			}
+			if emptied(res) {
+				if err := e.remove("settings", path); err != nil {
+					return "", err
+				}
+				e.st.Settings = state.Settings{}
+				return "removed: makeit created it and nothing else is in it", nil
+			}
+			if e.claude == nil {
+				return "", errors.New("Claude Code is needed to validate settings.json and is not usable")
+			}
+			data, err := jsonx.Marshal(res.Settings)
+			if err != nil {
+				return "", err
+			}
+			if err := e.validate(ctx, data, "settings.json without makeit's values"); err != nil {
+				return "", err
+			}
+			if err := e.write("settings", path, data, 0o600); err != nil {
+				return "", err
+			}
+			written, _, err := fsx.ReadOptional(path)
+			if err == nil {
+				err = e.validate(ctx, written, "settings.json after the write")
+			}
+			if err != nil {
+				if rerr := e.restore(path, old); rerr != nil {
+					return "", errors.Join(err, rerr)
+				}
+				return "", fmt.Errorf("%w; the previous settings.json was put back", err)
+			}
+			e.st.Settings = state.Settings{}
+			return "", nil
+		}}
+}
+
+// unFileStep removes a file makeit wrote while it still holds what makeit wrote. A file the user
+// changed, had before makeit, or linked is kept.
+func (e *env) unFileStep(key string) plan.Step {
+	rec := e.st.Files[key]
+	path := e.Roots.Abs(key)
+	return plan.Step{ID: "file." + strings.TrimPrefix(key, "claude:"), Title: "Remove " + path,
+		Already: func(context.Context) (bool, error) {
+			if rec.PreExisted {
+				e.keep(key, "yours")
+				return true, nil
+			}
+			if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+				e.keep(key, "a link, so it is yours")
+				return true, nil
+			}
+			cur, found, err := fsx.ReadOptional(path)
+			if err != nil {
+				return false, err
+			}
+			if !found {
+				delete(e.st.Files, key)
+				return true, nil
+			}
+			if fsx.Sha256(cur) != rec.Sha256 {
+				e.keep(key, "changed since makeit wrote it")
+				return true, nil
+			}
+			return false, nil
+		},
+		Run: func(context.Context) (string, error) {
+			if err := e.remove("file."+key, path); err != nil {
+				return "", err
+			}
+			delete(e.st.Files, key)
+			return "", nil
+		}}
+}
+
+// createdDirs are the directories makeit recorded creating, deepest first.
+func (e *env) createdDirs() []string {
+	var keys []string
+	for k, d := range e.st.Dirs {
+		if d.CreatedByUs {
+			keys = append(keys, k)
+		}
+	}
+	slices.SortFunc(keys, func(a, b string) int {
+		if n := strings.Count(b, "/") - strings.Count(a, "/"); n != 0 {
+			return n
+		}
+		return strings.Compare(a, b)
+	})
+	return keys
+}
+
+// unDirsStep removes the directories makeit created once they are empty; one that holds
+// anything else is the user's and stays.
+func (e *env) unDirsStep() plan.Step {
+	return plan.Step{ID: "dirs", Title: "Remove the directories makeit created, when empty",
+		Already: func(context.Context) (bool, error) {
+			for _, k := range e.createdDirs() {
+				if _, err := os.Stat(e.Roots.Abs(k)); err == nil {
+					return false, nil
+				}
+			}
+			return true, nil
+		},
+		Run: func(context.Context) (string, error) {
+			var removed []string
+			for _, k := range e.createdDirs() {
+				dir := e.Roots.Abs(k)
+				entries, err := os.ReadDir(dir)
+				switch {
+				case errors.Is(err, fs.ErrNotExist):
+				case err != nil:
+					return strings.Join(removed, ", "), err
+				case len(entries) > 0:
+					e.keep(k, "not empty")
+				default:
+					if err := os.Remove(dir); err != nil {
+						return strings.Join(removed, ", "), err
+					}
+					removed = append(removed, k)
+				}
+				delete(e.st.Dirs, k)
+			}
+			return strings.Join(removed, ", "), nil
+		}}
+}
+
+// unCatalogStep removes makeit's copy of the catalog once no marketplace points at it.
+func (e *env) unCatalogStep() plan.Step {
+	dir := filepath.Join(e.Roots.Stack, "catalog")
+	own := e.req.Marketplace
+	users := func(in pluginrule.Inputs) []string {
+		var names []string
+		for _, m := range in.Markets {
+			if m.Path == dir {
+				names = append(names, m.Name)
+			}
+		}
+		return names
+	}
+	return plan.Step{ID: "catalog", Title: "Remove makeit's catalog " + dir,
+		Already: func(ctx context.Context) (bool, error) {
+			if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+				return true, nil
+			}
+			in, err := e.gather(ctx)
+			if err != nil {
+				return false, err
+			}
+			for _, name := range users(in) {
+				// The run removes makeit's own marketplace first unless a plugin of the user's needs it.
+				if rec := e.st.Marketplaces[own]; name == own && rec != nil && rec.AddedBy == "makeit" && len(e.fromMarketplace(in, own, true)) == 0 {
+					continue
+				}
+				e.keep("catalog "+dir, "the "+name+" marketplace still uses it")
+				return true, nil
+			}
+			return false, nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			e.inputs = nil
+			in, err := e.gather(ctx)
+			if err != nil && !errors.Is(err, plan.ErrNotYet) {
+				return "", err
+			}
+			if names := users(in); len(names) > 0 {
+				e.keep("catalog "+dir, "the "+names[0]+" marketplace still uses it")
+				return "", plan.ErrSkip
+			}
+			return "", os.RemoveAll(dir)
+		}}
+}
+
+// remaining are the items makeit still owns on the machine.
+func (e *env) remaining() []string {
+	var left []string
+	for id, r := range e.st.Plugins {
+		if r.InstalledBy == "makeit" {
+			left = append(left, id)
+		}
+	}
+	for name, r := range e.st.Marketplaces {
+		if r.AddedBy == "makeit" {
+			left = append(left, "marketplace "+name)
+		}
+	}
+	for k, r := range e.st.Files {
+		if !r.PreExisted {
+			left = append(left, k)
+		}
+	}
+	for k, d := range e.st.Dirs {
+		if d.CreatedByUs {
+			left = append(left, k)
+		}
+	}
+	slices.Sort(left)
+	return left
+}
+
+// unStateStep removes state.json, keeping a copy in the generation, once nothing of makeit
+// remains; otherwise it keeps only the records of what remains, so a rerun finishes the job.
+func (e *env) unStateStep() plan.Step {
+	statePath := filepath.Join(e.Roots.Stack, "state.json")
+	return plan.Step{ID: "state", Title: "Remove makeit's record " + statePath + " (kept while anything of makeit remains)",
+		Run: func(context.Context) (string, error) {
+			if left := e.remaining(); len(left) > 0 {
+				for id, r := range e.st.Plugins {
+					if r.InstalledBy != "makeit" {
+						delete(e.st.Plugins, id)
+					}
+				}
+				for name, r := range e.st.Marketplaces {
+					if r.AddedBy != "makeit" {
+						delete(e.st.Marketplaces, name)
+					}
+				}
+				for k, r := range e.st.Files {
+					if r.PreExisted {
+						delete(e.st.Files, k)
+					}
+				}
+				return "kept: " + strings.Join(left, ", ") + " remain", nil
+			}
+			data, found, err := fsx.ReadOptional(statePath)
+			if err != nil {
+				return "", err
+			}
+			if found && e.gen != nil {
+				if err := fsx.WriteAtomic(filepath.Join(e.gen.Dir, "state.json"), data, 0o600); err != nil {
+					return "", err
+				}
+			}
+			if err := os.Remove(statePath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return "", err
+			}
+			e.stateRemoved = true
+			return "removed; a copy is in the generation", nil
+		}}
+}

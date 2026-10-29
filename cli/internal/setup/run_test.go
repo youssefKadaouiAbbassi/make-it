@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,13 @@ type fakeMachine struct {
 	plugins     []string
 	failInstall bool
 	calls       []string
+	// deps arrive with the bundle's install; needed are ids another plugin needs, so prune's dry
+	// run leaves them out; failUninstall makes that id's uninstall fail; onRemove runs when the
+	// marketplace remove arrives.
+	deps          []string
+	needed        map[string]bool
+	failUninstall string
+	onRemove      func()
 }
 
 func newMachine(t *testing.T) *fakeMachine {
@@ -63,7 +71,15 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 	case cmd == "/usr/bin/claude doctor":
 		return execx.Result{}, nil
 	case cmd == "/usr/bin/claude plugin marketplace list --json":
-		return execx.Result{Stdout: list(m.markets, "name")}, nil
+		var rows []string
+		for _, n := range m.markets {
+			row := `{"name":"` + n + `","source":"github"}`
+			if n == "makeit" {
+				row = `{"name":"makeit","source":"directory","path":"` + filepath.Join(m.env.Roots.Stack, "catalog") + `"}`
+			}
+			rows = append(rows, row)
+		}
+		return execx.Result{Stdout: "[" + strings.Join(rows, ",") + "]"}, nil
 	case cmd == "/usr/bin/claude plugin list --json":
 		return execx.Result{Stdout: list(m.plugins, "id")}, nil
 	case strings.HasPrefix(cmd, "/usr/bin/claude plugin marketplace add "):
@@ -78,8 +94,37 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 		if m.failInstall {
 			return execx.Result{Stdout: `{"command":"install","outcome":"failed","message":"network down"}`}, nil
 		}
-		m.plugins = append(m.plugins, c.Argv[3])
+		for _, id := range append([]string{c.Argv[3]}, m.deps...) {
+			if !slices.Contains(m.plugins, id) && (id == c.Argv[3] || c.Argv[3] == "makeit-bundle@makeit") {
+				m.plugins = append(m.plugins, id)
+			}
+		}
 		return execx.Result{Stdout: `{"command":"install","outcome":"ok"}`}, nil
+	case strings.HasPrefix(cmd, "/usr/bin/claude plugin uninstall "):
+		id := c.Argv[3]
+		if id == m.failUninstall {
+			return execx.Result{Code: 1, Stdout: `{"command":"uninstall","outcome":"failed","message":"busy"}`}, nil
+		}
+		m.plugins = slices.DeleteFunc(m.plugins, func(p string) bool { return p == id })
+		return execx.Result{Stdout: `{"command":"uninstall","outcome":"ok","keptData":true}`}, nil
+	case strings.HasPrefix(cmd, "/usr/bin/claude plugin marketplace remove "):
+		if m.onRemove != nil {
+			m.onRemove()
+		}
+		name := c.Argv[4]
+		m.markets = slices.DeleteFunc(m.markets, func(n string) bool { return n == name })
+		m.plugins = slices.DeleteFunc(m.plugins, func(p string) bool { return strings.HasSuffix(p, "@"+name) })
+		return execx.Result{Stdout: `{"command":"marketplace-remove","outcome":"ok"}`}, nil
+	case cmd == "/usr/bin/claude plugin prune --dry-run --scope user":
+		var out strings.Builder
+		if !slices.Contains(m.plugins, "makeit-bundle@makeit") {
+			for _, p := range m.plugins {
+				if slices.Contains(m.deps, p) && !m.needed[p] {
+					out.WriteString("  " + p + " (1.0.0)\n")
+				}
+			}
+		}
+		return execx.Result{Stdout: out.String()}, nil
 	}
 	return execx.Result{Code: 1, Stderr: "unexpected " + cmd}, nil
 }

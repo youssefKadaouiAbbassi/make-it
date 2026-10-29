@@ -58,6 +58,10 @@ type env struct {
 	synced bool
 	// inputs caches the plugin listing for the plugin phase; a step that changes plugins clears it.
 	inputs *pluginrule.Inputs
+	// stateRemoved: uninstall removed state.json, so the journal must not write it again.
+	stateRemoved bool
+	// purge: uninstall deletes the plugins' data and the makeit directory once the run is over.
+	purge bool
 }
 
 // removedByYou is the reason update gives for not putting back what the user removed.

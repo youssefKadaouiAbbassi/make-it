@@ -353,6 +353,9 @@ func (e *env) ownedStep(id string) plan.Step {
 						id, e.req.Marketplace, e.req.Bundle))
 					return "", plan.ErrSkip
 				}
+				if err := e.backupData(DataID(id)); err != nil {
+					return "", err
+				}
 				if err := e.act(e.claude.Uninstall(ctx, id)); err != nil {
 					return "", err
 				}
