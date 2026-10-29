@@ -27,6 +27,7 @@ const prog = "makeit"
 var commands = []cli.Command{
 	{Name: "doctor", Summary: "check this machine against what the stack expects; changes nothing"},
 	{Name: "help", Args: "[command|exit-codes|environment]", Summary: "show help for a command or a topic"},
+	{Name: "setup", Summary: "install the stack on this machine: prerequisites, Claude Code, the catalog, settings and global files"},
 	{Name: "version", Summary: "print the version"},
 }
 
@@ -119,6 +120,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 	switch cmd.Name {
 	case "help":
 		return help(p.Positionals, stdout, stderr)
+	case "setup":
+		if len(p.Positionals) > 0 {
+			fmt.Fprintf(stderr, "%s: setup takes no arguments\n", prog)
+			return 2
+		}
+		return runSetup(ctx, p, args, stdout, stderr)
 	case "version":
 		if len(p.Positionals) > 0 {
 			fmt.Fprintf(stderr, "%s: version takes no arguments\n", prog)
@@ -218,11 +225,7 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 			Warnings int            `json:"warnings"`
 		}{buildinfo.Version, checks, errs, warns}, code)
 	}
-	tty := false
-	if f, ok := stderr.(*os.File); ok {
-		tty = ui.IsTerminal(f)
-	}
-	u := ui.New(os.Stdin, stderr, false, ui.ColorWanted(p.String["color"], tty))
+	u := ui.New(os.Stdin, stderr, false, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
 	for _, c := range checks {
 		switch c.Level {
@@ -244,4 +247,10 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 	}
 	fmt.Fprintf(stderr, "%d errors, %d warnings\n", errs, warns)
 	return code
+}
+
+// isTTY reports whether w is a terminal.
+func isTTY(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && ui.IsTerminal(f)
 }

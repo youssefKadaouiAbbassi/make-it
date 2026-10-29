@@ -144,7 +144,7 @@ func TestHelp(t *testing.T) {
 		t.Errorf("help environment: exit %d, stdout %q", code, out)
 	}
 	_, out, _ := call(t, noGather(t), "help")
-	for _, unbuilt := range []string{"setup", "init", "update", "uninstall"} {
+	for _, unbuilt := range []string{"init", "update", "uninstall"} {
 		if strings.Contains(out, "  "+unbuilt+" ") {
 			t.Errorf("usage lists %s, which is not built: %q", unbuilt, out)
 		}
