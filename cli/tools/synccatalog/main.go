@@ -12,18 +12,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"makeit/internal/catalog/allowlist"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 )
-
-// Allow lists the catalog paths: directories end with a slash.
-var Allow = []string{
-	".claude-plugin/", "plugins/", "templates/", "ci/",
-	"settings.baseline.json", "project.settings.example.json", "makeit.json",
-}
 
 // Entry is one manifest line.
 type Entry struct {
@@ -39,15 +34,6 @@ type Manifest struct {
 	Files         []Entry `json:"files"`
 }
 
-func allowed(p string) bool {
-	for _, a := range Allow {
-		if p == a || (strings.HasSuffix(a, "/") && strings.HasPrefix(p, a)) {
-			return true
-		}
-	}
-	return false
-}
-
 // List returns the allow-listed files git tracks or would track (gitignore applies).
 func List(repo string) ([]string, error) {
 	out, err := exec.Command("git", "-C", repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard").Output()
@@ -57,7 +43,7 @@ func List(repo string) ([]string, error) {
 	var files []string
 	seen := map[string]bool{}
 	for _, p := range strings.Split(string(out), "\x00") {
-		if p == "" || seen[p] || !allowed(p) {
+		if p == "" || seen[p] || !allowlist.Allowed(p) {
 			continue
 		}
 		seen[p] = true

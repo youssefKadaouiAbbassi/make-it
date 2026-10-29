@@ -61,11 +61,11 @@ func TestManifestRules(t *testing.T) {
 
 func TestSyncFreshUpdateAndInPlace(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "catalog")
-	n, err := Sync(dir)
+	n, err := SyncTree(dir, embeddedTree(t))
 	if err != nil || n == 0 {
 		t.Fatalf("sync: %d %v", n, err)
 	}
-	if ok, _ := UpToDate(dir); !ok {
+	if ok, _ := upToDate(t, dir); !ok {
 		t.Fatal("not up to date after sync")
 	}
 	if err := Valid(dir); err != nil {
@@ -81,10 +81,10 @@ func TestSyncFreshUpdateAndInPlace(t *testing.T) {
 	stale := filepath.Join(dir, "templates", "gone.md")
 	_ = os.WriteFile(stale, []byte("x"), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, MarkerName), []byte(`{"digest":"old","files":["templates/gone.md"]}`), 0o644)
-	if ok, _ := UpToDate(dir); ok {
+	if ok, _ := upToDate(t, dir); ok {
 		t.Fatal("old marker read as current")
 	}
-	if _, err := Sync(dir); err != nil {
+	if _, err := SyncTree(dir, embeddedTree(t)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
@@ -96,7 +96,7 @@ func TestSyncFreshUpdateAndInPlace(t *testing.T) {
 		}
 	}
 	// In-place fallback: only files the previous marker listed are removed.
-	m, _ := EmbeddedManifest()
+	m := embeddedTree(t)
 	mine := filepath.Join(dir, "mine.txt")
 	_ = os.WriteFile(mine, []byte("keep"), 0o644)
 	_ = os.WriteFile(stale, []byte("x"), 0o644)
@@ -112,7 +112,19 @@ func TestSyncFreshUpdateAndInPlace(t *testing.T) {
 	if _, err := os.Stat(mine); err != nil {
 		t.Fatal("in place removed a file it never wrote")
 	}
-	if ok, _ := UpToDate(dir); !ok {
+	if ok, _ := upToDate(t, dir); !ok {
 		t.Fatal("in place not up to date")
 	}
 }
+
+func embeddedTree(t *testing.T) *Tree {
+	t.Helper()
+	tr, err := EmbeddedTree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tr
+}
+
+// upToDate is the old UpToDate(dir) against the embedded catalog.
+func upToDate(t *testing.T, dir string) (bool, error) { return UpToDateTree(dir, embeddedTree(t)), nil }

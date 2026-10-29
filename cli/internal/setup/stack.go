@@ -37,12 +37,20 @@ func (e *env) stackSteps() []plan.Step {
 				if e.command == "update" && !listed && rec != nil {
 					return true, nil
 				}
-				up, err := catalog.UpToDate(dir)
-				e.catalogChanges = err == nil && !up
-				return up, err
+				t, err := catalog.EmbeddedTree()
+				if err != nil {
+					return false, err
+				}
+				up := catalog.UpToDateTree(dir, t)
+				e.catalogChanges = !up
+				return up, nil
 			},
 			Run: func(context.Context) (string, error) {
-				n, err := catalog.Sync(dir)
+				t, err := catalog.EmbeddedTree()
+				if err != nil {
+					return "", err
+				}
+				n, err := catalog.SyncTree(dir, t)
 				if err != nil {
 					return "", err
 				}

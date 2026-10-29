@@ -129,15 +129,6 @@ func ReadMarker(dir string) Marker {
 	return m
 }
 
-// UpToDate reports whether dir holds exactly the embedded catalog.
-func UpToDate(dir string) (bool, error) {
-	m, err := EmbeddedManifest()
-	if err != nil {
-		return false, err
-	}
-	return ReadMarker(dir).Digest == Digest(m), nil
-}
-
 func perm(mode string) fs.FileMode {
 	if mode == "0755" {
 		return 0o755
@@ -145,9 +136,9 @@ func perm(mode string) fs.FileMode {
 	return 0o644
 }
 
-func writeTree(dir string, m Manifest) error {
-	for _, e := range m.Files {
-		b, err := Embedded.ReadFile(e.Path)
+func writeTree(dir string, t *Tree) error {
+	for _, e := range t.Manifest.Files {
+		b, err := t.ReadFile(e.Path)
 		if err != nil {
 			return err
 		}
@@ -162,7 +153,7 @@ func writeTree(dir string, m Manifest) error {
 			return err
 		}
 	}
-	return writeMarker(dir, m)
+	return writeMarker(dir, t.Manifest)
 }
 
 func writeMarker(dir string, m Manifest) error {
@@ -177,43 +168,8 @@ func writeMarker(dir string, m Manifest) error {
 	return fsx.WriteAtomic(filepath.Join(dir, MarkerName), append(b, '\n'), 0o644)
 }
 
-// Sync writes the embedded catalog to dir. It builds the new tree beside dir and swaps it in,
-// so a Claude Code session never loads a half-written catalog. Where the swap fails (Windows,
-// while a hook holds a file open), it falls back to replacing changed files one by one and
-// removing only files the previous sync wrote; the marker goes last either way.
-func Sync(dir string) (int, error) {
-	m, err := EmbeddedManifest()
-	if err != nil {
-		return 0, err
-	}
-	next := dir + ".next"
-	old := dir + ".old"
-	_ = os.RemoveAll(next)
-	_ = os.RemoveAll(old)
-	if err := writeTree(next, m); err != nil {
-		_ = os.RemoveAll(next)
-		return 0, err
-	}
-	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
-		if err := os.Rename(next, dir); err != nil {
-			return 0, err
-		}
-		return len(m.Files), nil
-	}
-	if err := os.Rename(dir, old); err == nil {
-		if err := os.Rename(next, dir); err != nil {
-			_ = os.Rename(old, dir)
-			_ = os.RemoveAll(next)
-			return 0, err
-		}
-		_ = os.RemoveAll(old)
-		return len(m.Files), nil
-	}
-	_ = os.RemoveAll(next)
-	return syncInPlace(dir, m)
-}
-
-func syncInPlace(dir string, m Manifest) (int, error) {
+func syncInPlace(dir string, t *Tree) (int, error) {
+	m := t.Manifest
 	prev := ReadMarker(dir)
 	want := map[string]bool{}
 	n := 0
@@ -223,7 +179,7 @@ func syncInPlace(dir string, m Manifest) (int, error) {
 		if h, _ := fsx.FileSha256(dst); h == e.Sha256 {
 			continue
 		}
-		b, err := Embedded.ReadFile(e.Path)
+		b, err := t.ReadFile(e.Path)
 		if err != nil {
 			return n, err
 		}
