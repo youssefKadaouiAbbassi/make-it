@@ -37,8 +37,13 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - A bug-fix test must fail with the fix reverted and pass with it.
 - Read the diff, not a subagent's report, before calling work complete.
 - Verify a binary by running it, not by locating it.
-- For a runnable app, start it and exercise the change before calling a
-  feature done. If nothing can start it, say manual verification is required.
+- Testing a change by running it is part of the task, not an extra step: never ask whether to
+  test, and never end by offering to. Before you report work done, start what you changed and use
+  it the way a person would: a web UI in the browser tools (chrome-devtools) at desktop and phone
+  width, reading the screenshots and the console; a mobile app on an installed emulator or
+  simulator (`flutter run`, `adb`), with screenshots; a CLI or API by calling it. Ask first only
+  when the test would write to production or shared data, send real messages, or cost money. If
+  nothing here can run it, say so and say what the owner should check.
 
 ## Testing
 
