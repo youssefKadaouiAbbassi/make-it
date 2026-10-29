@@ -68,6 +68,7 @@ func TestPick(t *testing.T) {
 		{"--to older allowed", "1.2.0", "", "1.0.0", true, Pick{To: "1.0.0"}, nil},
 		{"--to the same", "1.2.0", "", "1.1.0", false, Pick{}, nil},
 		{"--to the skip", "1.2.0", "1.2.0", "1.2.0", false, Pick{To: "1.2.0"}, nil},
+		{"--to with the tag's v", "1.2.0", "", "v1.2.0", false, Pick{To: "1.2.0"}, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -84,7 +85,7 @@ func TestPick(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, _ := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
-	res, err := e.Update(context.Background(), "1.2.0", false)
+	res, err := e.Update(context.Background(), "1.2.0")
 	if err != nil || res != (Result{From: "1.1.0", To: "1.2.0", BinPath: e.Exe}) {
 		t.Fatalf("%+v %v", res, err)
 	}
@@ -127,7 +128,7 @@ func TestUpdateKeylessNothingSwapped(t *testing.T) {
 	e, _ := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
 	e.Run = answers("1.2.0", `[]`)
 	before := read(t, e.ReceiptPath())
-	if _, err := e.Update(context.Background(), "1.2.0", false); err == nil || !strings.Contains(err.Error(), "keys") {
+	if _, err := e.Update(context.Background(), "1.2.0"); err == nil || !strings.Contains(err.Error(), "keys") {
 		t.Fatalf("err %v, want one about keys", err)
 	}
 	unchanged(t, e, before)
@@ -153,7 +154,7 @@ func TestUpdateFailuresChangeNothing(t *testing.T) {
 				e.Run = c.run
 			}
 			before := read(t, e.ReceiptPath())
-			if _, err := e.Update(context.Background(), "1.2.0", false); err == nil {
+			if _, err := e.Update(context.Background(), "1.2.0"); err == nil {
 				t.Fatal("updated")
 			}
 			unchanged(t, e, before)
@@ -172,7 +173,7 @@ func TestUpdateReceiptBehind(t *testing.T) {
 	if err != nil || p.To != "1.2.0" {
 		t.Fatalf("pick %+v %v", p, err)
 	}
-	if _, err := e.Update(context.Background(), p.To, false); err != nil {
+	if _, err := e.Update(context.Background(), p.To); err != nil {
 		t.Fatal(err)
 	}
 	if got := receiptOf(t, e); got.Version != "1.2.0" || *got.Previous != "1.1.0" {
@@ -193,7 +194,7 @@ func TestUpdateLockHeld(t *testing.T) {
 	}
 	defer lock.Release()
 	before := read(t, e.ReceiptPath())
-	if _, err := e.Update(context.Background(), "1.2.0", false); err == nil || !strings.Contains(err.Error(), "another makeit run holds") {
+	if _, err := e.Update(context.Background(), "1.2.0"); err == nil || !strings.Contains(err.Error(), "another makeit run holds") {
 		t.Fatalf("err %v", err)
 	}
 	unchanged(t, e, before)
@@ -275,20 +276,53 @@ func TestClean(t *testing.T) {
 
 func TestSkipCleared(t *testing.T) {
 	k := minisigntest.NewKey()
-	for _, c := range []struct {
-		v        string
-		explicit bool
-	}{{"1.3.0", false}, {"1.2.0", true}} {
+	for _, c := range []struct{ v string }{{"1.3.0"}, {"1.2.0"}} {
 		e, _ := installed(t, k, releaseFiles(k, c.v, "", []byte("new "+c.v)))
 		e.Run = answers(c.v, `["ABC"]`)
 		r := ours(e)
 		r.Skipped = "1.2.0"
 		writeReceipt(t, e, r)
-		if _, err := e.Update(context.Background(), c.v, c.explicit); err != nil {
+		if _, err := e.Update(context.Background(), c.v); err != nil {
 			t.Fatal(err)
 		}
 		if got := receiptOf(t, e); got.Skipped != "" {
 			t.Errorf("%s: skip %q stayed", c.v, got.Skipped)
 		}
 	}
+}
+
+// The delegate's rule is that `--to V` clears the skip of V: a --to below the skip leaves it, so
+// the release the user rolled back from does not come back with the next update.
+func TestSkipKeptBelow(t *testing.T) {
+	k := minisigntest.NewKey()
+	e, _ := installed(t, k, releaseFiles(k, "1.1.5", "", []byte("new 1.1.5")))
+	e.Run = answers("1.1.5", `["ABC"]`)
+	r := ours(e)
+	r.Skipped = "1.3.0"
+	writeReceipt(t, e, r)
+	if _, err := e.Update(context.Background(), "1.1.5"); err != nil {
+		t.Fatal(err)
+	}
+	if got := receiptOf(t, e).Skipped; got != "1.3.0" {
+		t.Errorf("skip %q after --to 1.1.5, want 1.3.0 kept", got)
+	}
+}
+
+// An interrupt that arrives while the new binary is checked stops the update before anything is
+// kept or swapped.
+func TestUpdateCancelledBeforeSwap(t *testing.T) {
+	k := minisigntest.NewKey()
+	e, _ := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	check := answers("1.2.0", `["ABC"]`)
+	e.Run = func(c context.Context, cmd execx.Cmd) (execx.Result, error) {
+		cancel()
+		return check(c, cmd)
+	}
+	before := read(t, e.ReceiptPath())
+	if _, err := e.Update(ctx, "1.2.0"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err %v, want context.Canceled", err)
+	}
+	unchanged(t, e, before)
 }

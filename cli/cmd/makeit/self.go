@@ -174,7 +174,7 @@ func selfUpdate(ctx context.Context, e selfupdate.Env, p cli.Parsed, mode plan.M
 	if stop != "" {
 		return asked(r, stop, need, fmt.Sprintf("would update makeit %s → %s", e.Version, pick.To))
 	}
-	res, err := e.Update(ctx, pick.To, to != "")
+	res, err := e.Update(ctx, pick.To)
 	if err != nil {
 		return r.stop("failed", err)
 	}

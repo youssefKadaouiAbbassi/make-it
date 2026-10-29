@@ -17,6 +17,7 @@ import (
 	"makeit/internal/execx"
 	"makeit/internal/minisign/minisigntest"
 	"makeit/internal/paths"
+	"makeit/internal/plan"
 	"makeit/internal/selfupdate"
 	"makeit/internal/selfupdate/releasetest"
 	"makeit/internal/setup"
@@ -241,4 +242,51 @@ func TestWaitExit(t *testing.T) {
 			t.Errorf("code %d, cancelled %v; want 130 after a cancel", code, cancelled)
 		}
 	})
+}
+
+// The reviewer's probe: an interrupt while the new binary is checked ends update there, with no
+// swap, no child and no stack run.
+func TestUpdateInterruptedNoChild(t *testing.T) {
+	k := minisigntest.NewKey()
+	e, _ := scriptMachine(t, k, k)
+	noStackRun(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.Run = func(context.Context, execx.Cmd) (execx.Result, error) {
+		cancel()
+		return execx.Result{Stdout: `{"version":"1.2.0","target":"` + buildinfo.Target() + `","repo":"o/makeit","keys":["X"]}`}, nil
+	}
+	useSelfEnv(t, e)
+	var out, errb strings.Builder
+	code := run(ctx, []string{"update", "--yes"}, &out, &errb, noGather(t))
+	if code == 0 || out.Len() > 0 || content(t, e.Exe) != "makeit 1.1.0" {
+		t.Errorf("exit %d, stdout %q, stderr %q, binary %q", code, out.String(), errb.String(), content(t, e.Exe))
+	}
+}
+
+// Review Focus 5 without help from the stack: with the stack up to date and a newer makeit, update
+// without --yes still exits 2 and says how to apply.
+func TestUpdateConsentWhenOnlyMakeitIsBehind(t *testing.T) {
+	k := minisigntest.NewKey()
+	e, srv := scriptMachine(t, k, k)
+	saved := stackUpdate
+	stackUpdate = func(context.Context, setup.Env, plan.Mode, func([]plan.Outcome) (bool, error), []string) (setup.Report, error) {
+		return setup.Report{}, nil // nothing to do
+	}
+	t.Cleanup(func() { stackUpdate = saved })
+	code, _, errOut := call(t, noGather(t), "update")
+	if code != 2 || !strings.Contains(errOut, "would update makeit 1.1.0 → 1.2.0 first") || !strings.Contains(errOut, "Run again with --yes") {
+		t.Errorf("exit %d, stderr %q", code, errOut)
+	}
+	if code, _, _ := call(t, noGather(t), "update", "--json"); code != 2 {
+		t.Errorf("--json: exit %d, want 2", code)
+	}
+	if content(t, e.Exe) != "makeit 1.1.0" {
+		t.Error("swapped without consent")
+	}
+	for _, r := range srv.Requests() {
+		if !strings.HasPrefix(r, "HEAD ") {
+			t.Errorf("downloaded without consent: %s", r)
+		}
+	}
 }

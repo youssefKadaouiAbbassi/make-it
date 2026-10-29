@@ -33,6 +33,8 @@ type Pick struct {
 // this binary and than the receipt's skip. It compares with the running version, never the
 // receipt's, which a crash after a swap can leave behind.
 func (e Env) Pick(ctx context.Context, rec *state.Receipt, to string, allowDowngrade bool) (Pick, error) {
+	// Tags are vV and people type them that way; versions, file names and URLs use V.
+	to = strings.TrimPrefix(to, "v")
 	if to != "" {
 		n, err := claudecli.Compare(to, e.Version)
 		switch {
@@ -71,9 +73,10 @@ type Result struct {
 }
 
 // Update moves this binary to release v, which the caller picked: steps 2 and 4 to 10 of
-// cli/SELF-UPDATE.md. explicit is `--to`, which clears a skip. Nothing changes unless the new binary
-// is verified and checked; the receipt is written after the swap.
-func (e Env) Update(ctx context.Context, v string, explicit bool) (Result, error) {
+// cli/SELF-UPDATE.md. Nothing changes unless the new binary is verified and checked; the receipt
+// is written after the swap. A skip goes once v reaches it: the newer release, or `--to` the skipped
+// version itself.
+func (e Env) Update(ctx context.Context, v string) (Result, error) {
 	// time.Now, not e.Now: the lock's staleness is measured against the real clock.
 	lock, err := fsx.Acquire(filepath.Join(e.Roots.Stack, "lock"), time.Now())
 	if err != nil {
@@ -99,7 +102,7 @@ func (e Env) Update(ctx context.Context, v string, explicit bool) (Result, error
 	}
 	from := e.Version
 	rec.Version, rec.Target, rec.Previous = v, e.Target, &from
-	if n, err := claudecli.Compare(v, rec.Skipped); explicit || rec.Skipped != "" && err == nil && n > 0 {
+	if n, err := claudecli.Compare(v, rec.Skipped); rec.Skipped != "" && err == nil && n >= 0 {
 		rec.Skipped = ""
 	}
 	if err := state.SaveReceipt(e.ReceiptPath(), rec); err != nil {
@@ -112,6 +115,10 @@ func (e Env) Update(ctx context.Context, v string, explicit bool) (Result, error
 // tmp is removed and the binary is as it was.
 func (e Env) replace(ctx context.Context, tmp, v string) error {
 	err := e.check(ctx, tmp, v)
+	if err == nil {
+		// An interrupt during the check stops here, before anything is kept or swapped.
+		err = ctx.Err()
+	}
 	if err == nil {
 		err = keep(filepath.Join(e.Roots.Stack, "self"), e.Exe, e.Version, exeSuffix(e.Target) != "")
 	}

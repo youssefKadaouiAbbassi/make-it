@@ -17,7 +17,7 @@ func updated(t *testing.T) Env {
 	t.Helper()
 	k := minisigntest.NewKey()
 	e, _ := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
-	if _, err := e.Update(context.Background(), "1.2.0", false); err != nil {
+	if _, err := e.Update(context.Background(), "1.2.0"); err != nil {
 		t.Fatal(err)
 	}
 	e.Version, e.Run = "1.2.0", answers("1.1.0", `["ABC"]`)

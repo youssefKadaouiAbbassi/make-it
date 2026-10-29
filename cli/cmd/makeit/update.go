@@ -19,12 +19,15 @@ import (
 	"makeit/internal/ui"
 )
 
+// stackUpdate is the stack's update run; tests replace it to reach states the fakes cannot.
+var stackUpdate = setup.Update
+
 // releaseBase is where the newer-release check goes; tests point it elsewhere.
 var releaseBase = "https://github.com"
 
 func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {
 	var moved *selfMove
-	notice := ""
+	notice, needConsent := "", false
 	if from := os.Getenv("MAKEIT_REEXEC"); from != "" {
 		// This is the new makeit, run by the one it replaced: no second check for a release.
 		moved = &selfMove{From: from, To: buildinfo.Version}
@@ -33,11 +36,11 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 		if o.exited {
 			return o.code
 		}
-		notice = o.notice
+		notice, needConsent = o.notice, o.needConsent
 	}
-	return runModifying(ctx, p, stdout, stderr, modifying{name: "update", question: "Apply this plan?", yesFirst: true, self: moved,
+	code := runModifying(ctx, p, stdout, stderr, modifying{name: "update", question: "Apply this plan?", yesFirst: true, self: moved,
 		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
-			return setup.Update(ctx, e, mode, confirm, args)
+			return stackUpdate(ctx, e, mode, confirm, args)
 		},
 		notice: func(context.Context) string { return notice },
 		after: func(w io.Writer, rep setup.Report) {
@@ -45,6 +48,14 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 				fmt.Fprintln(w, "restart Claude Code or run /reload-plugins to load the changes")
 			}
 		}})
+	// A newer makeit that waits for consent needs it even when the stack has nothing to do.
+	if code == 0 && needConsent {
+		if !p.Bool["json"] {
+			fmt.Fprintln(stderr, plan.ConsentMessage)
+		}
+		return 2
+	}
+	return code
 }
 
 func runUninstall(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {
@@ -77,6 +88,8 @@ type selfOutcome struct {
 	// exited: the new binary ran the update, and code is its exit code.
 	code   int
 	exited bool
+	// needConsent: the swap waits for --yes or a terminal.
+	needConsent bool
 }
 
 // selfStep is update's first step (cli/SELF-UPDATE.md, update). With a receipt for this binary and
@@ -111,17 +124,24 @@ func selfStep(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 	asJSON := p.Bool["json"]
 	interactive := isTTY(os.Stdin) && isTTY(stderr) && !p.Bool["no-input"] && !asJSON
 	u := ui.New(os.Stdin, stderr, interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
-	stop, _, err := consent(plan.Decide(interactive, p.Bool["yes"], p.Bool["dry-run"]), u,
+	stop, need, err := consent(plan.Decide(interactive, p.Bool["yes"], p.Bool["dry-run"]), u,
 		fmt.Sprintf("Update makeit %s → %s first?", e.Version, pick.To))
 	switch {
 	case err != nil:
 		return selfOutcome{notice: fmt.Sprintf("could not update makeit to %s: %v; continuing with %s", pick.To, err, e.Version)}
 	case stop == "would":
-		return selfOutcome{notice: fmt.Sprintf("would update makeit %s → %s first", e.Version, pick.To)}
+		return selfOutcome{notice: fmt.Sprintf("would update makeit %s → %s first", e.Version, pick.To), needConsent: need}
 	case stop == "declined":
 		return selfOutcome{notice: fmt.Sprintf("makeit %s is available (this is %s)", pick.To, e.Version)}
 	}
-	res, err := e.Update(ctx, pick.To, false)
+	res, err := e.Update(ctx, pick.To)
+	if ctx.Err() != nil {
+		// Interrupted: neither the new binary nor this one goes on with the update.
+		if err == nil {
+			fmt.Fprintf(stderr, "%s: makeit %s is in place, but the update was interrupted before it ran\n", prog, res.To)
+		}
+		return selfOutcome{code: 1, exited: true}
+	}
 	if err != nil {
 		return selfOutcome{notice: fmt.Sprintf("could not update makeit to %s: %v; continuing with %s", pick.To, err, e.Version)}
 	}
