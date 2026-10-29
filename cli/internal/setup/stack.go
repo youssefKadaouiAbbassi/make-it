@@ -39,6 +39,7 @@ func (e *env) stackSteps() []plan.Step {
 				if err != nil {
 					return "", err
 				}
+				e.synced = true
 				e.st.Catalog = state.Catalog{Kind: "embedded", Location: e.Roots.Portable(dir), MarketplaceName: e.req.Marketplace}
 				return fmt.Sprintf("%d files", n), nil
 			}},
@@ -50,7 +51,18 @@ func (e *env) stackSteps() []plan.Step {
 			}},
 		{ID: "marketplace", Title: "Add the " + e.req.Marketplace + " marketplace from " + dir,
 			Command: []string{"claude", "plugin", "marketplace", "add", dir, "--scope", "user", "--json"},
-			Already: func(ctx context.Context) (bool, error) { return e.marketplaceListed(ctx, e.req.Marketplace) },
+			Already: func(ctx context.Context) (bool, error) {
+				listed, err := e.marketplaceListed(ctx, e.req.Marketplace)
+				if err != nil || listed {
+					return listed, err
+				}
+				// update does not put back a marketplace makeit added and the user removed.
+				if rec := e.st.Marketplaces[e.req.Marketplace]; e.command == "update" && rec != nil && rec.AddedBy == "makeit" {
+					e.keep("marketplace "+e.req.Marketplace, removedByYou)
+					return true, nil
+				}
+				return false, nil
+			},
 			Run: func(ctx context.Context) (string, error) {
 				if err := e.act(e.claude.AddMarketplace(ctx, dir)); err != nil {
 					return "", err
@@ -63,8 +75,21 @@ func (e *env) stackSteps() []plan.Step {
 			Command: []string{"claude", "plugin", "install", e.req.Bundle, "--scope", "user", "--json"},
 			Already: func(ctx context.Context) (bool, error) {
 				p, err := e.plugin(ctx, e.req.Bundle)
-				if err != nil || p == nil || !p.Enabled {
+				if err != nil {
 					return false, err
+				}
+				// update does not put back a bundle makeit installed and the user removed, and leaves
+				// a disabled one disabled.
+				if rec := e.st.Plugins[e.req.Bundle]; e.command == "update" && p == nil && rec != nil && rec.InstalledBy == "makeit" {
+					e.keep(e.req.Bundle, removedByYou)
+					return true, nil
+				}
+				if e.command == "update" && p != nil && !p.Enabled {
+					e.keep(e.req.Bundle, "disabled by you")
+					return true, nil
+				}
+				if p == nil || !p.Enabled {
+					return false, nil
 				}
 				e.st.Plugins = initMap(e.st.Plugins)
 				if e.st.Plugins[e.req.Bundle] == nil {

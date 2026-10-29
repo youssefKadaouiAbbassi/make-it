@@ -27,6 +27,7 @@ func (e *env) settingsStep() plan.Step {
 	return plan.Step{ID: "settings", Title: "Merge the stack's settings into " + path, Detail: detail,
 		Already: func(context.Context) (bool, error) {
 			res, _, err := e.mergeSettings(path)
+			e.keepHeld(res.Changes)
 			return err == nil && !res.Changed() && len(e.st.Settings.Paths) > 0, err
 		},
 		Run: func(ctx context.Context) (string, error) {
@@ -35,6 +36,7 @@ func (e *env) settingsStep() plan.Step {
 			if err != nil {
 				return "", err
 			}
+			e.keepHeld(res.Changes)
 			record := func() {
 				e.st.Settings.Paths = res.State
 				e.st.Settings.File = e.Roots.Portable(path)
@@ -122,6 +124,15 @@ func (e *env) restore(path string, old []byte) error {
 		return os.Remove(dst)
 	}
 	return fsx.WriteAtomic(dst, old, perm)
+}
+
+// keepHeld reports each path where the merge kept the user's value over the stack's.
+func (e *env) keepHeld(changes []settings.Change) {
+	for _, c := range changes {
+		if c.Action == settings.Held || c.Action == settings.KeptTheirs {
+			e.keep(c.Path, "yours (held)")
+		}
+	}
 }
 
 // diff renders merge changes one line per JSON pointer, secrets hidden.

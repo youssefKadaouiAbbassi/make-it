@@ -48,6 +48,58 @@ type env struct {
 	claude *claudecli.CLI
 	// skipped are the optional prerequisites left for the user to install by hand.
 	skipped []platform.Prereq
+	// command is the run's command: setup, update or uninstall.
+	command string
+	// kept and hints are what the run left alone and how adopted plugins update, for the report.
+	kept  []Kept
+	hints []Hint
+	// synced is set when the catalog step wrote a new catalog in this run.
+	synced bool
+}
+
+// removedByYou is the reason update gives for not putting back what the user removed.
+const removedByYou = "removed by you; makeit setup puts it back"
+
+// keep reports item as left alone, once per item.
+func (e *env) keep(item, reason string) {
+	for _, k := range e.kept {
+		if k.Item == item {
+			return
+		}
+	}
+	e.kept = append(e.kept, Kept{Item: item, Reason: reason})
+}
+
+// errSymlink: a path is a symlink, so whoever linked it owns it and makeit does not remove it.
+var errSymlink = errors.New("is a symlink, so it is yours")
+
+// remove deletes path after keeping its pre-image in the run's generation, and records the
+// removal there. A symlink is refused with errSymlink.
+func (e *env) remove(id, path string) error {
+	if e.gen == nil {
+		return errors.New("setup: a dry run removes nothing")
+	}
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		return fmt.Errorf("%s %w", path, errSymlink)
+	}
+	old, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	op := state.Op{ID: id, Kind: "remove", Path: e.Roots.Portable(path)}
+	if op.PreImage, err = e.gen.PreImage(old); err != nil {
+		return err
+	}
+	pre := fsx.Sha256(old)
+	op.PreSha256 = &pre
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	return e.gen.Record(op)
 }
 
 // prompting is true when sudo may ask for a password on the terminal.
