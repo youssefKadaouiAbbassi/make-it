@@ -56,19 +56,12 @@ func (e *env) claudeStep() plan.Step {
 			if !ok {
 				return "", errors.New("Claude Code is still missing or below the floor after the install; open a new terminal and run makeit doctor")
 			}
-			e.st.Prereqs = initPrereqs(e.st.Prereqs)
+			e.st.Prereqs = initMap(e.st.Prereqs)
 			e.st.Prereqs["claude-code"] = &state.Prereq{InstalledBy: "makeit", Route: route}
 			e.st.ClaudeCode.VersionSeen = v
 			return "Claude Code " + v + " (" + route + ")", nil
 		},
 	}
-}
-
-func initPrereqs(m map[string]*state.Prereq) map[string]*state.Prereq {
-	if m == nil {
-		m = map[string]*state.Prereq{}
-	}
-	return m
 }
 
 // findClaude asks the claude PATH runs first (or the first one found) for its version and sets
