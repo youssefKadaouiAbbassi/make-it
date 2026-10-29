@@ -57,6 +57,15 @@ func ReadMarketplace(path string) (map[string]Entry, error) {
 	if !found {
 		return nil, fmt.Errorf("%s does not exist", path)
 	}
+	entries, err := ParseMarketplace(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return entries, nil
+}
+
+// ParseMarketplace parses a marketplace.json: plugin name to entry.
+func ParseMarketplace(data []byte) (map[string]Entry, error) {
 	var doc struct {
 		Plugins []struct {
 			Name   string `json:"name"`
@@ -64,7 +73,7 @@ func ReadMarketplace(path string) (map[string]Entry, error) {
 		} `json:"plugins"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	entries := map[string]Entry{}
 	for _, p := range doc.Plugins {

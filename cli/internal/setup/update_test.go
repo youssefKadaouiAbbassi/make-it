@@ -576,3 +576,44 @@ func TestUpdateLeavesRemovedAdoptedMarketplace(t *testing.T) {
 		t.Errorf("update wrote a catalog for a marketplace the user removed: %v", err)
 	}
 }
+
+// Final review I2: a new binary moves a pin. The plan shown for consent lists the plugin update
+// the apply then runs, so its pins come from the binary's catalog, not the old copy on disk.
+func TestUpdatePlanShowsPinMove(t *testing.T) {
+	m := installed(t)
+	const newPin, oldPin = "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b", "1111111111111111111111111111111111111111"
+	mp := filepath.Join(m.env.Roots.Stack, "catalog", ".claude-plugin", "marketplace.json")
+	b, err := os.ReadFile(mp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, mp, strings.Replace(string(b), newPin, oldPin, 1))
+	writeFile(t, filepath.Join(m.env.Roots.Stack, "catalog", ".makeit-catalog.json"), `{"digest":"old"}`)
+	statePath := filepath.Join(m.env.Roots.Stack, "state.json")
+	sb, err := os.ReadFile(statePath)
+	if err != nil || !strings.Contains(string(sb), newPin) {
+		t.Fatalf("state does not record superpowers' pin: %v", err)
+	}
+	writeFile(t, statePath, strings.ReplaceAll(string(sb), newPin, oldPin))
+	inner := m.env.Run
+	m.env.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		cmd := strings.Join(c.Argv, " ")
+		switch {
+		case strings.HasPrefix(cmd, "/usr/bin/claude plugin update "):
+			return execx.Result{Stdout: `{"command":"update","outcome":"ok","updateOutcome":"updated"}`}, nil
+		case strings.HasPrefix(cmd, "/usr/bin/claude plugin marketplace update "):
+			return execx.Result{Stdout: `{"command":"marketplace-update","outcome":"ok"}`}, nil
+		}
+		return inner(ctx, c)
+	}
+	var shown []plan.Outcome
+	confirm := func(outs []plan.Outcome) (bool, error) { shown = outs; return true, nil }
+	if _, err := Update(context.Background(), m.env, plan.Prompt, confirm, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range shown {
+		if o.ID == "plugin.superpowers@makeit" && o.Status != plan.WouldChange {
+			t.Errorf("the plan shows superpowers@makeit as %s; its pin moved", o.Status)
+		}
+	}
+}

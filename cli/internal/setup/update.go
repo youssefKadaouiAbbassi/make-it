@@ -154,6 +154,19 @@ func (e *env) gather(ctx context.Context) (pluginrule.Inputs, error) {
 		if err != nil {
 			return in, err
 		}
+		// The marketplace makeit added at its catalog copy gets this binary's pins: the copy on disk
+		// is the old catalog until the catalog step syncs it, and the plan must show what the run does.
+		own, copyDir := e.req.Marketplace, filepath.Join(e.Roots.Stack, "catalog")
+		if rec := e.st.Marketplaces[own]; rec != nil && rec.AddedBy == "makeit" &&
+			slices.ContainsFunc(in.Markets, func(m claudecli.Marketplace) bool { return m.Name == own && m.Path == copyDir }) {
+			raw, err := e.Catalog.ReadFile(".claude-plugin/marketplace.json")
+			if err != nil {
+				return in, fmt.Errorf("the catalog's marketplace.json: %w", err)
+			}
+			if in.Entries[own], err = pluginrule.ParseMarketplace(raw); err != nil {
+				return in, fmt.Errorf("the catalog's marketplace.json: %w", err)
+			}
+		}
 		e.inputs = &in
 	}
 	return *e.inputs, nil
