@@ -111,10 +111,14 @@ func (e *env) validate(ctx context.Context, data []byte, what string) error {
 
 // restore puts back the bytes the file had before the write; old is nil when there was none.
 func (e *env) restore(path string, old []byte) error {
-	if old == nil {
-		return os.Remove(path)
+	dst, perm, err := landing(path, 0o600)
+	if err != nil {
+		return err
 	}
-	return fsx.WriteAtomic(path, old, 0o600)
+	if old == nil {
+		return os.Remove(dst)
+	}
+	return fsx.WriteAtomic(dst, old, perm)
 }
 
 // diff renders merge changes one line per JSON pointer, secrets hidden.

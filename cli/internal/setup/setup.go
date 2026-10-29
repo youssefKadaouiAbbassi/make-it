@@ -6,7 +6,10 @@ package setup
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -65,7 +68,11 @@ func (e *env) write(id, path string, data []byte, perm fs.FileMode) error {
 	if e.gen == nil {
 		return errors.New("setup: a dry run writes nothing")
 	}
-	old, found, err := fsx.ReadOptional(path)
+	dst, perm, err := landing(path, perm)
+	if err != nil {
+		return err
+	}
+	old, found, err := fsx.ReadOptional(dst)
 	if err != nil {
 		return err
 	}
@@ -77,10 +84,34 @@ func (e *env) write(id, path string, data []byte, perm fs.FileMode) error {
 		pre := fsx.Sha256(old)
 		op.PreSha256 = &pre
 	}
-	if err := fsx.WriteAtomic(path, data, perm); err != nil {
+	if err := fsx.WriteAtomic(dst, data, perm); err != nil {
 		return err
 	}
 	post := fsx.Sha256(data)
 	op.PostSha256 = &post
 	return e.gen.Record(op)
+}
+
+// landing is where a write to path lands, and with which mode. A symlink (stow and home-manager
+// link these files) is written through, so the link survives; a symlink to a missing file is
+// refused. An existing file keeps its mode; perm applies to a new one.
+func landing(path string, perm fs.FileMode) (string, fs.FileMode, error) {
+	fi, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return path, perm, nil
+	}
+	if err != nil {
+		return "", 0, err
+	}
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		target, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return "", 0, fmt.Errorf("%s is a symlink to a missing file; fix the link first: %w", path, err)
+		}
+		if fi, err = os.Stat(target); err != nil {
+			return "", 0, err
+		}
+		path = target
+	}
+	return path, fi.Mode().Perm(), nil
 }

@@ -170,3 +170,62 @@ func TestWriteRefusesWithoutGeneration(t *testing.T) {
 		t.Error("a write without a generation (a dry run) succeeded")
 	}
 }
+
+// A settings.json that is a symlink (stow, home-manager) stays one: the write lands in its
+// target, whose mode is kept, and the pre-image is the target's content.
+func TestWriteFollowsSymlink(t *testing.T) {
+	e, _ := newEnv(t)
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
+	target := filepath.Join(t.TempDir(), "dotfiles-settings.json")
+	if err := os.WriteFile(target, []byte(`{"a":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(e.Roots.Claude, "settings.json")
+	if err := os.MkdirAll(e.Roots.Claude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.write("settings", link, []byte(`{"a":2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the symlink was replaced by a regular file (%v)", err)
+	}
+	if b, _ := os.ReadFile(target); string(b) != `{"a":2}` {
+		t.Errorf("target %q, want the new content", b)
+	}
+	if fi, _ := os.Stat(target); fi.Mode().Perm() != 0o644 {
+		t.Errorf("target mode %v, want 0644 kept", fi.Mode().Perm())
+	}
+	if b, _ := os.ReadFile(filepath.Join(g.Dir, g.Manifest.Ops[0].PreImage)); string(b) != `{"a":1}` {
+		t.Errorf("pre-image %q", b)
+	}
+}
+
+func TestWriteRefusesDanglingSymlink(t *testing.T) {
+	e, _ := newEnv(t)
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
+	link := filepath.Join(e.Roots.Claude, "CLAUDE.md")
+	if err := os.MkdirAll(e.Roots.Claude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "gone.md"), link); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.write("global.CLAUDE.md", link, []byte("# x\n"), 0o644); err == nil {
+		t.Error("wrote through a symlink to a missing file")
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Error("the dangling symlink was replaced")
+	}
+}

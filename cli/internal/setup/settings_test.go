@@ -141,3 +141,26 @@ func TestSettingsDryRunHidesSecret(t *testing.T) {
 		t.Errorf("detail %q", d)
 	}
 }
+
+func TestSettingsRestoresThroughSymlink(t *testing.T) {
+	e, path := settingsEnv(t, `{"env":{"X":"1"}}`, "", func(n int) bool { return n == 2 })
+	target := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(target, []byte(`{"model":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.settingsStep().Run(context.Background()); err == nil {
+		t.Fatal("invalid after writing, but no error")
+	}
+	if fi, err := os.Lstat(path); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("the restore replaced the symlink")
+	}
+	if got := read(t, target); got != `{"model":"x"}` {
+		t.Errorf("target %q, want the pre-image restored", got)
+	}
+}
