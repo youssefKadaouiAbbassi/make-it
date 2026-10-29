@@ -65,7 +65,7 @@ func Run(ctx context.Context, m Machine) []Check {
 	r.platform(m)
 	r.prereqs(m)
 	unusable := r.claude(ctx, m, req, reqErr)
-	r.settings(ctx, m, unusable)
+	r.settings(ctx, m, req.Marketplace, unusable)
 	r.plugins(ctx, m, req, reqErr, unusable)
 	r.record(m)
 	return r.checks

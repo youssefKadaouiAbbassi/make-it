@@ -10,8 +10,9 @@ import (
 )
 
 // settings checks Claude Code's settings.json: that it parses, that Claude Code accepts it, and
-// where it differs from the catalog's baseline. unusable is why Claude Code cannot be asked.
-func (r *report) settings(ctx context.Context, m Machine, unusable string) {
+// where it differs from the catalog's baseline. marketplace is the catalog's own marketplace;
+// unusable is why Claude Code cannot be asked.
+func (r *report) settings(ctx context.Context, m Machine, marketplace, unusable string) {
 	const g = "settings"
 	data, found, err := fsx.ReadOptional(m.SettingsPath)
 	var live *jsonx.Object
@@ -35,7 +36,7 @@ func (r *report) settings(ctx context.Context, m Machine, unusable string) {
 		skipValid = unusable
 	}
 	r.valid(ctx, m, data, skipValid)
-	r.stack(m, live, skipStack)
+	r.stack(m, live, marketplace, skipStack)
 }
 
 func (r *report) valid(ctx context.Context, m Machine, data []byte, skip string) {
@@ -59,7 +60,7 @@ func (r *report) valid(ctx context.Context, m Machine, data []byte, skip string)
 
 // stack reports where settings.json differs from the baseline, as a first setup would see it:
 // a stack value that is missing is a warning, a value of the user's that setup keeps is info.
-func (r *report) stack(m Machine, live *jsonx.Object, skip string) {
+func (r *report) stack(m Machine, live *jsonx.Object, marketplace, skip string) {
 	const id, g = "settings.stack", "settings"
 	if skip != "" {
 		r.add(id, g, Skipped, skip, "")
@@ -74,6 +75,14 @@ func (r *report) stack(m Machine, live *jsonx.Object, skip string) {
 	if err != nil {
 		r.add(id, g, Error, "the catalog's settings.baseline.json: "+err.Error(), "")
 		return
+	}
+	// shortcut: the catalog is embedded, so its marketplace is a directory one, added by claude
+	// plugin marketplace add, which never auto-updates; the baseline's entry for it is for a git
+	// catalog and is dropped as tools/applysettings does. Keep it when --catalog <git url> lands.
+	if mk, ok := baseline.Get("extraKnownMarketplaces"); ok {
+		if o, ok := mk.(*jsonx.Object); ok {
+			o.Delete(marketplace)
+		}
 	}
 	reported := 0
 	for _, c := range settings.Merge(live, baseline, nil, settings.DefaultOptions()).Changes {

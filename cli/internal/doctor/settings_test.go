@@ -80,6 +80,27 @@ func TestSettingsMatchTheStack(t *testing.T) {
 	}
 }
 
+// The baseline's entry for the catalog's own marketplace is for a git-hosted catalog; the
+// embedded catalog is a directory marketplace, which never auto-updates (tools/applysettings).
+func TestStackSkipsTheCatalogsOwnMarketplace(t *testing.T) {
+	m, _ := healthy(t)
+	m.Catalog = fixtureCatalog(t, `{"extraKnownMarketplaces": {
+	  "makeit": {"source": {"source": "github", "repo": "<org>/makeit"}, "autoUpdate": true},
+	  "claude-plugins-official": {"source": {"source": "github", "repo": "anthropics/claude-plugins-official"}, "autoUpdate": true}}}`)
+	write(t, m.SettingsPath, `{"extraKnownMarketplaces": {"makeit": {"source": {"source": "directory", "path": "/repo"}}}}`)
+	checks := Run(context.Background(), m)
+	official := false
+	for _, c := range checks {
+		if strings.HasPrefix(c.ID, "settings.stack:/extraKnownMarketplaces/makeit") {
+			t.Errorf("reported the catalog's own marketplace entry: %+v", c)
+		}
+		official = official || strings.HasPrefix(c.ID, "settings.stack:/extraKnownMarketplaces/claude-plugins-official")
+	}
+	if !official {
+		t.Errorf("the other marketplace entries are no longer checked: %v", checks)
+	}
+}
+
 func TestStackSecretNotPrinted(t *testing.T) {
 	m, _ := healthy(t)
 	m.Catalog = fixtureCatalog(t, `{"env": {"API_KEY": "s3cret"}}`)
