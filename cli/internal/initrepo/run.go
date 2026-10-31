@@ -64,6 +64,8 @@ type run struct {
 	kept    []setup.Kept
 	pending map[string][]byte
 	docs    []string
+	// newer are files init wrote, unchanged since, whose template has moved on (without --update).
+	newer []string
 }
 
 // Run plans init and, as mode allows, applies it. confirm is asked once, with the plan, in
@@ -99,6 +101,7 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	r.reset()
 	rep := Report{Plan: plan.Execute(ctx, steps, plan.Options{DryRun: true}), Manual: seedRep.Manual, Notices: seedRep.Notices}
 	rep.Kept = r.kept
+	rep.Notices = append(rep.Notices, r.newerNotice()...)
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {
 		return rep, nil
 	}
@@ -119,11 +122,24 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	r.reset()
 	rep.Plan = plan.Execute(ctx, steps, plan.Options{})
 	rep.Kept, rep.Docs = r.kept, r.docs
+	rep.Notices = append(seedRep.Notices, r.newerNotice()...)
 	return rep, nil
 }
 
 func (r *run) reset() {
-	r.next, r.kept, r.pending, r.docs = map[string]*state.RepoFile{}, nil, map[string][]byte{}, nil
+	r.next, r.kept, r.pending, r.docs, r.newer = map[string]*state.RepoFile{}, nil, map[string][]byte{}, nil, nil
+}
+
+// newerNotice says which unchanged files init wrote have a newer version, so a plain run does not
+// keep them old in silence.
+func (r *run) newerNotice() []string {
+	switch len(r.newer) {
+	case 0:
+		return nil
+	case 1:
+		return []string{"1 file makeit wrote has a newer version in the catalog (" + r.newer[0] + "): makeit init --update rewrites it"}
+	}
+	return []string{fmt.Sprintf("%d files makeit wrote have a newer version in the catalog (%s): makeit init --update rewrites them", len(r.newer), strings.Join(r.newer, ", "))}
 }
 
 func (r *run) keep(item, reason string) {
@@ -213,8 +229,14 @@ func (r *run) seedStep(s Seed) plan.Step {
 				r.next[s.Path] = &state.RepoFile{Class: s.Class, Template: s.Template, PreExisted: true}
 				r.keep(s.Path, "yours: kept as it is")
 				return true, nil
-			case prev.PreExisted || !r.opts.Update:
+			case prev.PreExisted:
 				r.next[s.Path] = prev
+				return true, nil
+			case !r.opts.Update:
+				r.next[s.Path] = prev
+				if exists && fsx.Sha256(cur) == prev.WrittenSha256 && !bytes.Equal(cur, s.Body) {
+					r.newer = append(r.newer, s.Path)
+				}
 				return true, nil
 			case !exists:
 				r.next[s.Path] = prev

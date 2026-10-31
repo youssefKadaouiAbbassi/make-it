@@ -54,6 +54,11 @@ func TestUpdateEditedAndDeleted(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md")); strings.Contains(string(b), "new template") {
 		t.Fatal("updated without --update")
 	}
+	// The plain run says which unchanged files have a newer version, and how to take it.
+	plain, _ := Run(context.Background(), e, plan.DryRunOnly, nil, Options{})
+	if !slices.Contains(plain.Notices, "1 file makeit wrote has a newer version in the catalog (CLAUDE.md): makeit init --update rewrites it") {
+		t.Errorf("notices %q", plain.Notices)
+	}
 	before := loadRepo(t, dir).Files["CLAUDE.md"].WrittenSha256
 	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Update: true})
 	if err != nil || rep.Plan.Failed() {

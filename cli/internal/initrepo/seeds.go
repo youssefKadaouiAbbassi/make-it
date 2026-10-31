@@ -113,12 +113,19 @@ func (s *seeder) projectName() string {
 	return filepath.Base(abs)
 }
 
+// driftStub is check:drift for a project with a database: the gate's migrations job runs it.
+var driftStub = [2]string{"check:drift", `echo "check:drift: wire the schema drift check (migrations against the database)" && exit 1`}
+
 // checks adds the check tasks: in package.json for node, as Manual lines for other runners.
 func (s *seeder) checks() {
 	api := s.is("api") && s.p.Spec != ""
+	stubs := checkStubs
+	if s.is("database") {
+		stubs = append(slices.Clip(stubs), driftStub)
+	}
 	switch {
 	case s.is("node"):
-		scripts := checkStubs
+		scripts := stubs
 		if api {
 			scripts = append(slices.Clip(scripts), [2]string{"check:api", checkAPI(s.p.Spec, s.p.DefaultBranch)})
 			s.rep.Notices = append(s.rep.Notices, "check:api runs oasdiff in Docker: Docker must be installed and running wherever check:api runs, locally and in CI")
@@ -128,8 +135,12 @@ func (s *seeder) checks() {
 				return PackageScripts(theirs, scripts, skip)
 			}})
 	case s.p.Runner == "make":
-		lines := []string{"Makefile: add these targets (make needs the colons escaped):", ".PHONY: check\\:fast check\\:task check\\:full"}
-		for _, st := range checkStubs {
+		phony := ".PHONY:"
+		for _, st := range stubs {
+			phony += " " + strings.ReplaceAll(st[0], ":", "\\:")
+		}
+		lines := []string{"Makefile: add these targets (make needs the colons escaped):", phony}
+		for _, st := range stubs {
 			lines = append(lines, strings.ReplaceAll(st[0], ":", "\\:")+":", "\t@"+st[1])
 		}
 		if api {
@@ -138,7 +149,7 @@ func (s *seeder) checks() {
 		s.manual("%s", strings.Join(lines, "\n"))
 	case s.p.Runner == "uv run poe":
 		lines := []string{"pyproject.toml: add poethepoet as a dev dependency (uv add --dev poethepoet) and these tasks:", "[tool.poe.tasks]"}
-		for _, st := range checkStubs {
+		for _, st := range stubs {
 			lines = append(lines, strconv.Quote(st[0])+" = { shell = "+strconv.Quote(strings.ReplaceAll(st[1], `"`, `'`))+" }")
 		}
 		if api {
@@ -220,7 +231,7 @@ func (s *seeder) preCommit() error {
 			}
 			b.WriteString(eslintHook)
 		default:
-			s.manual(".pre-commit-config.yaml: add your formatter and linter hooks (biome, or eslint and prettier) once the project has a config for them")
+			s.manual(".pre-commit-config.yaml: once the project has a biome or an eslint config, run makeit init --update (it adds the matching hook while the file is unchanged), or add the block for it under repos: by hand.\nbiome:\n%s\neslint (with the prettier hook only when prettier is installed):\n  - repo: local\n    hooks:\n%s%s", biomeHooks, prettierHook, eslintHook)
 		}
 	}
 	if s.is("python") {
@@ -358,6 +369,9 @@ func (s *seeder) ci(gateRef string) error {
 	}
 	if s.is("api") && !api {
 		s.manual("%s: set has-openapi: true once check:api exists", path)
+	}
+	if s.is("database") {
+		s.manual("%s: set has-migrations: true once check:drift exists (the job also runs squawk on ./migrations/*.sql)", path)
 	}
 	if s.p.PM == "npm" && !s.p.Lockfile {
 		s.manual("the gate runs npm ci, which needs a committed package-lock.json: run npm install and commit it")

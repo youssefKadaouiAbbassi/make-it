@@ -92,6 +92,14 @@ func TestSeedsChecks(t *testing.T) {
 	if !manualHas(rep, ".PHONY: check\\:fast check\\:task check\\:full") || !manualHas(rep, "check\\:full:\n\t@echo") {
 		t.Errorf("Makefile lines: %q", rep.Manual)
 	}
+	dir = tree(t, map[string]string{"package.json": "{}", "migrations/": ""})
+	_, merges, _ = seedsFor(t, dir, "")
+	if body := string(merged(t, dir, merges, "package.json").Body); !strings.Contains(body, `"check:drift": "echo \"check:drift: wire the schema drift check (migrations against the database)\" && exit 1"`) {
+		t.Errorf("database: no check:drift stub\n%s", body)
+	}
+	if _, _, rep := seedsFor(t, tree(t, map[string]string{"go.mod": "module x\n", "migrations/": ""}), ""); !manualHas(rep, "check\\:drift:\n\t@echo") || !manualHas(rep, ".PHONY: check\\:fast check\\:task check\\:full check\\:drift") {
+		t.Errorf("database Makefile lines: %q", rep.Manual)
+	}
 	_, _, rep = seedsFor(t, tree(t, map[string]string{"pyproject.toml": "[project]\nname = \"x\"\n", "uv.lock": ""}), "")
 	if !manualHas(rep, "[tool.poe.tasks]") || !manualHas(rep, `"check:full" = { shell = `) || !manualHas(rep, "uv add --dev poethepoet") {
 		t.Errorf("poe lines: %q", rep.Manual)
@@ -136,8 +144,12 @@ func TestSeedsPreCommit(t *testing.T) {
 		}
 	}
 	seeds, _, rep := seedsFor(t, tree(t, map[string]string{"package.json": "{}"}), "")
-	if body := seedBody(t, seeds, ".pre-commit-config.yaml"); strings.Contains(body, "biome") || !strings.Contains(body, "betterleaks") || !manualHas(rep, "add your formatter and linter hooks") {
-		t.Errorf("node with no lint config: %q\n%s", rep.Manual, body)
+	if body := seedBody(t, seeds, ".pre-commit-config.yaml"); strings.Contains(body, "biome") || !strings.Contains(body, "betterleaks") {
+		t.Errorf("node with no lint config:\n%s", body)
+	}
+	// The manual line is exact text: both hook blocks, and the command that adds one later.
+	if !manualHas(rep, biomeHooks) || !manualHas(rep, eslintHook) || !manualHas(rep, "makeit init --update") {
+		t.Errorf("node with no lint config: manual %q", rep.Manual)
 	}
 	for _, existing := range []string{"prek.toml", ".pre-commit-config.yaml", ".pre-commit-config.yml"} {
 		seeds, _, rep := seedsFor(t, tree(t, map[string]string{"go.mod": "module x\n", existing: ""}), "")
@@ -225,6 +237,9 @@ func TestSeedsCI(t *testing.T) {
 	}
 	if !manualHas(rep, "has-web-ui: true") {
 		t.Errorf("web without test:e2e: %q", rep.Manual)
+	}
+	if _, _, rep := seedsFor(t, tree(t, map[string]string{"go.mod": "module x\n", "migrations/": ""}), gateRef); !manualHas(rep, "set has-migrations: true once check:drift exists") {
+		t.Errorf("database: %q", rep.Manual)
 	}
 	for _, c := range []struct {
 		name, why string
