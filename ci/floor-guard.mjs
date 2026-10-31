@@ -9,8 +9,8 @@ import { execFileSync } from 'node:child_process';
 const argAfter = (flag) => { const i = process.argv.indexOf(flag); return i > -1 ? process.argv[i + 1] : undefined; };
 const base = argAfter('--base') ?? `origin/${process.env.BASE_REF || 'main'}`;
 // Files whose change is always a review item: checker configs, coverage and test-runner configs,
-// secret-scanner configs, workflows, the check tasks and CONSTRAINTS.md itself.
-const DEFAULT_WATCH = String.raw`(^|/)(tsconfig[^/]*\.json|eslint\.config\.[cm]?[jt]s|\.eslintrc[^/]*|biome\.jsonc?|ruff\.toml|pyproject\.toml|mypy\.ini|pyrightconfig\.json|\.golangci\.ya?ml|clippy\.toml|\.coveragerc|vitest\.config\.[cm]?[jt]s|jest\.config\.[cm]?[jt]s|playwright\.config\.[cm]?[jt]s|pytest\.ini|stryker\.config\.[^/]+|\.gitleaks\.toml|\.betterleaks\.toml|\.semgrepignore|\.grype\.ya?ml|\.grant\.ya?ml|package\.json|Makefile|Taskfile\.ya?ml|mise\.toml|CONSTRAINTS\.md)$|^\.github/workflows/|^\.pre-commit-config\.ya?ml$`;
+// secret-scanner configs, workflows, the check tasks, CONSTRAINTS.md itself and this guard.
+const DEFAULT_WATCH = String.raw`(^|/)(tsconfig[^/]*\.json|eslint\.config\.[cm]?[jt]s|\.eslintrc[^/]*|biome\.jsonc?|ruff\.toml|pyproject\.toml|mypy\.ini|pyrightconfig\.json|\.golangci\.ya?ml|clippy\.toml|\.coveragerc|vitest\.config\.[cm]?[jt]s|jest\.config\.[cm]?[jt]s|playwright\.config\.[cm]?[jt]s|pytest\.ini|stryker\.config\.[^/]+|\.gitleaks\.toml|\.betterleaks\.toml|\.semgrepignore|\.grype\.ya?ml|\.grant\.ya?ml|package\.json|Makefile|Taskfile\.ya?ml|mise\.toml|CONSTRAINTS\.md)$|^\.github/workflows/|^\.pre-commit-config\.ya?ml$|^ci/floor-guard\.mjs$`;
 const watch = new RegExp(argAfter('--watch') ?? DEFAULT_WATCH);
 
 // `git diff --no-index` exits 1 whenever the two sides differ, which is the normal case for a
@@ -78,11 +78,12 @@ const STUBS = /throw new (Error|NotImplemented).*[Nn]ot implemented|catch\s*\(\w
 // 2. A test made easier (added skips).
 const SKIPS = /\.(skip|todo)\b|\bxit\(|\bxdescribe\(|@pytest\.mark\.skip|t\.Skip\(/;
 
-const isGuard = (f) => /(^|\/)floor-guard\.mjs$/.test(f);
+const isGuard = (f) => f === 'ci/floor-guard.mjs';
 
 for (const { file, text } of added) {
   // Stack addition: a CONSTRAINTS.md names every marker it forbids (its rules get their own checks),
-  // and the guard's source holds the patterns themselves, so neither is scanned for markers.
+  // and the guard's source holds the patterns themselves, so neither is scanned for markers. The guard
+  // is on the watch list instead, so editing it needs a reason in the PR description.
   if (!isConstraints(file) && !isGuard(file)) {
     if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);
     if (STUBS.test(text)) flag('unfinished-work', file, text);
