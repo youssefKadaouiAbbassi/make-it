@@ -20,6 +20,9 @@ func TestParse(t *testing.T) {
 		{"owner/repo", false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git"}, nil},
 		// owner/repo.git that is no local directory is GitHub, with the guess kept for the plan line.
 		{"owner/repo.git", false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git", Guessed: "owner/repo.git"}, nil},
+		// Relative paths and host names are no GitHub owner: git gets them as typed.
+		{"../cat.git", false, Spec{Kind: "git", Location: "../cat.git"}, nil},
+		{"host.example.com/repo.git", false, Spec{Kind: "git", Location: "host.example.com/repo.git"}, nil},
 		{"owner/repo#v1.0.0", false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git", Ref: "v1.0.0"}, nil},
 		{"owner/repo@" + sha, false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git", Ref: sha, Commit: true}, nil},
 		{"https://h/x.git#main", true, Spec{Kind: "git", Location: "https://h/x.git", Ref: "main", AllowBranch: true}, nil},

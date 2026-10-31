@@ -31,7 +31,8 @@ type Spec struct {
 var ErrCredentials = errors.New("remove the credentials from the URL: makeit records it in ~/.makeit/state.json; use a git credential helper or an SSH key")
 
 var (
-	ownerRepo = regexp.MustCompile(`^[\w.-]+/[\w.-]+$`)
+	// A GitHub owner has no dot (so no "..", "." or host name); a repo is more than dots.
+	ownerRepo = regexp.MustCompile(`^[\w-]+/[\w.-]*[\w-][\w.-]*$`)
 	commitRef = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 )
 
