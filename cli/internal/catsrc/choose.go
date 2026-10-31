@@ -83,10 +83,17 @@ func Choose(s Spec, refs Refs, rec *state.Catalog, explicit bool) (Choice, []str
 	case "commit":
 		// Only a pin at an older release tag is known to be behind: ls-remote holds no history, so
 		// an untagged commit may be ahead of the newest tag.
-		for name, at := range refs.Tags {
-			if n, err := claudecli.Compare(top, name); at == rec.Resolved && releaseTag.MatchString(name) && err == nil && n > 0 {
-				return cur, []string{newer(top, name, accept)}, nil
+		if top == "" || refs.Tags[top] == rec.Resolved {
+			return cur, nil, nil
+		}
+		var at string // the pin's highest release tag, so the notice is the same every run
+		for name, sha := range refs.Tags {
+			if n, err := claudecli.Compare(name, at); sha == rec.Resolved && releaseTag.MatchString(name) && (at == "" || err == nil && n > 0) {
+				at = name
 			}
+		}
+		if at != "" {
+			return cur, []string{newer(top, at, accept)}, nil
 		}
 		return cur, nil, nil
 	case "branch":
