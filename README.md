@@ -38,7 +38,7 @@ ok Merge makeit's settings into /home/dev/.claude/settings.json
 
 ## Highlights
 
-- Installs Claude Code, a pinned set of plugins, settings and global rules in one step.
+- Installs Claude Code, a tested set of plugins, settings and global rules in one step.
 - Sets up any project for Claude: CLAUDE.md, check commands, git hooks and CI, with `/makeit:init`
   inside Claude Code.
 - Every change is shown as a plan first; `--dry-run` writes nothing.

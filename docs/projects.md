@@ -100,7 +100,9 @@ write tool, which asks first through the ask rule in makeit's settings.
 init adds a GitHub Actions workflow that runs makeit's CI checks, in
 `.github/workflows/gate.yml` (or `makeit-gate.yml` when you already have a `gate.yml`). It calls the
 shared workflow in makeit's repository at a pinned commit, and Renovate keeps that pin current. It
-also adds `ci/floor-guard.mjs`, which fails a pull request that weakens the quality rules unless its
+also adds `ci/floor-guard.mjs`, which fails a pull request that weakens a quality rule (a skipped
+test, a silenced checker) or changes a watched file (a checker config, a check task, a workflow, the
+hook config, `pyproject.toml` or a `package.json` script line, `CONSTRAINTS.md`) unless its
 description gives a reason in a line `floor-guard: <reason>`.
 
 ### Docs index
@@ -127,11 +129,11 @@ default branch, and the refusal names the missing ones.
 
 ## Running init again
 
-A second run with nothing new reports nothing to do. These rules decide what a re-run touches:
+A second run with nothing new reports every step as already done. These rules decide what a re-run touches:
 
 - A file that was there before init's first run is yours, and init never rewrites it. For your
-  own `CLAUDE.md` and `CONSTRAINTS.md`, `/makeit:init` has Claude add only the sections they lack;
-  your `HANDOFF.md` is left as it is. The merged files below are the exception.
+  own `CLAUDE.md` and `CONSTRAINTS.md`, `/makeit:init` has Claude add only the sections they lack,
+  and only missing items to your `HANDOFF.md`. The merged files below are the exception.
 - A file init wrote or merged into is left as it is on a plain re-run. When makeit has a newer version of it,
   init says so and names `makeit init --update`.
 - `makeit init --update` rewrites a file init wrote only while it is exactly as init wrote it. A

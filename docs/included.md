@@ -38,8 +38,9 @@ is older than 2.1.310, the version this release was tested with.
 
 The route depends on the machine: Homebrew on macOS, winget on Windows, and on Linux Homebrew when
 present, otherwise Anthropic's signed apt, dnf or apk repository. setup checks the repository key's
-fingerprint before it adds it. When none of these works, it falls back to Anthropic's native
-installer. An existing Claude Code is kept, however it was installed.
+fingerprint before it adds it (apk: the key's sha256). When sudo is not available for the repository
+route, or the machine has none of these package managers, setup uses Anthropic's native installer; a
+failed install stops with its error. An existing Claude Code is kept, however it was installed.
 
 ## The plugin set
 

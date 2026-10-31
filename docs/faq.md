@@ -56,7 +56,8 @@ project. See [What makeit installs](included.md) for the values makeit sets.
 
 `--offline` stops makeit itself from making network requests:
 
-- `setup` and `update` keep the plugin set where it is, and refuse a `--catalog` git source.
+- `setup` and `update` do not fetch a `--catalog` git source: a recorded one stays where it is, and a
+  new one is refused. The plugin set built into makeit is still applied.
 - `update` skips replacing makeit with a newer release, and skips the check for one.
 - `self update` is refused.
 - `init` skips the docs index and refuses `--rulesets`. `docs sync` does nothing.

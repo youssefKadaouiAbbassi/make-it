@@ -50,7 +50,7 @@ $ makeit setup --dry-run
 
 To apply without a prompt, for example in a script, add `--yes`.
 
-A second run reports nothing to do. On a machine where some of this is already installed, setup
+A second run reports every step as already done. On a machine where some of this is already installed, setup
 keeps what is there and adds only what is missing. [What makeit installs](included.md) lists
 each part.
 

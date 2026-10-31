@@ -62,5 +62,6 @@ sha256. That check does not depend on minisign being installed.
 
 makeit runs package managers (with `sudo` on Linux, shown in the plan first), `git`, `gh` and the
 `claude` CLI. The plugins it installs run hooks and MCP servers with your user's rights. Each one is
-pinned to a commit in the plugin set; [What makeit installs](docs/included.md) lists them and the
+pinned to a commit in the plugin set, except the four language-server plugins, which come from
+claude-plugins-official and update with it; [What makeit installs](docs/included.md) lists them and the
 settings makeit writes, including `permissions.defaultMode: bypassPermissions`.
