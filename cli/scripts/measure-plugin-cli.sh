@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Measures, in a throwaway ubuntu container with real Claude Code, the plugin behaviours that
-# makeit update and uninstall key on (cli/UPDATE-UNINSTALL.md; results in
-# cli/research/plugin-cli-measured-2026-10-29.md). A local directory marketplace "m" holds a bundle
+# makeit update and uninstall key on (cli/UPDATE-UNINSTALL.md records the results). A local directory marketplace "m" holds a bundle
 # that depends on deja-vu (git-subdir, pinned) and on a local plugin. No credentials, tokens or
 # host directories enter the container; --rm removes it.
 #   bash cli/scripts/measure-plugin-cli.sh

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Measures, in a throwaway ubuntu container with real Claude Code, how a git marketplace is pinned
 # to a ref and whether `claude plugin marketplace update` moves it: the two behaviours the git
-# catalog design keys on (results in cli/research/git-marketplace-measured-2026-10-29.md). A local
+# catalog design keys on (cli/CATALOG-GIT.md records the results). A local
 # bare repository, served over HTTPS in the container, holds a marketplace "cat" with annotated
 # tags and a main branch. No
 # credentials, tokens or host directories enter the container; --rm removes it.

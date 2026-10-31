@@ -1,5 +1,5 @@
 // Package claudecli drives the `claude` CLI for plugin and marketplace work. It encodes the
-// behaviour measured on Claude Code 2.1.290-2.1.311 (cli/research/docs, fetched 2026-10-27):
+// behaviour measured on Claude Code 2.1.290-2.1.311 (Claude Code docs fetched 2026-10-27):
 //
 //   - `plugin list --json` and `marketplace list --json` print a multi-line JSON array, so the
 //     whole stdout is parsed; action verbs print their result object on the last stdout line.
@@ -47,7 +47,7 @@ const (
 // run runs claude in a private, empty directory made for the command and removed after it. From
 // the user's home or a project, Claude Code also reads that directory's .claude/settings.json as
 // project settings, so makeit would see project declarations and a user-scope marketplace remove
-// would leave the marketplace registered (cli/research/plugin-cli-measured-2026-10-29.md); a shared
+// would leave the marketplace registered (measured with cli/scripts/measure-plugin-cli.sh); a shared
 // directory such as /tmp would let another local user plant those settings. makeit manages user
 // scope only.
 func (c *CLI) run(ctx context.Context, timeout time.Duration, env []string, args ...string) (execx.Result, error) {
@@ -277,7 +277,7 @@ func (c *CLI) Uninstall(ctx context.Context, id string) (Result, error) {
 
 // Unneeded lists the auto-installed user-scope plugins no installed plugin needs any more, from
 // `claude plugin prune --dry-run`, which removes nothing. The output is text with one
-// "  <id> (<version>)" line per plugin (cli/research/plugin-cli-measured-2026-10-29.md).
+// "  <id> (<version>)" line per plugin (measured with cli/scripts/measure-plugin-cli.sh).
 func (c *CLI) Unneeded(ctx context.Context) ([]string, error) {
 	r, err := c.run(ctx, readTimeout, nil, "plugin", "prune", "--dry-run", "--scope", "user")
 	if err != nil {

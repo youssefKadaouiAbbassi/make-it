@@ -1,5 +1,5 @@
 // Package platform detects the machine (os, arch, WSL, package manager) and holds the
-// prerequisite table and the Claude Code install routes (cli/research/docs/setup.md).
+// prerequisite table and the Claude Code install routes (cli/SETUP.md; Claude Code setup docs).
 package platform
 
 import (
