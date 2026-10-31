@@ -15,10 +15,10 @@ Windows (PowerShell):
 
     irm https://github.com/youssefKadaouiAbbassi/make-it/releases/download/v0.1.0/install.ps1 | iex
 
-The script checks the download against the release's signed checksums (with
-[minisign](https://jedisct1.github.io/minisign/) installed it verifies the signature too, and says
-when it could not), then runs `makeit self install`, which puts makeit in `~/.local/bin`. Then run
-`makeit setup`.
+The script checks the binary's sha256 against the release's `checksums.txt`. With
+[minisign](https://jedisct1.github.io/minisign/) installed it first verifies the owner's signature on
+that list, and stops if it does not verify; without minisign it says the signature was not checked.
+Then it runs `makeit self install`, which puts makeit in `~/.local/bin`. Then run `makeit setup`.
 
 ## Commands
 
