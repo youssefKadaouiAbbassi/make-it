@@ -307,6 +307,22 @@ func TestOwnedCurrentIsAlready(t *testing.T) {
 	}
 }
 
+// A plugin loaded in place from the catalog folder is current only when its recorded version is the
+// folder's: switching 3.x to 0.1.0 left Claude Code reporting 3.14.0 until plugin update ran.
+func TestOwnedInPlaceVersionMoved(t *testing.T) {
+	for _, c := range []struct {
+		folder string
+		want   bool
+	}{{"3.10.0", true}, {"0.1.0", false}, {"", true}} {
+		row := `{"id":"makeit-bundle@makeit","version":"3.10.0","enabled":true,"readFromFolder":"/c/plugins/makeit-bundle","folderVersion":"` + c.folder + `"}`
+		e, _ := pluginEnv(t, `[]`, `[`+bundleEntry+`]`, `[`+row+`]`)
+		e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt("")}
+		if done, err := step(t, e.pluginSteps(), "plugin.makeit-bundle@makeit").Already(context.Background()); done != c.want || err != nil {
+			t.Errorf("folder %q: already = %v, %v, want %v", c.folder, done, err, c.want)
+		}
+	}
+}
+
 func TestOwnedBehindUpdates(t *testing.T) {
 	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
 		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)

@@ -456,7 +456,11 @@ func (e *env) ownedCurrent(in pluginrule.Inputs, id string) bool {
 		return true
 	}
 	switch v := in.Classify(id); v.Rule {
-	case pluginrule.InPlace, pluginrule.AutoUpdate:
+	case pluginrule.InPlace:
+		// Its files load from the folder, but Claude Code keeps the old version until plugin update.
+		p := listed(in, id)
+		return p.FolderVersion == "" || p.FolderVersion == p.Version
+	case pluginrule.AutoUpdate:
 		return true
 	case pluginrule.Pinned:
 		return v.Pin == e.st.Plugins[id].Observed.GitCommitSha

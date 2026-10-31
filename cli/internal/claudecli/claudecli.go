@@ -143,9 +143,11 @@ type Plugin struct {
 	HasUserConfig bool   `json:"hasUserConfig"`
 	// ReadFromFolder is the source directory of a plugin that sessions load in place from its
 	// marketplace's folder (Claude Code 2.1.289 or later); empty for a copied plugin.
-	ReadFromFolder string   `json:"readFromFolder"`
-	Errors         []string `json:"errors"`
-	Notes          []string `json:"notes"`
+	ReadFromFolder string `json:"readFromFolder"`
+	// FolderVersion is the version in that folder's plugin.json; it moves before Version does.
+	FolderVersion string   `json:"folderVersion"`
+	Errors        []string `json:"errors"`
+	Notes         []string `json:"notes"`
 }
 
 // Plugins lists installed plugins.
