@@ -4,7 +4,8 @@
 # signed repository, then the stack. A second run must change nothing. Then update, uninstall
 # (no makeit plugin, settings value or global file left) and setup again. One more ubuntu pass,
 # with the prerequisites preinstalled and no sudo, must fall back to the native installer. Each pass
-# ends with the self update chain against fake signed releases served in the container.
+# ends with the self update chain against fake signed releases served in the container, the git
+# catalog chain, and makeit init in a fresh project.
 # Only the binary is mounted; no credentials or tokens enter a container (--rm cleans up).
 # Checks that something is absent use `if ...; then exit 1; fi`: under set -e a failing `! cmd` line
 # does not stop the script.
@@ -30,6 +31,12 @@ for v in 1.1.0 1.2.0; do
   "$cli/dist/rel/fakerelease" release -seed "$seed" -repo test/makeit -version "$v" -target linux-x64 \
     -binary "$cli/dist/rel/makeit-$v" -dir "$cli/dist/rel/site"
 done
+# The catalog the git catalog chain serves, copied now: go generate replaces the generated tree, and
+# a container whose bind mount points at the replaced directory sees it empty.
+catsrc=$(mktemp -d "$cli/dist/catsrc.XXXXXX")
+trap '/bin/rm -rf "$catsrc"' EXIT
+cp -r "$cli/internal/catalog/data/files/." "$catsrc/"
+chmod 755 "$catsrc"
 images=("$@")
 [ ${#images[@]} -gt 0 ] || images=(ubuntu:24.04 debian:trixie-slim fedora:latest alpine:3.23)
 
@@ -175,6 +182,46 @@ chmod 755 /tmp/catchain.sh
 CATCHAIN
 )
 
+# As the user: makeit init in a fresh node + Go project. A fake npx stands in for docs-mcp-server,
+# so nothing leaves the container; it logs what makeit asks it.
+initchain=$(cat <<'INITCHAIN'
+cat > /tmp/initchain.sh <<"EOS"
+set -e
+M=/usr/local/bin/makeit
+mkdir -p /tmp/initchain-bin
+cat > /tmp/initchain-bin/npx <<"NPX"
+#!/bin/sh
+echo "$*" >> /tmp/initchain-npx.log
+case "$*" in *" list --output json"*) echo "[]" ;; *) echo "Successfully scraped 1 pages" ;; esac
+NPX
+chmod 755 /tmp/initchain-bin/npx
+i() { PATH="/tmp/initchain-bin:$HOME/.local/bin:$PATH" "$M" "$@"; }
+p=/tmp/initchain-proj
+mkdir -p "$p"
+cd "$p"
+git init -q
+printf '{\n  "name": "shop"\n}\n' > package.json
+printf 'module x\n\ngo 1.27.3\n' > go.mod
+i init --yes > /tmp/initchain-1.log 2>&1 || { cat /tmp/initchain-1.log; exit 1; }
+for f in CLAUDE.md CONSTRAINTS.md HANDOFF.md .gitignore .env.example .makeit.json .pre-commit-config.yaml renovate.json .grype.yaml; do
+  if [ ! -f "$p/$f" ]; then echo "init did not write $f"; cat /tmp/initchain-1.log; exit 1; fi
+done
+if ! grep -q '"check:full"' package.json; then echo "no check stubs"; cat package.json; exit 1; fi
+if ! grep -q "scrape go https://pkg.go.dev/std@go1.27.3 --version 1.27.3" /tmp/initchain-npx.log; then echo "no docs sync"; cat /tmp/initchain-npx.log; exit 1; fi
+echo "init writes the project files and indexes the docs: ok"
+i init --yes --json > /tmp/initchain-2.json 2>/tmp/initchain-2.log || { cat /tmp/initchain-2.log /tmp/initchain-2.json; exit 1; }
+if grep -q '"status": "done"' /tmp/initchain-2.json; then echo "the second init changed something"; cat /tmp/initchain-2.json; exit 1; fi
+echo "a second init changes nothing: ok"
+echo "mine" >> CLAUDE.md
+i init --update --yes > /tmp/initchain-3.log 2>&1 || { cat /tmp/initchain-3.log; exit 1; }
+if [ "$(tail -n 1 CLAUDE.md)" != mine ]; then echo "init --update overwrote an edited file"; exit 1; fi
+if ! grep -q "kept: CLAUDE.md: changed by you" /tmp/initchain-3.log; then echo "no kept line"; cat /tmp/initchain-3.log; exit 1; fi
+echo "init --update keeps an edited file: ok"
+EOS
+chmod 755 /tmp/initchain.sh
+INITCHAIN
+)
+
 # As root: sudo and a user who may use it without a password; then setup twice as that user
 # (sudo -iu, because fedora's image has no su).
 sudo_user='set -e
@@ -194,7 +241,9 @@ sudo -iu u sh /tmp/selfchain.sh
 '"$catchain"'
 # Alpine ships git http-backend, which the fake catalog server needs, in git-daemon.
 if command -v apk >/dev/null; then apk add -q git-daemon; fi
-sudo -iu u sh /tmp/catchain.sh'
+sudo -iu u sh /tmp/catchain.sh
+'"$initchain"'
+sudo -iu u sh /tmp/initchain.sh'
 
 # As root: the prerequisites only, no sudo; setup must install Claude Code natively.
 no_sudo='set -e
@@ -207,11 +256,13 @@ su - u -c "sh /tmp/upkeep.sh"
 '"$selfchain"'
 su - u -c "sh /tmp/selfchain.sh"
 '"$catchain"'
-su - u -c "sh /tmp/catchain.sh"'
+su - u -c "sh /tmp/catchain.sh"
+'"$initchain"'
+su - u -c "sh /tmp/initchain.sh"'
 
 run() { # name image script
   local log="$cli/dist/setup-$1.log"
-  if docker run --rm -v "$cli/dist/makeit:/usr/local/bin/makeit:ro" -v "$cli/dist/rel:/opt/rel:ro" -v "$cli/internal/catalog/data/files:/opt/catsrc:ro" "$2" sh -c "$3" >"$log" 2>&1; then
+  if docker run --rm -v "$cli/dist/makeit:/usr/local/bin/makeit:ro" -v "$cli/dist/rel:/opt/rel:ro" -v "$catsrc:/opt/catsrc:ro" "$2" sh -c "$3" >"$log" 2>&1; then
     echo "PASS $1"
     grep -E ': ok$' "$log" | sed 's/^/  /' || true
   else
