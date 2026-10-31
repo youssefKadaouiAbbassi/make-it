@@ -140,3 +140,34 @@ func TestUpdateMergesAddNew(t *testing.T) {
 		t.Errorf("record added %v", got)
 	}
 }
+
+// A merge file init created and the user deleted is not created again by --update.
+func TestUpdateMergeRemovedByYou(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, ".gitignore")); err != nil {
+		t.Fatal(err)
+	}
+	// As if the stack's source gained a line since: --update has something new to add.
+	rec := loadRepo(t, dir)
+	rec.Files[".gitignore"].Added = rec.Files[".gitignore"].Added[:2]
+	if err := state.SaveRepo(filepath.Join(dir, RecordName), rec); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Update: true})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf(".gitignore written again: %v", err)
+	}
+	if !slices.Contains(rep.Kept, setup.Kept{Item: ".gitignore", Reason: "removed by you: not written again"}) {
+		t.Errorf("kept %v", rep.Kept)
+	}
+	if r := loadRepo(t, dir).Files[".gitignore"]; r == nil || r.PreExisted {
+		t.Errorf("record %+v", r)
+	}
+}

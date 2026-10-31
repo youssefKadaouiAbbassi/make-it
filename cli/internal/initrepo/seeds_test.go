@@ -126,6 +126,9 @@ func TestSeedsPreCommit(t *testing.T) {
 			[]string{"entry: npx --no -- eslint --max-warnings=0 --no-warn-ignored", "entry: npx --no -- prettier --write --ignore-unknown"}, []string{"biome"}},
 		{"node eslint without prettier", map[string]string{"package.json": "{}", "eslint.config.js": ""},
 			[]string{"id: eslint"}, []string{"prettier"}},
+		// ESLint 8 with a legacy config rejects --no-warn-ignored ("Invalid option"), failing every commit.
+		{"node legacy eslintrc", map[string]string{"package.json": "{}", ".eslintrc.json": "{}"},
+			[]string{"entry: npx --no -- eslint --max-warnings=0\n"}, []string{"--no-warn-ignored"}},
 	} {
 		seeds, _, _ := seedsFor(t, tree(t, c.files), "")
 		body := seedBody(t, seeds, ".pre-commit-config.yaml")
@@ -148,7 +151,7 @@ func TestSeedsPreCommit(t *testing.T) {
 		t.Errorf("node with no lint config:\n%s", body)
 	}
 	// The manual line is exact text: both hook blocks, and the command that adds one later.
-	if !manualHas(rep, biomeHooks) || !manualHas(rep, eslintHook) || !manualHas(rep, "makeit init --update") {
+	if !manualHas(rep, biomeHooks) || !manualHas(rep, eslintHook(true)) || !manualHas(rep, "makeit init --update") {
 		t.Errorf("node with no lint config: manual %q", rep.Manual)
 	}
 	for _, existing := range []string{"prek.toml", ".pre-commit-config.yaml", ".pre-commit-config.yml"} {
@@ -307,8 +310,8 @@ func TestSeedsCheckAPI(t *testing.T) {
 	body := string(merged(t, dir, merges, "package.json").Body)
 	for _, w := range []string{
 		`REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_NOTIFICATIONS=true npx --yes @redocly/cli@2.72.1 lint openapi.yaml`,
-		`tufin/oasdiff:v1.35.0@sha256:82b1840a77335562bb11ce95f77ad31745a0c6f3a770929333ed1c5ef466e400 breaking --fail-on ERR origin/trunk:openapi.yaml openapi.yaml`,
-		`git cat-file -e origin/trunk:openapi.yaml`,
+		`tufin/oasdiff:v1.35.0@sha256:82b1840a77335562bb11ce95f77ad31745a0c6f3a770929333ed1c5ef466e400 breaking --fail-on ERR origin/trunk:./openapi.yaml openapi.yaml`,
+		`git cat-file -e origin/trunk:./openapi.yaml`,
 	} {
 		if !strings.Contains(strings.ReplaceAll(body, `\"`, `"`), w) {
 			t.Errorf("check:api lacks %q\n%s", w, body)
@@ -320,6 +323,29 @@ func TestSeedsCheckAPI(t *testing.T) {
 	_, _, rep = seedsFor(t, tree(t, map[string]string{"go.mod": "module x\n", "openapi.yaml": ""}), "")
 	if !manualHas(rep, "check\\:api:") || !manualHas(rep, "go run github.com/oasdiff/oasdiff@v1.35.0 breaking --fail-on ERR") {
 		t.Errorf("Go check:api lines: %q", rep.Manual)
+	}
+}
+
+// In a monorepo subfolder GitHub and Renovate would never read a caller or a renovate.json: none
+// is seeded, and a notice says they belong at the repository root.
+func TestSeedsSubfolder(t *testing.T) {
+	for _, git := range map[string]string{"dir": ".git/", "file (worktree)": ".git"} {
+		top := tree(t, map[string]string{git: "", "pkg/a/package.json": `{"dependencies": {"react": "19.2.0"}}`, "pkg/a/package-lock.json": "{}"})
+		seeds, merges, rep := seedsFor(t, filepath.Join(top, "pkg", "a"), gateRef)
+		for _, p := range []string{".github/workflows/gate.yml", "ci/floor-guard.mjs", "ci/budget.json"} {
+			if seedBody(t, seeds, p) != "" {
+				t.Errorf("%s: %s seeded in a subfolder", git, p)
+			}
+		}
+		if hasMerge(merges, "renovate.json") {
+			t.Errorf("%s: renovate.json merged in a subfolder", git)
+		}
+		if !slices.ContainsFunc(rep.Notices, func(n string) bool { return strings.Contains(n, "belong at the repository root") }) {
+			t.Errorf("%s: notices %q", git, rep.Notices)
+		}
+	}
+	if _, merges, _ := seedsFor(t, tree(t, map[string]string{".git": "", "go.mod": "module x\n"}), gateRef); !hasMerge(merges, "renovate.json") {
+		t.Error("a .git file at the init dir is the top level: no renovate.json")
 	}
 }
 
@@ -344,6 +370,41 @@ func TestCheckAPINeedsDocker(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		if err == nil || strings.TrimSpace(string(out)) != "check:api needs Docker for oasdiff" {
 			t.Errorf("%s: err %v, output %q", c.name, err, out)
+		}
+	}
+}
+
+// The Makefile check:api has checkAPI's guards: a missing Docker fails with one line, and a spec
+// the default branch does not have yet passes, so the PR adding the first spec can merge.
+func TestMakeAPIGuards(t *testing.T) {
+	for _, types := range [][]string{{"go"}, {"rust"}} {
+		// make turns $$ into $ before the shell sees the recipe.
+		script := strings.ReplaceAll(makeAPI(Project{Types: types}, "openapi.yaml", "main"), "$$", "$")
+		bin := t.TempDir()
+		write := func(name, body string) {
+			if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		sh := func() (string, error) {
+			cmd := exec.Command("/bin/sh", "-c", script)
+			cmd.Env = []string{"PATH=" + bin}
+			out, err := cmd.CombinedOutput()
+			return strings.TrimSpace(string(out)), err
+		}
+		write("go", "echo oasdiff \"$@\"\n")
+		write("git", `[ "$1" = cat-file ] && exit 1; echo /g`+"\n")
+		if out, err := sh(); err == nil || !strings.HasPrefix(out, "check:api needs Docker for Redocly") {
+			t.Errorf("%v no docker: err %v, output %q", types, err, out)
+		}
+		write("docker", "exit 0\n")
+		if out, err := sh(); err != nil || out != "check:api: openapi.yaml is not on origin/main yet, nothing to compare" {
+			t.Errorf("%v spec not on origin: err %v, output %q", types, err, out)
+		}
+		write("git", `[ "$1" = rev-parse ] && echo /g; exit 0`+"\n")
+		write("docker", `[ "$1" = run ] && case "$*" in *oasdiff*) echo oasdiff;; esac; exit 0`+"\n")
+		if out, err := sh(); err != nil || !strings.HasPrefix(out, "oasdiff") {
+			t.Errorf("%v spec on origin: err %v, output %q", types, err, out)
 		}
 	}
 }

@@ -35,8 +35,9 @@ type Env struct {
 	CatalogKind, CatalogResolved string
 }
 
-// Options are init's flags.
-type Options struct{ Update, Rulesets bool }
+// Options are init's flags. Offline skips the docs sync and refuses Rulesets: both need the
+// network.
+type Options struct{ Update, Rulesets, Offline bool }
 
 // Report is what an init run did, or would do.
 type Report struct {
@@ -71,6 +72,9 @@ type run struct {
 // Run plans init and, as mode allows, applies it. confirm is asked once, with the plan, in
 // Prompt mode. A plan with nothing to do applies nothing.
 func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), o Options) (Report, error) {
+	if o.Offline && o.Rulesets {
+		return Report{}, errors.New("--rulesets needs the network; drop --offline")
+	}
 	if !e.Present("git") {
 		return Report{}, errors.New("makeit init needs git: install it (makeit setup does), then run init again")
 	}
@@ -148,6 +152,45 @@ func (r *run) keep(item, reason string) {
 
 func (r *run) path(rel string) string { return filepath.Join(r.Dir, filepath.FromSlash(rel)) }
 
+// linked is true, with a kept line, when rel is a symlink or sits under a directory that resolves
+// outside the project: reading or writing it would follow the link out of the repository.
+func (r *run) linked(rel string) bool {
+	p := r.path(rel)
+	if st, err := os.Lstat(p); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		r.keep(rel, "a symlink: not followed")
+		return true
+	}
+	root, parent := resolved(r.Dir), resolved(filepath.Dir(p))
+	if parent != root && !strings.HasPrefix(parent, root+string(filepath.Separator)) {
+		r.keep(rel, "a symlink: not followed")
+		return true
+	}
+	return false
+}
+
+// resolved is path's absolute form with its nearest existing ancestor's symlinks resolved; what
+// does not exist yet cannot be a link. A dangling link gives "", which is inside nothing.
+func resolved(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	rest := ""
+	for d := abs; ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(d); err == nil {
+			real, err := filepath.EvalSymlinks(d)
+			if err != nil {
+				return ""
+			}
+			return filepath.Join(real, rest)
+		}
+		if filepath.Dir(d) == d {
+			return abs
+		}
+		rest = filepath.Join(filepath.Base(d), rest)
+	}
+}
+
 // steps are, in order: git init when needed, the docs files, the merges, the other seeds, the
 // docs sync and the record.
 func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
@@ -188,7 +231,12 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	for _, s := range seeds {
 		steps = append(steps, r.seedStep(s))
 	}
-	steps = append(steps, r.docsStep(), r.recordStep())
+	if r.opts.Offline {
+		rep.Notices = append(rep.Notices, "--offline: docs not synced")
+	} else {
+		steps = append(steps, r.docsStep())
+	}
+	steps = append(steps, r.recordStep())
 	if r.opts.Rulesets {
 		switch {
 		case r.p.GitHub.Owner == "":
@@ -217,6 +265,12 @@ func (r *run) seedStep(s Seed) plan.Step {
 	written := &state.RepoFile{Class: s.Class, Template: s.Template, WrittenSha256: fsx.Sha256(s.Body)}
 	return plan.Step{ID: s.Class + ":" + s.Path, Title: title,
 		Already: func(context.Context) (bool, error) {
+			if r.linked(s.Path) {
+				if prev != nil {
+					r.next[s.Path] = prev
+				}
+				return true, nil
+			}
 			cur, exists, err := fsx.ReadOptional(r.path(s.Path))
 			if err != nil {
 				return false, err
@@ -263,6 +317,12 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 	prev := r.prev.Files[m.Path]
 	return plan.Step{ID: "merge:" + m.Path, Title: "Add the stack's entries to " + m.Path,
 		Already: func(context.Context) (bool, error) {
+			if r.linked(m.Path) {
+				if prev != nil {
+					r.next[m.Path] = prev
+				}
+				return true, nil
+			}
 			if prev != nil && !r.opts.Update {
 				r.next[m.Path] = prev
 				return true, nil
@@ -270,6 +330,11 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 			cur, exists, err := fsx.ReadOptional(r.path(m.Path))
 			if err != nil {
 				return false, err
+			}
+			if prev != nil && !prev.PreExisted && !exists {
+				r.next[m.Path] = prev
+				r.keep(m.Path, "removed by you: not written again")
+				return true, nil
 			}
 			// Entries an earlier run added that are gone now were removed by the user.
 			var skip map[string]bool
@@ -306,7 +371,12 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 			return false, nil
 		},
 		Run: func(context.Context) (string, error) {
-			return "", writeFile(r.path(m.Path), r.pending[m.Path])
+			b, ok := r.pending[m.Path]
+			if !ok {
+				// Without a merged body the write would empty the user's file.
+				return "", fmt.Errorf("%s: nothing merged, not written", m.Path)
+			}
+			return "", writeFile(r.path(m.Path), b)
 		}}
 }
 
@@ -332,11 +402,27 @@ func (r *run) docsStep() plan.Step {
 			}
 			rep := docs.Sync(ctx, Libs(p), r.Docs)
 			r.docs = rep.Lines()
+			if syncFailed(rep) {
+				// No record: the next run syncs again instead of calling these manifests indexed.
+				return strings.Join(r.docs, "\n"), nil
+			}
 			if err := docs.SaveRecord(r.Stack, r.Dir, docs.Record{Dir: r.Dir, Manifests: p.Manifests, SyncedAt: r.Now().UTC()}); err != nil {
 				return "", err
 			}
 			return strings.Join(r.docs, "\n"), nil
 		}}
+}
+
+// syncFailed is a sync that skipped a library for a reason other than having no versioned docs
+// URL, which a retry would not change.
+// shortcut: matches Skip.Reason text, since docs.Report has no failure query yet; use it once it has.
+func syncFailed(rep docs.Report) bool {
+	for _, s := range rep.Skipped {
+		if !strings.HasSuffix(s.Reason, docs.ErrUnresolvable.Error()) {
+			return true
+		}
+	}
+	return false
 }
 
 // recordStep writes .makeit.json when what the steps leave differs from the record on disk.
@@ -353,6 +439,9 @@ func (r *run) recordStep() plan.Step {
 	path := r.path(RecordName)
 	return plan.Step{ID: "record", Title: "Record what init wrote in " + RecordName,
 		Already: func(context.Context) (bool, error) {
+			if r.linked(RecordName) {
+				return true, nil
+			}
 			_, exists, err := fsx.ReadOptional(path)
 			if err != nil {
 				return false, err
@@ -404,13 +493,8 @@ func needsGitInit(dir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for d := abs; ; d = filepath.Dir(d) {
-		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
-			return false, nil
-		}
-		if filepath.Dir(d) == d {
-			break
-		}
+	if gitTop(abs) != "" {
+		return false, nil
 	}
 	entries, err := os.ReadDir(abs)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -420,6 +504,19 @@ func needsGitInit(dir string) (bool, error) {
 		return false, ErrNotRepo
 	}
 	return true, nil
+}
+
+// gitTop is the nearest directory from abs upward holding a .git (a directory, or a file in a
+// worktree or submodule), or "". It reads the file system only, so a dry run runs no git.
+func gitTop(abs string) string {
+	for d := abs; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
 }
 
 // detectOrEmpty is Detect, with a directory that does not exist yet giving an empty project.

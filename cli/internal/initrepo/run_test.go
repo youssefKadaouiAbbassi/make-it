@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -280,5 +282,127 @@ func TestLibsLeaveOutTheGoDirective(t *testing.T) {
 	got := Libs(p)
 	if len(got) != 1 || got[0].Name != "golang.org/x/term" {
 		t.Errorf("libs %v", got)
+	}
+}
+
+// A symlinked leaf or directory is never read or written through: a merge would pull the outside
+// file's content into the repository, and a linked directory would put writes outside it.
+func TestInitDoesNotFollowSymlinks(t *testing.T) {
+	outside := tree(t, map[string]string{"ignore": "secret\n", "conf/keep": "x\n"})
+	dir := tree(t, map[string]string{".git/": "", "package.json": `{"dependencies": {"react": "19.2.0"}}`})
+	for link, target := range map[string]string{".gitignore": "ignore", ".claude": "conf"} {
+		if err := os.Symlink(filepath.Join(outside, target), filepath.Join(dir, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e, _ := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if b, _ := os.ReadFile(filepath.Join(outside, "ignore")); string(b) != "secret\n" {
+		t.Errorf("the outside file changed: %q", b)
+	}
+	if st, err := os.Lstat(filepath.Join(dir, ".gitignore")); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Errorf(".gitignore is no longer the link: %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(outside, "conf")); len(entries) != 1 {
+		t.Errorf("written outside the project: %v", entries)
+	}
+	for _, p := range []string{".gitignore", ".claude/settings.json"} {
+		if !slices.Contains(rep.Kept, setup.Kept{Item: p, Reason: "a symlink: not followed"}) {
+			t.Errorf("no kept line for %s: %v", p, rep.Kept)
+		}
+	}
+	if r := loadRepo(t, dir); r.Files[".gitignore"] != nil || r.Files[".claude/settings.json"] != nil {
+		t.Errorf("record names a linked path: %+v", r.Files)
+	}
+}
+
+// --offline syncs no docs and runs no gh: the docs step is left out with a notice, and --rulesets
+// is refused.
+func TestInitOffline(t *testing.T) {
+	dir := nodeRepo(t)
+	e, f := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Offline: true})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if slices.Contains(ids(rep), "docs") || !slices.Contains(rep.Notices, "--offline: docs not synced") {
+		t.Errorf("steps %v notices %q", ids(rep), rep.Notices)
+	}
+	if c := f.take(); len(c) != 0 {
+		t.Errorf("offline ran %v", c)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "CLAUDE.md")); err != nil {
+		t.Errorf("files not written: %v", err)
+	}
+	_, err = Run(context.Background(), e, plan.Apply, nil, Options{Offline: true, Rulesets: true})
+	if err == nil || err.Error() != "--rulesets needs the network; drop --offline" {
+		t.Errorf("--offline --rulesets: %v", err)
+	}
+}
+
+// The docs record is saved only when the sync had no failure but unresolvable libraries: a failed
+// list or scrape leaves it out, so the next run syncs again.
+func TestInitDocsRecordOnlyAfterSync(t *testing.T) {
+	registry := httptest.NewServer(http.NotFoundHandler())
+	defer registry.Close()
+	for _, c := range []struct {
+		name string
+		list execx.Result
+		save bool
+	}{
+		{"list fails", execx.Result{Stderr: "npx: not found", Code: 127}, false},
+		{"only unresolvable", execx.Result{Stdout: "[]"}, true},
+	} {
+		dir := nodeRepo(t)
+		e, _ := testEnv(t, dir)
+		e.Docs.Resolver = docs.Resolver{NPM: registry.URL}
+		e.Docs.Run = func(_ context.Context, cmd execx.Cmd) (execx.Result, error) { return c.list, nil }
+		rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+		if err != nil || rep.Plan.Failed() {
+			t.Fatalf("%s: %v %s", c.name, err, rep.Plan.Summary())
+		}
+		if saved := len(docs.LoadRecord(e.Stack, dir).Manifests) > 0; saved != c.save {
+			t.Errorf("%s: docs record saved %v, docs %q", c.name, saved, rep.Docs)
+		}
+		if c.save && !strings.Contains(strings.Join(rep.Docs, "\n"), "no versioned docs URL") {
+			t.Errorf("%s: docs %q", c.name, rep.Docs)
+		}
+	}
+}
+
+// A merge step with nothing merged for its path refuses to write rather than empty the file.
+func TestMergeRunNeedsMergedBody(t *testing.T) {
+	dir := tree(t, map[string]string{".git/": "", "x.json": "{\"a\": 1}\n"})
+	e, _ := testEnv(t, dir)
+	r := &run{Env: e, prev: &state.Repo{}}
+	r.reset()
+	st := r.mergeStep(MergeSeed{Path: "x.json", Apply: func([]byte, map[string]bool) (Merged, error) { return Merged{}, nil }})
+	if _, err := st.Run(context.Background()); err == nil {
+		t.Error("Run wrote with nothing merged")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "x.json")); string(b) != "{\"a\": 1}\n" {
+		t.Errorf("x.json is now %q", b)
+	}
+}
+
+// A renovate.json with comments cannot be merged: it stays byte for byte, with a kept line.
+func TestInitKeepsUnparseableMerge(t *testing.T) {
+	const jsonc = "{\n  // ours\n  \"extends\": [\"config:recommended\"]\n}\n"
+	dir := tree(t, map[string]string{".git/": "", "go.mod": "module x\n", "renovate.json": jsonc})
+	e, _ := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "renovate.json")); string(b) != jsonc {
+		t.Errorf("renovate.json changed: %q", b)
+	}
+	if !slices.ContainsFunc(rep.Kept, func(k setup.Kept) bool {
+		return k.Item == "renovate.json" && strings.HasPrefix(k.Reason, "not edited: ")
+	}) {
+		t.Errorf("kept %v", rep.Kept)
 	}
 }

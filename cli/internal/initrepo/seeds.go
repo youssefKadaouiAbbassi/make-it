@@ -165,7 +165,8 @@ func (s *seeder) checks() {
 // default branch's copy of the spec. A spec the default branch does not have yet passes, and a
 // missing Docker fails with one line naming it.
 func checkAPI(spec, branch string) string {
-	base := shq("origin/" + branch + ":" + spec)
+	// git resolves "./" against the current directory, so a spec in a monorepo subfolder is found.
+	base := shq("origin/" + branch + ":./" + spec)
 	return "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_NOTIFICATIONS=true npx --yes " + redoclyPin + " lint " + shq(spec) +
 		" && if ! docker info >/dev/null 2>&1; then echo \"check:api needs Docker for oasdiff\" >&2; exit 1; " +
 		"elif git cat-file -e " + base + " 2>/dev/null; then G=$(git rev-parse --path-format=absolute --git-common-dir) && " +
@@ -174,16 +175,22 @@ func checkAPI(spec, branch string) string {
 		"; else echo \"check:api: " + spec + " is not on origin/" + branch + " yet, nothing to compare\"; fi"
 }
 
-// makeAPI is check:api as one Makefile recipe line: Go projects run oasdiff with go run, others in
-// Docker; Redocly runs in Docker, so no Node is needed.
+// makeAPI is check:api as one Makefile recipe line ($ doubled for make) with checkAPI's guards.
+// Docker comes first for every project, Go included, because Redocly lints in Docker (so no Node
+// is needed); oasdiff (go run for Go projects, Docker otherwise) runs only once the default
+// branch has the spec.
 func makeAPI(p Project, spec, branch string) string {
 	lint := "docker run --rm -e REDOCLY_TELEMETRY=off -v \"$$PWD\":/spec " + redoclyImage + " lint " + shq(spec)
-	base := shq("origin/" + branch + ":" + spec)
-	if slices.Contains(p.Types, "go") {
-		return lint + " && go run " + oasdiffModule + " breaking --fail-on ERR " + base + " " + shq(spec)
-	}
-	return lint + " && G=$$(git rev-parse --path-format=absolute --git-common-dir) && docker run --rm -v \"$$PWD\":/repo:ro -v \"$$G\":\"$$G\":ro -w /repo " +
+	base := shq("origin/" + branch + ":./" + spec)
+	needs := "Redocly and oasdiff"
+	diff := "G=$$(git rev-parse --path-format=absolute --git-common-dir) && docker run --rm -v \"$$PWD\":/repo:ro -v \"$$G\":\"$$G\":ro -w /repo " +
 		"-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo " + oasdiffImage + " breaking --fail-on ERR " + base + " " + shq(spec)
+	if slices.Contains(p.Types, "go") {
+		needs, diff = "Redocly", "go run "+oasdiffModule+" breaking --fail-on ERR "+base+" "+shq(spec)
+	}
+	return "if ! docker info >/dev/null 2>&1; then echo \"check:api needs Docker for " + needs + "\" >&2; exit 1; " +
+		"elif git cat-file -e " + base + " 2>/dev/null; then " + lint + " && " + diff + "; " +
+		"else " + lint + " && echo \"check:api: " + spec + " is not on origin/" + branch + " yet, nothing to compare\"; fi"
 }
 
 var shellSafe = regexp.MustCompile(`^[A-Za-z0-9._/:@+-]+$`)
@@ -206,8 +213,21 @@ const (
 	rustHooks = "  - repo: local\n    hooks:\n      - id: cargo-fmt\n        name: cargo fmt\n        language: system\n        entry: cargo fmt --all\n        pass_filenames: false\n        types: [rust]\n" +
 		"      - id: cargo-clippy\n        name: cargo clippy\n        language: system\n        entry: cargo clippy --all-targets --all-features -- -D warnings\n        pass_filenames: false\n        types: [rust]\n"
 	prettierHook = "      - id: prettier\n        name: prettier\n        language: system\n        entry: npx --no -- prettier --write --ignore-unknown\n        types: [text]\n"
-	eslintHook   = "      - id: eslint\n        name: eslint\n        language: system\n        entry: npx --no -- eslint --max-warnings=0 --no-warn-ignored\n        types_or: [javascript, jsx, ts, tsx]\n"
 )
+
+// eslintHook runs eslint on the staged files. --no-warn-ignored (no warning for a file the
+// config ignores) exists only for a flat eslint.config.*: ESLint 8 with a legacy .eslintrc
+// rejects it, and the hook would fail every commit.
+func eslintHook(flat bool) string {
+	entry := "npx --no -- eslint --max-warnings=0"
+	if flat {
+		entry += " --no-warn-ignored"
+	}
+	return "      - id: eslint\n        name: eslint\n        language: system\n        entry: " + entry + "\n        types_or: [javascript, jsx, ts, tsx]\n"
+}
+
+// flatESLint is a flat config at the root, the form ESLint 9 reads by default.
+var flatESLint = []string{"eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", "eslint.config.mts", "eslint.config.cts"}
 
 // preCommit seeds .pre-commit-config.yaml for prek when the repository has no hook config: the
 // language's formatter and linter, then betterleaks. A config of theirs gets a Manual line.
@@ -229,9 +249,12 @@ func (s *seeder) preCommit() error {
 			if s.p.Prettier {
 				b.WriteString(prettierHook)
 			}
-			b.WriteString(eslintHook)
+			b.WriteString(eslintHook(slices.ContainsFunc(flatESLint, func(f string) bool {
+				_, err := os.Stat(filepath.Join(s.p.Dir, f))
+				return err == nil
+			})))
 		default:
-			s.manual(".pre-commit-config.yaml: once the project has a biome or an eslint config, run makeit init --update (it adds the matching hook while the file is unchanged), or add the block for it under repos: by hand.\nbiome:\n%s\neslint (with the prettier hook only when prettier is installed):\n  - repo: local\n    hooks:\n%s%s", biomeHooks, prettierHook, eslintHook)
+			s.manual(".pre-commit-config.yaml: once the project has a biome or an eslint config, run makeit init --update (it adds the matching hook while the file is unchanged), or add the block for it under repos: by hand.\nbiome:\n%s\neslint (with the prettier hook only when prettier is installed; without --no-warn-ignored for a legacy .eslintrc):\n  - repo: local\n    hooks:\n%s%s", biomeHooks, prettierHook, eslintHook(true))
 		}
 	}
 	if s.is("python") {
@@ -301,6 +324,12 @@ func (s *seeder) ci(gateRef string) error {
 	if !s.theirs(".grype.yaml") {
 		if err := s.copySeed(".grype.yaml", "ci/.grype.yaml", "ci"); err != nil {
 			return err
+		}
+	}
+	if abs, err := filepath.Abs(s.p.Dir); err == nil {
+		if top := gitTop(abs); top != "" && top != abs {
+			s.rep.Notices = append(s.rep.Notices, "this is a subfolder of the git repository at "+top+": the gate caller, the Renovate config and floor-guard belong at the repository root, where GitHub and Renovate read them, so makeit added none here")
+			return nil
 		}
 	}
 	if i := slices.IndexFunc(renovateConfigs, s.theirs); i >= 0 {
