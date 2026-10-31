@@ -80,9 +80,8 @@ func (r *run) rulesetSteps(ctx context.Context) ([]plan.Step, error) {
 		if checks := requiredChecks(desired); len(checks) > 0 {
 			missing, branch, err := r.missingChecks(ctx, repo, checks)
 			if err != nil {
-				return nil, err
-			}
-			if len(missing) > 0 {
+				blocked = ghReason(err)
+			} else if len(missing) > 0 {
 				blocked = "not sent until these checks have passed once on " + branch + ": " + strings.Join(missing, ", ")
 			}
 		}
@@ -98,7 +97,8 @@ func (r *run) rulesetStep(repo, name string, body []byte, desired *jsonx.Object,
 		Already: func(ctx context.Context) (bool, error) {
 			list, err := r.gh(ctx, nil, repo+"/rulesets?per_page=100&includes_parents=false")
 			if err != nil {
-				return false, err
+				r.keep("ruleset "+name, ghReason(err))
+				return true, nil
 			}
 			var have []struct {
 				ID         int    `json:"id"`
@@ -119,7 +119,8 @@ func (r *run) rulesetStep(repo, name string, body []byte, desired *jsonx.Object,
 				id = have[i].ID
 				server, err := r.gh(ctx, nil, repo+"/rulesets/"+strconv.Itoa(id))
 				if err != nil {
-					return false, err
+					r.keep("ruleset "+name, ghReason(err))
+					return true, nil
 				}
 				got, err := jsonx.DecodeObject([]byte(server))
 				if err != nil {
@@ -141,9 +142,8 @@ func (r *run) rulesetStep(repo, name string, body []byte, desired *jsonx.Object,
 				args = []string{"-X", "PUT", repo + "/rulesets/" + strconv.Itoa(id), "--input", "-"}
 			}
 			out, err := r.gh(ctx, body, args...)
-			var ge *ghError
-			if errors.As(err, &ge) && ge.Status == "403" && strings.Contains(ge.Message, "Upgrade to GitHub Pro") {
-				return "rulesets need a public repository, or GitHub Pro, Team or Enterprise for a private one", plan.ErrSkip
+			if needsPro(err) {
+				return proReason, plan.ErrSkip
 			}
 			if err != nil {
 				return "", err
@@ -159,6 +159,24 @@ func (r *run) rulesetStep(repo, name string, body []byte, desired *jsonx.Object,
 			}
 			return "", r.recordRuleset(name, &state.RepoRuleset{ID: int64(id), SentSha256: fsx.Sha256(body)})
 		}}
+}
+
+// proReason is why GitHub refuses rulesets on a private repository of a free plan.
+const proReason = "rulesets need a public repository, or GitHub Pro, Team or Enterprise for a private one"
+
+// needsPro is GitHub's 403 for rulesets on a private repository of a free plan.
+func needsPro(err error) bool {
+	var ge *ghError
+	return errors.As(err, &ge) && ge.Status == "403" && strings.Contains(ge.Message, "Upgrade to GitHub Pro")
+}
+
+// ghReason is a kept line's reason for a gh read that failed (not logged in, offline, refused):
+// the ruleset is left unchecked rather than failing the plan, so the file steps still apply.
+func ghReason(err error) string {
+	if needsPro(err) {
+		return proReason
+	}
+	return "not checked: " + err.Error()
 }
 
 // recordRuleset keeps what a ruleset step sent, in the record the record step wrote.

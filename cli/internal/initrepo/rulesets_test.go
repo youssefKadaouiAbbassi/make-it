@@ -211,3 +211,41 @@ func TestRulesetsRefused(t *testing.T) {
 		t.Errorf("a refused ruleset stopped the record: %v", err)
 	}
 }
+
+// A gh read that fails, while the plan is built or in a step's Already, is a kept line: the
+// ruleset is not checked and every file step still applies.
+func TestRulesetsReadFailureKeepsFiles(t *testing.T) {
+	const pro = `{"message": "Upgrade to GitHub Pro or make this repository public to enable this feature.", "status": "403"}`
+	for _, c := range []struct {
+		name string
+		gh   func(argv []string, stdin string) (string, int)
+		want string
+	}{
+		{"not logged in", func([]string, string) (string, int) { return "", 4 }, "not checked: gh api "},
+		{"403 Pro on the list", func(argv []string, _ string) (string, int) {
+			if strings.HasSuffix(argv[2], "/rulesets?per_page=100&includes_parents=false") {
+				return pro, 1
+			}
+			return (&ghServer{rulesets: map[int]string{}, put: map[string]string{}}).handle(argv, "")
+		}, "rulesets need a public repository, or GitHub Pro, Team or Enterprise for a private one"},
+	} {
+		dir := githubRepo(t)
+		e, f := testEnv(t, dir)
+		f.gh = c.gh
+		rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Rulesets: true})
+		if err != nil || rep.Plan.Failed() {
+			t.Errorf("%s: %v %s", c.name, err, rep.Plan.Summary())
+			continue
+		}
+		for _, n := range []string{"CLAUDE.md", RecordName} {
+			if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+				t.Errorf("%s: %s not written: %v", c.name, n, err)
+			}
+		}
+		for _, name := range []string{"ruleset no-force-push", "ruleset default-branch"} {
+			if !slices.ContainsFunc(rep.Kept, func(k setup.Kept) bool { return k.Item == name && strings.HasPrefix(k.Reason, c.want) }) {
+				t.Errorf("%s: no kept line for %s: %v", c.name, name, rep.Kept)
+			}
+		}
+	}
+}
