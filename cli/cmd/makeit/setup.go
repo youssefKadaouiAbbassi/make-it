@@ -118,12 +118,16 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	if m.prepare != nil {
 		if catalogNotices, err = m.prepare(ctx, p, &e); err != nil {
 			if asJSON {
+				// The normal report's shape, with nothing planned.
 				return emit(stdout, stderr, struct {
-					Version string         `json:"version"`
-					Plan    []plan.Outcome `json:"plan"`
-					Summary string         `json:"summary"`
-					Error   string         `json:"error"`
-				}{buildinfo.Version, []plan.Outcome{}, "nothing applied", err.Error()}, 1)
+					Version    string          `json:"version"`
+					Plan       []plan.Outcome  `json:"plan"`
+					Skipped    []setup.Skipped `json:"skipped"`
+					Self       *selfMove       `json:"self,omitempty"`
+					Generation int             `json:"generation"`
+					Summary    string          `json:"summary"`
+					Error      string          `json:"error"`
+				}{buildinfo.Version, []plan.Outcome{}, []setup.Skipped{}, m.self, 0, "nothing applied", err.Error()}, 1)
 			}
 			fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 			return 1

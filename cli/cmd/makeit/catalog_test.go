@@ -236,12 +236,15 @@ func TestCatalogPrepareErrorJSON(t *testing.T) {
 		t.Fatalf("setup: exit %d\n%s", code, errOut)
 	}
 	code, out, _ := run2(t, "update", "--yes", "--json", "--catalog", "file:///no/such/cat.git")
-	var got struct {
-		Plan  []json.RawMessage `json:"plan"`
-		Error string            `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(out), &got); code != 1 || err != nil || got.Plan == nil || !strings.Contains(got.Error, credentialHint) {
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &got); code != 1 || err != nil || !strings.Contains(string(got["error"]), credentialHint) {
 		t.Errorf("exit %d, not one JSON document with the error: %v\n%s", code, err, out)
+	}
+	// The same shape as the normal report, so a consumer reads the same keys.
+	for _, k := range []string{"version", "plan", "skipped", "generation", "summary"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("no %q key: %s", k, out)
+		}
 	}
 }
 
