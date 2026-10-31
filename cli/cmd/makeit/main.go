@@ -26,7 +26,7 @@ const prog = "makeit"
 
 // catalogFlags choose where the catalog comes from (cli/CATALOG-GIT.md).
 var catalogFlags = []cli.Flag{
-	{Name: "catalog", Value: "<src>", Help: "where the plugin set comes from: embedded (the one in this makeit), a directory, owner/repo or a git URL, with #<tag or branch> or @<commit>; kept for later runs"},
+	{Name: "catalog", Value: "src", Help: "where the plugin set comes from: embedded (the one in this makeit), a directory, owner/repo or a git URL, with #<tag or branch> or @<commit>; kept for later runs"},
 	{Name: "allow-branch", Help: "let --catalog follow a #<branch>: each update takes its newest commit"},
 }
 
@@ -42,8 +42,8 @@ var commands = []cli.Command{
 		{Name: "rulesets", Help: "also send makeit's GitHub rulesets to the repository (needs gh and a GitHub remote)"},
 	}},
 	{Name: "self", Args: "install|update|rollback", Summary: "install, update or roll back makeit itself", Flags: []cli.Flag{
-		{Name: "prefix", Value: "<dir>", Help: "self install: where to put makeit (default ~/.local/bin)"},
-		{Name: "to", Value: "<version>", Help: "self update: this version instead of the latest; clears a skip"},
+		{Name: "prefix", Value: "dir", Help: "self install: where to put makeit (default ~/.local/bin)"},
+		{Name: "to", Value: "version", Help: "self update: this version instead of the latest; clears a skip"},
 		{Name: "allow-downgrade", Help: "self update: allow --to an older version"},
 	}},
 	{Name: "setup", Summary: "set up this machine: prerequisites, Claude Code, the plugin set, settings and global files", Flags: catalogFlags},

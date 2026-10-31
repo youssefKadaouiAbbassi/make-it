@@ -144,6 +144,12 @@ func TestHelp(t *testing.T) {
 	if code, out, _ := call(t, noGather(t), "help", "environment"); code != 0 || !strings.Contains(out, "MAKEIT_DIR") || !strings.Contains(out, "MAKEIT_REEXEC") || !strings.Contains(out, "MAKEIT_RELEASES_URL") {
 		t.Errorf("help environment: exit %d, stdout %q", code, out)
 	}
+	// The usage wraps a flag's value in angle brackets itself: no "<<src>>".
+	for _, c := range []string{"setup", "update", "self"} {
+		if _, out, _ := call(t, noGather(t), "help", c); strings.Contains(out, "<<") {
+			t.Errorf("help %s doubles a value's brackets: %q", c, out)
+		}
+	}
 	_, out, _ := call(t, noGather(t), "help")
 	for _, built := range []string{"docs", "init", "self", "setup", "update", "uninstall"} {
 		if !strings.Contains(out, "  "+built+" ") {
