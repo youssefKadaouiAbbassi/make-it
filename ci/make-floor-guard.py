@@ -30,9 +30,14 @@ rep(
     "const argAfter = (flag) => { const i = process.argv.indexOf(flag); return i > -1 ? process.argv[i + 1] : undefined; };\n"
     "const base = argAfter('--base') ?? `origin/${process.env.BASE_REF || 'main'}`;\n"
     "// Files whose change is always a review item: checker configs, coverage and test-runner configs,\n"
-    "// secret-scanner configs, workflows, the check tasks and CONSTRAINTS.md itself.\n"
-    "const DEFAULT_WATCH = String.raw`(^|/)(tsconfig[^/]*\\.json|eslint\\.config\\.[cm]?[jt]s|\\.eslintrc[^/]*|biome\\.jsonc?|ruff\\.toml|pyproject\\.toml|mypy\\.ini|pyrightconfig\\.json|\\.golangci\\.ya?ml|clippy\\.toml|\\.coveragerc|vitest\\.config\\.[cm]?[jt]s|jest\\.config\\.[cm]?[jt]s|playwright\\.config\\.[cm]?[jt]s|pytest\\.ini|stryker\\.config\\.[^/]+|\\.gitleaks\\.toml|\\.betterleaks\\.toml|\\.semgrepignore|\\.grype\\.ya?ml|\\.grant\\.ya?ml|package\\.json|Makefile|Taskfile\\.ya?ml|mise\\.toml|CONSTRAINTS\\.md)$|^\\.github/workflows/|^\\.pre-commit-config\\.ya?ml$`;\n"
+    "// secret-scanner configs, workflows, the check tasks, CONSTRAINTS.md itself and this guard.\n"
+    "const DEFAULT_WATCH = String.raw`(^|/)(tsconfig[^/]*\\.json|eslint\\.config\\.[cm]?[jt]s|\\.eslintrc[^/]*|biome\\.jsonc?|ruff\\.toml|pyproject\\.toml|mypy\\.ini|pyrightconfig\\.json|\\.golangci\\.ya?ml|clippy\\.toml|\\.coveragerc|vitest\\.config\\.[cm]?[jt]s|jest\\.config\\.[cm]?[jt]s|playwright\\.config\\.[cm]?[jt]s|pytest\\.ini|stryker\\.config\\.[^/]+|\\.gitleaks\\.toml|\\.betterleaks\\.toml|\\.semgrepignore|\\.grype\\.ya?ml|\\.grant\\.ya?ml|package\\.json|Makefile|Taskfile\\.ya?ml|mise\\.toml|CONSTRAINTS\\.md)$|^\\.github/workflows/|^\\.pre-commit-config\\.ya?ml$|^ci/floor-guard\\.mjs$`;\n"
     "const watch = new RegExp(argAfter('--watch') ?? DEFAULT_WATCH);",
+)
+rep(
+    "const tracked = git(['diff', '--unified=0', mergeBase, '--']);",
+    "// --no-renames: a pure rename has no +/- lines, so a watched file moved away would pass unseen.\n"
+    "const tracked = git(['diff', '--no-renames', '--unified=0', mergeBase, '--']);",
 )
 rep(
     "const SUPPRESSIONS = /@ts-ignore|@ts-nocheck|eslint-disable|biome-ignore|# *noqa|# *type: *ignore|istanbul ignore|nosemgrep|gitleaks:allow|Stryker disable/;",
@@ -47,12 +52,14 @@ rep(
     "// scripts line changed (dependency bumps are Renovate's).\n"
     "// A watched change passes when the PR description gives a reason, read from PR_BODY as data: a line\n"
     "// \"floor-guard: <reason>\" covers every watched file, \"floor-guard <path>: <reason>\" one file. A\n"
-    "// reason excuses only this rule; push events have no description and keep the finding.\n"
+    "// reason excuses only this rule; push events have no description and keep the finding. HTML\n"
+    "// comments (PR templates) are not shown on GitHub, and a <placeholder> or a reason with no letter\n"
+    "// or digit is not a reason.\n"
     "const reasons = new Map();\n"
     "let reasonForAll = '';\n"
-    "for (const line of (process.env.PR_BODY ?? '').split(/\\r?\\n/)) {\n"
+    "for (const line of (process.env.PR_BODY ?? '').replace(/<!--[\\s\\S]*?(-->|$)/g, '').split(/\\r?\\n/)) {\n"
     "  const m = line.match(/^\\s*(?:[-*]\\s+)?floor-guard(?:\\s+(\\S+))?:\\s*(\\S.*?)\\s*$/);\n"
-    "  if (!m) continue;\n"
+    "  if (!m || /^<[^>]*>$/.test(m[2]) || !/[\\p{L}\\p{N}]/u.test(m[2])) continue;\n"
     "  if (m[1]) reasons.set(m[1], m[2]);\n"
     "  else reasonForAll = m[2];\n"
     "}\n"
@@ -79,11 +86,12 @@ rep(
         "  if (SKIPS.test(text)) flag('test-made-easier', file, text);\n"
     ),
     (
-        'const isGuard = (f) => /(^|\\/)floor-guard\\.mjs$/.test(f);\n'
+        "const isGuard = (f) => f === 'ci/floor-guard.mjs';\n"
         '\n'
         'for (const { file, text } of added) {\n'
         '  // Stack addition: a CONSTRAINTS.md names every marker it forbids (its rules get their own checks),\n'
-        "  // and the guard's source holds the patterns themselves, so neither is scanned for markers.\n"
+        "  // and the guard's source holds the patterns themselves, so neither is scanned for markers. The guard\n"
+        '  // is on the watch list instead, so editing it needs a reason in the PR description.\n'
         '  if (!isConstraints(file) && !isGuard(file)) {\n'
         "    if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);\n"
         "    if (STUBS.test(text)) flag('unfinished-work', file, text);\n"
