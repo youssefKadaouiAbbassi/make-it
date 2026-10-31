@@ -165,12 +165,13 @@ func (s *seeder) checks() {
 // default branch's copy of the spec. A spec the default branch does not have yet passes, and a
 // missing Docker fails with one line naming it.
 func checkAPI(spec, branch string) string {
-	// git resolves "./" against the current directory, so a spec in a monorepo subfolder is found.
+	// git resolves "./" against the current directory, so a spec in a monorepo subfolder is found;
+	// oasdiff's container gets the repository's top level and starts in the same directory under it.
 	base := shq("origin/" + branch + ":./" + spec)
 	return "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_NOTIFICATIONS=true npx --yes " + redoclyPin + " lint " + shq(spec) +
 		" && if ! docker info >/dev/null 2>&1; then echo \"check:api needs Docker for oasdiff\" >&2; exit 1; " +
-		"elif git cat-file -e " + base + " 2>/dev/null; then G=$(git rev-parse --path-format=absolute --git-common-dir) && " +
-		"docker run --rm -v \"$PWD\":/repo:ro -v \"$G\":\"$G\":ro -w /repo -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo " +
+		"elif git cat-file -e " + base + " 2>/dev/null; then T=$(git rev-parse --show-toplevel) && G=$(git rev-parse --path-format=absolute --git-common-dir) && " +
+		"docker run --rm -v \"$T\":/repo:ro -v \"$G\":\"$G\":ro -w \"/repo/$(git rev-parse --show-prefix)\" -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo " +
 		oasdiffImage + " breaking --fail-on ERR " + base + " " + shq(spec) +
 		"; else echo \"check:api: " + spec + " is not on origin/" + branch + " yet, nothing to compare\"; fi"
 }
@@ -183,7 +184,8 @@ func makeAPI(p Project, spec, branch string) string {
 	lint := "docker run --rm -e REDOCLY_TELEMETRY=off -v \"$$PWD\":/spec " + redoclyImage + " lint " + shq(spec)
 	base := shq("origin/" + branch + ":./" + spec)
 	needs := "Redocly and oasdiff"
-	diff := "G=$$(git rev-parse --path-format=absolute --git-common-dir) && docker run --rm -v \"$$PWD\":/repo:ro -v \"$$G\":\"$$G\":ro -w /repo " +
+	diff := "T=$$(git rev-parse --show-toplevel) && G=$$(git rev-parse --path-format=absolute --git-common-dir) && " +
+		"docker run --rm -v \"$$T\":/repo:ro -v \"$$G\":\"$$G\":ro -w \"/repo/$$(git rev-parse --show-prefix)\" " +
 		"-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo " + oasdiffImage + " breaking --fail-on ERR " + base + " " + shq(spec)
 	if slices.Contains(p.Types, "go") {
 		needs, diff = "Redocly", "go run "+oasdiffModule+" breaking --fail-on ERR "+base+" "+shq(spec)

@@ -374,6 +374,55 @@ func TestCheckAPINeedsDocker(t *testing.T) {
 	}
 }
 
+// In a monorepo subfolder git finds the default branch's spec through ./, and oasdiff's
+// container mounts the repository's top level and starts in the subfolder: git in the container
+// needs the whole repository, which $PWD alone does not hold (real oasdiff exits 102 there).
+func TestCheckAPISubfolder(t *testing.T) {
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	top := t.TempDir()
+	sub := filepath.Join(top, "svc")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "openapi.yaml"), []byte("openapi: 3.0.3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"add", "."}, {"commit", "-qm", "spec"}, {"update-ref", "refs/remotes/origin/main", "HEAD"}} {
+		cmd := exec.Command(gitBin, append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Dir = top
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	bin := t.TempDir()
+	for name, body := range map[string]string{"npx": "exit 0\n", "docker": `[ "$1" = run ] && echo "$@"; exit 0` + "\n"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	realTop, err := filepath.EvalSymlinks(top)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, script string }{
+		{"package.json", checkAPI("openapi.yaml", "main")},
+		{"Makefile", strings.ReplaceAll(makeAPI(Project{Types: []string{"rust"}}, "openapi.yaml", "main"), "$$", "$")},
+	} {
+		cmd := exec.Command("/bin/sh", "-c", c.script)
+		cmd.Dir = sub
+		cmd.Env = []string{"PATH=" + bin + ":" + filepath.Dir(gitBin), "HOME=" + t.TempDir()}
+		out, err := cmd.CombinedOutput()
+		for _, want := range []string{"-v " + realTop + ":/repo:ro", "-w /repo/svc/", "origin/main:./openapi.yaml"} {
+			if err != nil || !strings.Contains(string(out), want) {
+				t.Errorf("%s: no %q: err %v, docker %q", c.name, want, err, out)
+			}
+		}
+	}
+}
+
 // The Makefile check:api has checkAPI's guards: a missing Docker fails with one line, and a spec
 // the default branch does not have yet passes, so the PR adding the first spec can merge.
 func TestMakeAPIGuards(t *testing.T) {
