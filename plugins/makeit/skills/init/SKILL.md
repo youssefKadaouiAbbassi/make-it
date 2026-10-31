@@ -51,7 +51,7 @@ in the steps below; makeit indexed the project's dependencies at their versions.
   description, the layout lines, the known traps you find). The **Product priority** line must be
   in the user's words: ask once, with AskUserQuestion, and write their answer as given.
 - A CLAUDE.md or CONSTRAINTS.md that `kept` lists as the user's: add the sections of
-  `templates/project/` (in the makeit catalog, `~/.makeit/catalog`) that it lacks, and keep every
+  `templates/project/` (in the makeit plugin set, `~/.makeit/catalog`) that it lacks, and keep every
   section it has. Never rewrite theirs.
 - CONSTRAINTS.md: fill each `<...>` with the command that produces the verdict. Delete only the
   rows whose dimension the project does not have (Accessibility and Performance without a UI,
@@ -72,14 +72,14 @@ check:full. Use the package manager and runner the repository already has.
 ## 4. Apply the manual lines
 
 Each `manual` entry is exact text for a file makeit does not edit (YAML, TOML, Makefile, justfile,
-Taskfile, a gate caller input). Apply it with the Edit tool, keeping the file's comments and
+Taskfile, a CI caller input). Apply it with the Edit tool, keeping the file's comments and
 order. When an entry says a value must wait for something (has-web-ui until test:e2e exists),
 apply it once that something exists.
 
 ## 5. Web and API
 
 - Web frontend (`web` in the record's types): add Playwright with @axe-core/playwright and a
-  `test:e2e` task that runs it; then set `has-web-ui: true` in the gate caller.
+  `test:e2e` task that runs it; then set `has-web-ui: true` in the CI caller.
 - OpenAPI spec (`api`): add schemathesis against the running server to `check:api`, since it
   needs a server makeit cannot start.
 

@@ -4,7 +4,7 @@ Last reviewed: <YYYY-MM-DD> by @<owner>
 
 Format from agent-skills constraint-driven-development (MIT, addyosmani/agent-skills 0.6.12). The floor-guard CI job reads this file: a weakened row, a removed bullet or a new Exceptions row turns the check red.
 
-## Floor (always enforced, no setup required)
+## Floor (quality rules always enforced, no setup required)
 
 - No new suppression comments: `@ts-ignore`, `@ts-nocheck`, `eslint-disable`, `biome-ignore`, `# noqa`, `# type: ignore`, `nosemgrep`, `gitleaks:allow`, `betterleaks:allow`
 - No unimplemented stubs: `throw new Error("Not implemented")`, `todo!()`, `NotImplementedError`, empty `catch {}`
@@ -27,7 +27,7 @@ Format from agent-skills constraint-driven-development (MIT, addyosmani/agent-sk
 |-----------|------|-----------|---------|
 | Types | Zero type errors | `<type checker>` | every edit |
 | Lint | Zero errors, zero warnings from our config | `<linter>` | every edit |
-| Secrets | No secrets in source | `betterleaks git --pre-commit --redact --staged` (prek), the gate's betterleaks job | commit (prek), CI |
+| Secrets | No secrets in source | `betterleaks git --pre-commit --redact --staged` (prek), the CI checks' betterleaks job | commit (prek), CI |
 | Coverage | Changed lines >= 80% covered | `<coverage tool>` + git diff | task end, CI |
 | Mutation | Diff mutation score >= 60% | `<mutation tool>` on the diff | CI |
 | Security: code | No high findings | `semgrep scan --config p/default` | CI |
