@@ -396,6 +396,12 @@ func (r *run) docsStep() plan.Step {
 			return len(rec.Manifests) > 0 && !rec.Failed && reflect.DeepEqual(rec.Manifests, now), nil
 		},
 		Run: func(ctx context.Context) (string, error) {
+			// A sync the docs hook started may be running: two would write one index at once.
+			lock, err := fsx.Acquire(docs.LockPath(r.Stack), r.Now())
+			if err != nil {
+				return "docs not synced: " + err.Error(), plan.ErrSkip
+			}
+			defer lock.Release()
 			p, err := Detect(r.Dir)
 			if err != nil {
 				return "", err

@@ -386,6 +386,35 @@ func TestInitDocsRecordMarksFailedSync(t *testing.T) {
 	}
 }
 
+func TestInitSkipsDocsWhileSyncRuns(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	calls := 0
+	e.Docs.Run = func(context.Context, execx.Cmd) (execx.Result, error) {
+		calls++
+		return execx.Result{Stdout: "[]"}, nil
+	}
+	// A sync the docs hook started holds the docs lock; two syncs would write one index at once.
+	lock, err := fsx.Acquire(docs.LockPath(e.Stack), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if calls != 0 {
+		t.Errorf("docs-mcp-server ran %d times while another sync held the docs lock", calls)
+	}
+	if got := stepStatus(rep.Plan, "docs"); got != plan.Skipped {
+		t.Errorf("docs step %q, want skipped", got)
+	}
+	if len(docs.LoadRecord(e.Stack, dir).Manifests) > 0 {
+		t.Error("a docs record for a sync that did not run")
+	}
+}
+
 // stepStatus is the status of the step with id in rep, or "".
 func stepStatus(rep plan.Report, id string) plan.Status {
 	for _, o := range rep.Outcomes {

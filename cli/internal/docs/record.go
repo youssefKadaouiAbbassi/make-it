@@ -21,6 +21,10 @@ type Record struct {
 	Failed bool `json:"failed,omitempty"`
 }
 
+// LockPath is the lock one docs sync holds, apart from the stack's run lock: a sync takes
+// minutes, and setup, update and init must not wait on it.
+func LockPath(stack string) string { return filepath.Join(stack, "docs", "lock") }
+
 func recordPath(stack, dir string) string {
 	abs, err := filepath.Abs(dir)
 	if err != nil {

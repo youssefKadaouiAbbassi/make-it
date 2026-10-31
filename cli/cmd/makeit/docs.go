@@ -56,7 +56,7 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	}
 	if !p.Bool["dry-run"] {
 		// Its own lock, not the stack run lock: a sync takes minutes and must not block setup or update.
-		lock, err := fsx.Acquire(filepath.Join(roots.Stack, "docs", "lock"), time.Now())
+		lock, err := fsx.Acquire(docs.LockPath(roots.Stack), time.Now())
 		if err != nil {
 			say("another docs sync is in progress: %v", err)
 			return 0
