@@ -240,15 +240,36 @@ func anyFile(dir string, names []string) bool {
 	return slices.ContainsFunc(names, func(n string) bool { _, err := os.Stat(filepath.Join(dir, n)); return err == nil })
 }
 
-// findGitDir is the .git directory of dir or of the nearest parent that has one, or "".
+// findGitDir is the git directory holding config and refs for dir or the nearest parent with a
+// .git, or "". A .git file (a submodule, a linked worktree) names the git directory in its
+// "gitdir:" line, relative to the file's directory; a "commondir" there names the directory with
+// the shared config and refs, relative to the git directory, as git reads them.
 func findGitDir(dir string) string {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return ""
 	}
 	for d := abs; ; d = filepath.Dir(d) {
-		if st, err := os.Stat(filepath.Join(d, ".git")); err == nil && st.IsDir() {
-			return filepath.Join(d, ".git")
+		dotGit := filepath.Join(d, ".git")
+		if st, err := os.Stat(dotGit); err == nil && st.IsDir() {
+			return dotGit
+		} else if err == nil {
+			b, err := os.ReadFile(dotGit)
+			gd, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:")
+			if err != nil || !ok {
+				return ""
+			}
+			if gd = strings.TrimSpace(gd); !filepath.IsAbs(gd) {
+				gd = filepath.Join(d, gd)
+			}
+			if c, err := os.ReadFile(filepath.Join(gd, "commondir")); err == nil {
+				if cd := strings.TrimSpace(string(c)); filepath.IsAbs(cd) {
+					gd = cd
+				} else {
+					gd = filepath.Join(gd, cd)
+				}
+			}
+			return gd
 		}
 		if filepath.Dir(d) == d {
 			return ""

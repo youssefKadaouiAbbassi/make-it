@@ -224,6 +224,33 @@ func TestDetectRepoFacts(t *testing.T) {
 	}
 }
 
+// A submodule and a linked worktree have a .git file: the remote and default branch come from the
+// git directory it names (and that directory's commondir), not from the superproject or nothing.
+func TestDetectGitFile(t *testing.T) {
+	remote := func(r string) string { return "[remote \"origin\"]\n\turl = git@github.com:o/" + r + ".git\n" }
+	super := tree(t, map[string]string{
+		".git/config":                               remote("super"),
+		".git/refs/remotes/origin/HEAD":             "ref: refs/remotes/origin/main\n",
+		".git/modules/sub/config":                   remote("sub"),
+		".git/modules/sub/refs/remotes/origin/HEAD": "ref: refs/remotes/origin/dev\n",
+		"sub/.git":                                  "gitdir: ../.git/modules/sub\n",
+		"sub/go.mod":                                "module sub\n",
+	})
+	if p, err := Detect(filepath.Join(super, "sub")); err != nil || p.GitHub.Repo != "sub" || p.DefaultBranch != "dev" {
+		t.Errorf("submodule: %+v %q %v", p.GitHub, p.DefaultBranch, err)
+	}
+	main := tree(t, map[string]string{
+		".git/config":                   remote("main"),
+		".git/refs/remotes/origin/HEAD": "ref: refs/remotes/origin/trunk\n",
+		".git/worktrees/wt/commondir":   "../..\n",
+		".git/worktrees/wt/HEAD":        "ref: refs/heads/feature\n",
+	})
+	wt := tree(t, map[string]string{".git": "gitdir: " + filepath.Join(main, ".git", "worktrees", "wt") + "\n", "go.mod": "module wt\n"})
+	if p, err := Detect(wt); err != nil || p.GitHub.Repo != "main" || p.DefaultBranch != "trunk" {
+		t.Errorf("linked worktree: %+v %q %v", p.GitHub, p.DefaultBranch, err)
+	}
+}
+
 // One unreadable directory (a database bind mount owned by another user) is skipped, not fatal.
 func TestDetectUnreadableDir(t *testing.T) {
 	if os.Geteuid() == 0 {
