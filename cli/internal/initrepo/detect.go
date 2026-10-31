@@ -521,7 +521,7 @@ func withLock(deps map[string]string, b []byte, eco, manifest string) []Dep {
 // stripRange drops a version range's operator: "^4.1.12" -> "4.1.12", ">=0.28,<1" -> "0.28".
 func stripRange(r string) string {
 	r = strings.TrimSpace(strings.SplitN(r, ",", 2)[0])
-	return strings.TrimLeft(r, "^~>=<!= v")
+	return strings.TrimLeft(r, "^~>=<! v")
 }
 
 func nodeVersion(dir string) string {
