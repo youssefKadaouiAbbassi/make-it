@@ -74,6 +74,18 @@ type Prereq struct {
 	Pkgs map[PM][]string
 	// Manual is shown when there is no package route.
 	Manual string
+	// When limits the row to machines with one of these programs on PATH (the toolchain it
+	// serves); empty means every machine.
+	When []string
+	// Via are toolchain routes, tried in order before the package manager: the first whose Bin
+	// is on PATH is the fix.
+	Via []Via
+}
+
+// Via is an install command that needs one program, such as rustup or npm.
+type Via struct {
+	Bin  string
+	Argv []string
 }
 
 // Applies reports whether the row is checked on p.
@@ -125,6 +137,34 @@ var Prereqs = []Prereq{
 		Pkgs:   map[PM][]string{Brew: {"grype"}, WinGet: {"Anchore.Grype"}},
 		Manual: "a release binary from github.com/anchore/grype (verify its checksum)",
 	},
+	// The language servers the bundle's LSP plugins start (LSP-ROWS.md). npm needs node, a
+	// required row, so the two npm servers apply everywhere.
+	{
+		ID: "typescript-language-server", Why: "the typescript-lsp plugin runs it for .ts and .js files", Bins: []string{"typescript-language-server"},
+		Pkgs:   map[PM][]string{Brew: {"typescript-language-server"}},
+		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "typescript-language-server", "typescript"}}},
+		Manual: "npm install -g typescript-language-server typescript (with sudo for a distribution's node; with an npm user prefix, add $(npm prefix -g)/bin to PATH)",
+	},
+	{
+		ID: "pyright", Why: "the pyright-lsp plugin runs it for .py files", Bins: []string{"pyright-langserver"},
+		Pkgs:   map[PM][]string{Brew: {"pyright"}},
+		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "pyright"}}},
+		Manual: "npm install -g pyright, or pipx install pyright (with an npm user prefix, add $(npm prefix -g)/bin to PATH)",
+	},
+	{
+		ID: "rust-analyzer", Why: "the rust-analyzer-lsp plugin runs it for .rs files", Bins: []string{"rust-analyzer"},
+		When:   []string{"cargo", "rustup"},
+		Pkgs:   map[PM][]string{Brew: {"rust-analyzer"}, APK: {"rust-analyzer"}, DNF: {"rust-analyzer"}},
+		Via:    []Via{{Bin: "rustup", Argv: []string{"rustup", "component", "add", "rust-analyzer"}}},
+		Manual: "rustup component add rust-analyzer (it lands in ~/.cargo/bin, which must be on PATH)",
+	},
+	{
+		ID: "gopls", Why: "the gopls-lsp plugin runs it for .go files", Bins: []string{"gopls"},
+		When:   []string{"go"},
+		Pkgs:   map[PM][]string{Brew: {"gopls"}, APT: {"gopls"}, APK: {"gopls"}},
+		Via:    []Via{{Bin: "go", Argv: []string{"go", "install", "golang.org/x/tools/gopls@latest"}}},
+		Manual: "go install golang.org/x/tools/gopls@latest, then add $(go env GOPATH)/bin to PATH (go install puts it there)",
+	},
 }
 
 // Find returns the row with id; an unknown id is a programming error.
@@ -147,14 +187,20 @@ func hasCABundle() bool {
 type State struct {
 	Prereq  Prereq
 	Present bool
+	// Via is the first toolchain route whose program is on PATH, or nil.
+	Via []string
 }
 
 // Status checks every row that applies to p.
 func Status(p Platform, present func(string) bool) []State {
 	var out []State
 	for _, r := range Prereqs {
-		if !r.Applies(p) {
+		if !r.Applies(p) || (len(r.When) > 0 && !slices.ContainsFunc(r.When, present)) {
 			continue
+		}
+		var via []string
+		if i := slices.IndexFunc(r.Via, func(v Via) bool { return present(v.Bin) }); i >= 0 {
+			via = r.Via[i].Argv
 		}
 		ok := false
 		if r.Present != nil {
@@ -162,7 +208,7 @@ func Status(p Platform, present func(string) bool) []State {
 		} else {
 			ok = slices.ContainsFunc(r.Bins, present)
 		}
-		out = append(out, State{Prereq: r, Present: ok})
+		out = append(out, State{Prereq: r, Present: ok, Via: via})
 	}
 	return out
 }
