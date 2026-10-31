@@ -2,7 +2,6 @@ package catsrc
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"os/exec"
@@ -192,8 +191,6 @@ func TestFetchRunsNoHooks(t *testing.T) {
 		t.Error("a hook ran during the fetch")
 	}
 }
-
-func hexOf(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }
 
 // treeObject writes a raw tree object, which git's own commands would never build with these names.
 func treeObject(t *testing.T, dir string, entries ...string) string {

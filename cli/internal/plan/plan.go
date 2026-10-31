@@ -187,4 +187,4 @@ func Decide(interactive, yes, dryRun bool) Mode {
 }
 
 // ConsentMessage is printed with exit 2.
-const ConsentMessage = "stdin is not a terminal: nothing was changed. Run again with --yes to apply this plan, or --dry-run to only print it."
+const ConsentMessage = "stdin is not a terminal: nothing was changed. Run again with --yes to apply this plan, or --dry-run to only print it"

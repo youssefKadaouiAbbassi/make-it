@@ -143,7 +143,7 @@ func (e *env) updateGlobalSteps() []plan.Step {
 }
 
 // errNoClaude: a plugin step needs Claude Code, which is not usable.
-var errNoClaude = errors.New("Claude Code is not usable, so the plugin steps cannot run")
+var errNoClaude = errors.New("the plugin steps cannot run: Claude Code is not usable")
 
 // gather lists marketplaces and plugins once and keeps the answer until a step changes plugins.
 func (e *env) gather(ctx context.Context) (pluginrule.Inputs, error) {
