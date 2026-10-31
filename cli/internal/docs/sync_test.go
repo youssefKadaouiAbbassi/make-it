@@ -127,7 +127,9 @@ func TestSyncRefusesDashArgs(t *testing.T) {
 		t.Fatalf("report %+v", rep)
 	}
 	for _, c := range s.calls {
-		if slices.ContainsFunc(c[3:], func(a string) bool { return strings.HasPrefix(a, "-x") || a == "--help" || strings.HasPrefix(a, "--store-path") }) {
+		if slices.ContainsFunc(c[3:], func(a string) bool {
+			return strings.HasPrefix(a, "-x") || a == "--help" || strings.HasPrefix(a, "--store-path")
+		}) {
 			t.Errorf("dash argument reached the server: %v", c)
 		}
 	}

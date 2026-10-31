@@ -233,8 +233,8 @@ func TestDetectGitFile(t *testing.T) {
 		".git/refs/remotes/origin/HEAD":             "ref: refs/remotes/origin/main\n",
 		".git/modules/sub/config":                   remote("sub"),
 		".git/modules/sub/refs/remotes/origin/HEAD": "ref: refs/remotes/origin/dev\n",
-		"sub/.git":                                  "gitdir: ../.git/modules/sub\n",
-		"sub/go.mod":                                "module sub\n",
+		"sub/.git":   "gitdir: ../.git/modules/sub\n",
+		"sub/go.mod": "module sub\n",
 	})
 	if p, err := Detect(filepath.Join(super, "sub")); err != nil || p.GitHub.Repo != "sub" || p.DefaultBranch != "dev" {
 		t.Errorf("submodule: %+v %q %v", p.GitHub, p.DefaultBranch, err)
