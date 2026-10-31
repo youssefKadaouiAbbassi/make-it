@@ -7,7 +7,18 @@ makeit is in beta (0.x): commands and files may still change.
 
 ## Install
 
-<!-- pending: the install command comes with the release (install script and signed binaries) -->
+Linux and macOS:
+
+    curl -fsSL https://github.com/youssefKadaouiAbbassi/make-it/releases/download/v0.1.0/install.sh | sh
+
+Windows (PowerShell):
+
+    irm https://github.com/youssefKadaouiAbbassi/make-it/releases/download/v0.1.0/install.ps1 | iex
+
+The script checks the download against the release's signed checksums (with
+[minisign](https://jedisct1.github.io/minisign/) installed it verifies the signature too, and says
+when it could not), then runs `makeit self install`, which puts makeit in `~/.local/bin`. Then run
+`makeit setup`.
 
 ## Commands
 
