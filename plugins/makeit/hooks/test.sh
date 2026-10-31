@@ -193,6 +193,8 @@ if [ -f "$sk" ]; then
   if grep -Fq '.claude/skills/run/' "$sk"; then bad "init skill: never .claude/skills/run/"; else ok "init skill: never .claude/skills/run/"; fi
   expect "init skill: first commit asked" "AskUserQuestion" "$body"
   expect "init skill: --rulesets only on request" "--rulesets" "$body"
+  expect "init skill: the init call stands alone (the exact allowed-tools rule)" "as a command on its own" "$body"
+  expect "init skill: Coverage and Mutation rows are never deleted" "Never delete the Coverage or Mutation row" "$body"
   wire=$(grep -n 'Wire the check' "$sk" | head -1 | cut -d: -f1)
   full=$(grep -n 'Run check:full' "$sk" | head -1 | cut -d: -f1)
   if [ -n "$wire" ] && [ -n "$full" ] && [ "$wire" -lt "$full" ]; then ok "init skill: check:full after the stubs are wired"; else bad "init skill: order of wiring and check:full ($wire, $full)"; fi

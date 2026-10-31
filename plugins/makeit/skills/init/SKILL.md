@@ -26,8 +26,9 @@ rulesets to GitHub, which is outward-facing and needs its own consent.
 
 ## 1. Run makeit init
 
-Run it with the Bash tool from the project root, with `timeout: 600000` (the docs index can take
-minutes on a repository with many dependencies):
+Run it with the Bash tool from the project root, as a command on its own (the skill pre-approves
+exactly this command, so do not chain it with others), with `timeout: 600000` (the docs index can
+take minutes on a repository with many dependencies):
 
     makeit init --yes --json
 
@@ -52,6 +53,12 @@ in the steps below; makeit indexed the project's dependencies at their versions.
 - A CLAUDE.md or CONSTRAINTS.md that `kept` lists as the user's: add the sections of
   `templates/project/` (in the makeit catalog, `~/.makeit/catalog`) that it lacks, and keep every
   section it has. Never rewrite theirs.
+- CONSTRAINTS.md: fill each `<...>` with the command that produces the verdict. Delete only the
+  rows whose dimension the project does not have (Accessibility and Performance without a UI,
+  Migrations without a database). Never delete the Coverage or Mutation row: every project has
+  both. Wire the language's coverage tool and a diff mutation tool; when one cannot be wired yet,
+  keep its row as it is and add a HANDOFF item for it. floor-guard reads a removed row as a
+  weakened constraint.
 - HANDOFF.md: small numbered items, one action each.
 
 ## 3. Wire the check tasks
