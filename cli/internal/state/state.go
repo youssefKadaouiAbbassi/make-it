@@ -179,7 +179,10 @@ type Repo struct {
 	Files         map[string]*RepoFile    `json:"files,omitempty"`
 	Rulesets      map[string]*RepoRuleset `json:"rulesets,omitempty"`
 	Migrations    []MigrationRun          `json:"migrations,omitempty"`
-	Extra         jsontext.Value          `json:",embed"`
+	// ManualSha256 is the hash of the manual steps the last run printed, so a re-run with the same
+	// ones does not print them again.
+	ManualSha256 string         `json:"manualSha256,omitempty"`
+	Extra        jsontext.Value `json:",embed"`
 }
 
 // RepoCatalog is the catalog `init` used.

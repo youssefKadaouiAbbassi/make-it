@@ -65,6 +65,8 @@ type run struct {
 	kept    []setup.Kept
 	pending map[string][]byte
 	docs    []string
+	// manual is the hash of the run's manual steps ("" when there are none).
+	manual string
 	// newer are files init wrote, unchanged since, whose template has moved on (without --update).
 	newer []string
 }
@@ -224,6 +226,9 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	seeds, merges, rep, err := Seeds(r.p, r.Catalog, r.Req, ours)
 	if err != nil {
 		return nil, SeedReport{}, err
+	}
+	if len(rep.Manual) > 0 {
+		r.manual = fsx.Sha256([]byte(strings.Join(rep.Manual, "\n")))
 	}
 	for _, m := range merges {
 		steps = append(steps, r.mergeStep(m))
@@ -424,6 +429,7 @@ func (r *run) recordStep() plan.Step {
 		next.Answers.Types = r.p.Types
 		next.Files = r.next
 		next.Catalog = state.RepoCatalog{Kind: r.CatalogKind, Resolved: r.CatalogResolved}
+		next.ManualSha256 = r.manual
 		return &next
 	}
 	path := r.path(RecordName)
@@ -437,7 +443,8 @@ func (r *run) recordStep() plan.Step {
 				return false, err
 			}
 			next := build()
-			return exists && reflect.DeepEqual(next.Files, r.prev.Files) && slicesEqual(next.Answers.Types, r.prev.Answers.Types), nil
+			return exists && reflect.DeepEqual(next.Files, r.prev.Files) && slicesEqual(next.Answers.Types, r.prev.Answers.Types) &&
+				next.ManualSha256 == r.prev.ManualSha256, nil
 		},
 		Run: func(context.Context) (string, error) {
 			return "", state.SaveRepo(path, build())

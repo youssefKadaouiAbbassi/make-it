@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -95,4 +96,41 @@ func TestInitConsentAndUsage(t *testing.T) {
 	if code, out, _ := run2(t, "init", "--help"); code != 0 || !strings.Contains(out, "--update") || !strings.Contains(out, "--rulesets") {
 		t.Errorf("help: %d %q", code, out)
 	}
+}
+
+// The manual block prints when the run changed something or its lines are new since the record; a
+// re-run with nothing to do points at it in one line; --dry-run always prints it.
+func TestInitManualOnce(t *testing.T) {
+	newDocsMachine(t)
+	dir := initRepo(t)
+	const block = "for /makeit:init to apply:"
+	if code, _, errOut := run2(t, "init", "--yes", dir); code != 0 || !strings.Contains(errOut, block) {
+		t.Fatalf("first run: exit %d\n%s", code, errOut)
+	}
+	again := func(name string, wantBlock bool) {
+		t.Helper()
+		code, _, errOut := run2(t, "init", "--yes", dir)
+		if code != 0 || strings.Contains(errOut, block) != wantBlock {
+			t.Errorf("%s: exit %d, block printed %v, want %v\n%s", name, code, !wantBlock, wantBlock, errOut)
+		}
+		if !wantBlock && !strings.Contains(errOut, "still open: makeit init --dry-run shows") {
+			t.Errorf("%s: no pointer line\n%s", name, errOut)
+		}
+	}
+	again("re-run", false)
+	if _, _, errOut := run2(t, "init", "--dry-run", dir); !strings.Contains(errOut, block) {
+		t.Errorf("--dry-run hid the block\n%s", errOut)
+	}
+	rec := filepath.Join(dir, ".makeit.json")
+	b, err := os.ReadFile(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := regexp.MustCompile(`"manualSha256": "[^"]*"`).ReplaceAll(b, []byte(`"manualSha256": "sha256:old"`))
+	if string(stale) == string(b) {
+		t.Fatalf("no manualSha256 in the record:\n%s", b)
+	}
+	write(t, rec, string(stale))
+	again("manual lines changed", true)
+	again("re-run after the change", false)
 }
