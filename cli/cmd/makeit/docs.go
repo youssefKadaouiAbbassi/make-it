@@ -62,7 +62,7 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	if p.Bool["if-changed"] && sameManifests(docs.LoadRecord(roots.Stack, dir).Manifests, proj.Manifests) {
 		return 0
 	}
-	libs := libsOf(proj)
+	libs := initrepo.Libs(proj)
 	if p.Bool["dry-run"] {
 		say("would sync the docs of %d libraries:", len(libs))
 		for _, l := range libs {
@@ -84,15 +84,6 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 		say("docs: %v", err)
 	}
 	return 0
-}
-
-// libsOf are a project's dependencies as docs libraries.
-func libsOf(p initrepo.Project) []docs.Lib {
-	out := make([]docs.Lib, 0, len(p.Deps))
-	for _, d := range p.Deps {
-		out = append(out, docs.Lib{Name: d.Name, Version: d.Version, Ecosystem: d.Ecosystem})
-	}
-	return out
 }
 
 func sameManifests(a, b map[string]string) bool {
