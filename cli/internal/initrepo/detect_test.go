@@ -1,6 +1,7 @@
 package initrepo
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -133,5 +134,29 @@ func TestDetectVersions(t *testing.T) {
 	}
 	if !slices.Equal(p.Deps, want) {
 		t.Errorf("toml deps\n got %v\nwant %v", p.Deps, want)
+	}
+}
+
+// The docs record compares these: what Detect read, and what is on disk now.
+func TestManifestHashes(t *testing.T) {
+	dir := tree(t, map[string]string{"package.json": pkg, "package-lock.json": `{"packages": {}}`,
+		"apps/api/go.mod": "module api\n", "node_modules/zod/package.json": `{"version": "4.1.13"}`})
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now, err := ManifestHashes(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := slices.Sorted(maps.Keys(p.Manifests))
+	if !slices.Equal(keys, []string{"apps/api/go.mod", "package-lock.json", "package.json"}) || !maps.Equal(p.Manifests, now) {
+		t.Fatalf("read %v, on disk %v", p.Manifests, now)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package-lock.json"), []byte(`{"packages": {"node_modules/zod": {"version": "4.1.14"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := ManifestHashes(dir); maps.Equal(after, p.Manifests) {
+		t.Error("a lockfile change was not seen")
 	}
 }

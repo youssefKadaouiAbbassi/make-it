@@ -32,6 +32,9 @@ var catalogFlags = []cli.Flag{
 
 // commands lists only what this build has, so usage never names a command that does not exist.
 var commands = []cli.Command{
+	{Name: "docs", Args: "sync [dir]", Summary: "index the docs of a project's dependencies for the docs MCP server", Flags: []cli.Flag{
+		{Name: "if-changed", Help: "only when a manifest or lockfile changed since the last sync (the hooks use it)"},
+	}},
 	{Name: "doctor", Summary: "check this machine against what the stack expects; changes nothing"},
 	{Name: "help", Args: "[command|exit-codes|environment]", Summary: "show help for a command or a topic"},
 	{Name: "self", Args: "install|update|rollback", Summary: "install, update or roll back makeit itself", Flags: []cli.Flag{
@@ -166,6 +169,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 		return runSetup(ctx, p, args, stdout, stderr)
 	case "self":
 		return runSelf(ctx, p, stdout, stderr)
+	case "docs":
+		return runDocs(ctx, p, stdout, stderr)
 	case "version":
 		if len(p.Positionals) > 0 {
 			fmt.Fprintf(stderr, "%s: version takes no arguments\n", prog)

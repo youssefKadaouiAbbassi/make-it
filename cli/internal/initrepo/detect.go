@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
+
+	"makeit/internal/fsx"
 )
 
 // Dep is one direct dependency read from a manifest. Version is exact when a lockfile, the
@@ -40,6 +43,44 @@ type Project struct {
 	// Deps are the direct dependencies of every manifest to depth 3, sorted by manifest, then name.
 	Deps   []Dep
 	GitHub struct{ Owner, Repo string }
+	// Manifests maps each manifest and lockfile Detect read (slash path) to the sha256 of the
+	// bytes it read, so a docs sync records what it actually indexed.
+	Manifests map[string]string
+}
+
+// lockfiles beside a manifest that decide its versions.
+var lockfiles = map[string]string{"package.json": "package-lock.json", "pyproject.toml": "uv.lock", "Cargo.toml": "Cargo.lock"}
+
+// ManifestHashes is what Project.Manifests would be for dir now, without parsing anything.
+func ManifestHashes(dir string) (map[string]string, error) {
+	manifests, err := findManifests(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, m := range manifests {
+		for _, rel := range []string{m, siblingLock(m)} {
+			if rel == "" {
+				continue
+			}
+			if b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel))); err == nil {
+				out[rel] = fsx.Sha256(b)
+			}
+		}
+	}
+	return out, nil
+}
+
+// siblingLock is the lockfile next to manifest m, or "" for go.mod.
+func siblingLock(m string) string {
+	l, ok := lockfiles[path.Base(m)]
+	if !ok {
+		return ""
+	}
+	if d := path.Dir(m); d != "." {
+		return d + "/" + l
+	}
+	return l
 }
 
 // pruned are directories no manifest or spec is looked for in (docs.sh prunes the same).
@@ -58,14 +99,14 @@ var (
 // Detect reads dir's manifests, lockfiles and layout. A directory with no manifest gives a
 // Project with no types.
 func Detect(dir string) (Project, error) {
-	p := Project{Dir: dir}
+	p := Project{Dir: dir, Manifests: map[string]string{}}
 	manifests, err := findManifests(dir)
 	if err != nil {
 		return p, err
 	}
 	root := map[string]bool{}
 	for _, m := range manifests {
-		deps, err := readDeps(dir, m)
+		deps, err := readDeps(dir, m, p.Manifests)
 		if err != nil {
 			return p, err
 		}
@@ -169,21 +210,29 @@ func findManifests(dir string) ([]string, error) {
 	return out, err
 }
 
-func readDeps(dir, manifest string) ([]Dep, error) {
+// readDeps parses one manifest and its lockfile, recording the sha256 of each file it read.
+func readDeps(dir, manifest string, read map[string]string) ([]Dep, error) {
 	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(manifest)))
 	if err != nil {
 		return nil, err
 	}
-	base := filepath.Join(dir, filepath.FromSlash(filepath.ToSlash(filepath.Dir(manifest))))
-	switch filepath.Base(manifest) {
+	read[manifest] = fsx.Sha256(b)
+	var lock []byte
+	if l := siblingLock(manifest); l != "" {
+		if lb, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(l))); err == nil {
+			lock, read[l] = lb, fsx.Sha256(lb)
+		}
+	}
+	base := filepath.Join(dir, filepath.FromSlash(path.Dir(manifest)))
+	switch path.Base(manifest) {
 	case "go.mod":
 		return goDeps(b, manifest), nil
 	case "package.json":
-		return npmDeps(b, base, manifest), nil
+		return npmDeps(b, lock, base, manifest), nil
 	case "pyproject.toml":
-		return withLock(pyDeps(b), filepath.Join(base, "uv.lock"), "pypi", manifest), nil
+		return withLock(pyDeps(b), lock, "pypi", manifest), nil
 	default:
-		return withLock(cargoDeps(b), filepath.Join(base, "Cargo.lock"), "cargo", manifest), nil
+		return withLock(cargoDeps(b), lock, "cargo", manifest), nil
 	}
 }
 
@@ -217,7 +266,7 @@ func goDeps(b []byte, manifest string) []Dep {
 
 // npmDeps reads dependencies and devDependencies; the version comes from package-lock.json, then
 // node_modules/<name>/package.json, then the range.
-func npmDeps(b []byte, base, manifest string) []Dep {
+func npmDeps(b, lockJSON []byte, base, manifest string) []Dep {
 	var pj struct{ Dependencies, DevDependencies map[string]string }
 	if json.Unmarshal(b, &pj) != nil {
 		return nil
@@ -225,9 +274,7 @@ func npmDeps(b []byte, base, manifest string) []Dep {
 	var lock struct {
 		Packages map[string]struct{ Version string } `json:"packages"`
 	}
-	if lb, err := os.ReadFile(filepath.Join(base, "package-lock.json")); err == nil {
-		_ = json.Unmarshal(lb, &lock)
-	}
+	_ = json.Unmarshal(lockJSON, &lock)
 	var out []Dep
 	for _, m := range []map[string]string{pj.Dependencies, pj.DevDependencies} {
 		for name, rng := range m {
@@ -318,9 +365,9 @@ func cargoDeps(b []byte) map[string]string {
 }
 
 // withLock turns name -> range into Deps, taking exact versions from a uv.lock or Cargo.lock.
-func withLock(deps map[string]string, lockPath, eco, manifest string) []Dep {
+func withLock(deps map[string]string, b []byte, eco, manifest string) []Dep {
 	locked := map[string]string{}
-	if b, err := os.ReadFile(lockPath); err == nil {
+	if b != nil {
 		name := ""
 		for _, line := range strings.Split(string(b), "\n") {
 			if m := lockName.FindStringSubmatch(line); m != nil {

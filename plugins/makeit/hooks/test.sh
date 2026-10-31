@@ -127,7 +127,14 @@ printf 'module m\n\ngo 1.27.3\n\nrequire (\n\tgolang.org/x/term v0.47.0\n\tgolan
 printf '{"dependencies":{"react":"^19.2.0"},"devDependencies":{"vitest":"4.1.0"}}\n' >"$dp/web/package.json"
 printf '{"dependencies":{"ignored":"1.0.0"}}\n' >"$dp/web/node_modules/x/package.json"
 printf '[project]\nname = "p"\ndependencies = ["httpx>=0.28", "pydantic==2.12.0"]\n' >"$dp/pyproject.toml"
-ctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$dp" | bash "$here/docs.sh" | jq -r '.hookSpecificOutput.additionalContext')
+# A fake makeit records the sync the hook starts; the real one is never reached from here.
+mkdir -p "$tmp/mbin"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/makeit.log"\n' "$tmp" >"$tmp/mbin/makeit"; chmod +x "$tmp/mbin/makeit"
+nomakeit=/usr/bin:/bin # makeit is never installed there
+docs_hook() { PATH="$1" bash "$here/docs.sh"; }
+waitlog() { for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$tmp/makeit.log" ] && break; sleep 0.2; done; cat "$tmp/makeit.log" 2>/dev/null; : >"$tmp/makeit.log"; }
+ctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit" | jq -r '.hookSpecificOutput.additionalContext')
+expect "docs SessionStart starts the sync" "docs sync --if-changed --quiet $dp" "$(waitlog)"
 expect "docs lists the go version" 'go 1.27.3 (cli/go.mod)' "$ctx"
 expect "docs lists a direct go require" 'golang.org/x/term v0.47.0' "$ctx"
 expect "docs lists a single-line require" 'github.com/a/b v1.2.3' "$ctx"
@@ -136,9 +143,14 @@ expect "docs lists package.json deps" 'react ^19.2.0 (web/package.json)' "$ctx"
 expect "docs lists devDependencies" 'vitest 4.1.0' "$ctx"
 case "$ctx" in *ignored*) bad "docs skips node_modules" ;; *) ok "docs skips node_modules" ;; esac
 command -v python3 >/dev/null 2>&1 && expect "docs lists pyproject deps" 'pydantic ==2.12.0' "$ctx"
-expect "docs tells the agent what to do" 'list_libraries' "$ctx"
+expect "docs says they are indexed and to search" 'These are indexed by makeit; search them (search_docs or the docs-search skill) before you rely on their API.' "$ctx"
+case "$ctx" in *"docs-manage skill"*) bad "docs no longer tells the agent to index" ;; *) ok "docs no longer tells the agent to index" ;; esac
+expect_empty "docs PostToolUse prints nothing" "$(printf '{"hook_event_name":"PostToolUse","cwd":"%s","tool_name":"Bash"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit")"
+expect "docs PostToolUse starts the sync" "docs sync --if-changed --quiet $dp" "$(waitlog)"
+out=$(printf '{"hook_event_name":"PostToolUse","cwd":"%s","tool_name":"Edit"}' "$dp" | docs_hook "$nomakeit"); rc=$?
+if [ -z "$out" ] && [ "$rc" = 0 ]; then ok "docs without makeit: silent, exit 0"; else bad "docs without makeit: rc $rc out [$out]"; fi
 mkdir -p "$tmp/empty"
-expect_empty "docs silent without manifests" "$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$tmp/empty" | bash "$here/docs.sh")"
+expect_empty "docs silent without manifests" "$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$tmp/empty" | docs_hook "$nomakeit")"
 
 
 # --- check-task-stop.sh (optional) -------------------------------------------------------------
