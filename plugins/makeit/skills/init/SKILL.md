@@ -108,9 +108,14 @@ Run the repository's `check:full` and fix what fails, until it passes or a failu
 
 ## 8. The first commit
 
-Ask with AskUserQuestion before committing: name the branch and what the commit holds. On a yes,
-create a branch from the current one and commit there; never on the default branch. On a no,
-leave everything uncommitted.
+Ask with AskUserQuestion before committing: name the branch and what the commit holds. On a yes:
+
+- A repository with no commit yet (`git rev-parse --verify HEAD` fails, as after makeit's own git
+  init): make this first commit on the default branch (`main`, or the branch origin/HEAD names),
+  so the repository has a base for later pull requests.
+- Otherwise create a branch from the current one and commit there; never on the default branch.
+
+On a no, leave everything uncommitted.
 
 End the commit message body with this line, so it is there for the PR description when the
 branch is pushed: the gate's floor-guard fails a PR that changes workflows, check tasks or hook
