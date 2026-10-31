@@ -150,6 +150,16 @@ func Marshal(v any) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// MarshalIndent is Marshal with another indentation unit, such as a tab or four spaces.
+func MarshalIndent(v any, indent string) ([]byte, error) {
+	var b bytes.Buffer
+	if err := write(&b, v, indent, ""); err != nil {
+		return nil, err
+	}
+	b.WriteByte('\n')
+	return b.Bytes(), nil
+}
+
 // Compact writes v on one line, keys in their order.
 func Compact(v any) ([]byte, error) {
 	var b bytes.Buffer

@@ -100,10 +100,18 @@ jobs:
           node-version: ${{ inputs.node-version }}
       - name: "floor-guard (diff against the base branch; exit 1 = violation, 2 = could not run)"
         env:
-          BASE_REF: ${{ github.base_ref || 'main' }}
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+          # Read by floor-guard as data ("floor-guard: <reason>" lines); never expanded into run:.
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           git fetch --no-tags origin "$BASE_REF"
-          node ci/floor-guard.mjs --base "origin/$BASE_REF"
+          # The base branch's guard, never the PR's: a PR that edits the guard cannot pass itself.
+          if git show "origin/$BASE_REF:ci/floor-guard.mjs" > "$RUNNER_TEMP/floor-guard.mjs" 2>/dev/null; then
+            node "$RUNNER_TEMP/floor-guard.mjs" --base "origin/$BASE_REF"
+          else
+            echo "floor-guard: origin/$BASE_REF has no ci/floor-guard.mjs yet (the PR that adds it); running the PR's copy"
+            node ci/floor-guard.mjs --base "origin/$BASE_REF"
+          fi
 
   secrets:
     name: betterleaks
@@ -132,20 +140,20 @@ jobs:
         with:
           persist-credentials: false
       - name: semgrep scan (rules you are allowed to use; metrics off)
-        run: semgrep scan --config auto --metrics off --error --severity ERROR
+        run: semgrep scan --config p/default --metrics off --error --severity ERROR
 
   zizmor:
     name: zizmor
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write # zizmor uploads its SARIF to code scanning
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
         with:
+          advanced-security: false # findings fail the job; the default needs a public repo or GHAS and passes with findings
           min-severity: medium
           persona: regular
 

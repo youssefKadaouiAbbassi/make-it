@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 // floor-guard.mjs — diff-scoped enforcement of the CONSTRAINTS.md floor.
-// Usage: node floor-guard.mjs [--base <ref>] [--watch <regex>]   (default base: origin/main)
+// Usage: node floor-guard.mjs [--base <ref>] [--watch <regex>]   (default base: origin/$BASE_REF, else origin/main)
 // Stack copy (makeit v3.5): adds --watch, a default watch list of files whose change turns
 // the check red (checker configs, check tasks, workflows, CONSTRAINTS.md), and betterleaks:allow.
 // Upstream: addyosmani/agent-skills 0.6.12, references/floor-guard.md (MIT).
 import { execFileSync } from 'node:child_process';
 
 const argAfter = (flag) => { const i = process.argv.indexOf(flag); return i > -1 ? process.argv[i + 1] : undefined; };
-const base = argAfter('--base') ?? 'origin/main';
+const base = argAfter('--base') ?? `origin/${process.env.BASE_REF || 'main'}`;
 // Files whose change is always a review item: checker configs, coverage and test-runner configs,
-// secret-scanner configs, workflows, the check tasks and CONSTRAINTS.md itself.
-const DEFAULT_WATCH = String.raw`(^|/)(tsconfig[^/]*\.json|eslint\.config\.[cm]?[jt]s|\.eslintrc[^/]*|biome\.jsonc?|ruff\.toml|pyproject\.toml|mypy\.ini|pyrightconfig\.json|\.golangci\.ya?ml|clippy\.toml|\.coveragerc|vitest\.config\.[cm]?[jt]s|jest\.config\.[cm]?[jt]s|playwright\.config\.[cm]?[jt]s|pytest\.ini|stryker\.config\.[^/]+|\.gitleaks\.toml|\.betterleaks\.toml|\.semgrepignore|\.grype\.ya?ml|\.grant\.ya?ml|package\.json|Makefile|Taskfile\.ya?ml|mise\.toml|CONSTRAINTS\.md)$|^\.github/workflows/|^\.pre-commit-config\.ya?ml$`;
+// secret-scanner configs, workflows, the check tasks, CONSTRAINTS.md itself and this guard.
+const DEFAULT_WATCH = String.raw`(^|/)(tsconfig[^/]*\.json|eslint\.config\.[cm]?[jt]s|\.eslintrc[^/]*|biome\.jsonc?|ruff\.toml|pyproject\.toml|mypy\.ini|pyrightconfig\.json|\.golangci\.ya?ml|clippy\.toml|\.coveragerc|vitest\.config\.[cm]?[jt]s|jest\.config\.[cm]?[jt]s|playwright\.config\.[cm]?[jt]s|pytest\.ini|stryker\.config\.[^/]+|\.gitleaks\.toml|\.betterleaks\.toml|\.semgrepignore|\.grype\.ya?ml|\.grant\.ya?ml|package\.json|Makefile|Taskfile\.ya?ml|mise\.toml|CONSTRAINTS\.md)$|^\.github/workflows/|^\.pre-commit-config\.ya?ml$|^ci/floor-guard\.mjs$`;
 const watch = new RegExp(argAfter('--watch') ?? DEFAULT_WATCH);
 
 // `git diff --no-index` exits 1 whenever the two sides differ, which is the normal case for a
@@ -33,7 +33,9 @@ const mergeBase = git(['merge-base', base, 'HEAD'])?.trim();
 if (!mergeBase) bail('no merge base against ' + base);
 
 // Unified diff plus untracked files (git diff alone cannot see new files).
-const tracked = git(['diff', '--unified=0', mergeBase, '--']);
+// Renames found (whatever diff.renames says): a moved file keeps its lines, so the markers it
+// already held are not new; its rename lines name both paths for the rules below.
+const tracked = git(['diff', '--find-renames', '--unified=0', mergeBase, '--']);
 if (tracked === null) bail('could not diff against ' + mergeBase);
 const untrackedFiles = git(['ls-files', '--others', '--exclude-standard']);
 if (untrackedFiles === null) bail('could not list untracked files');
@@ -48,14 +50,16 @@ const diff = tracked + '\n' + untracked;
 // `@@` hunk; inside a hunk every line is content, so an added `++i` (shown as `+++i`) or a removed
 // `-- comment` is a change, not a header. Both headers name the file, so a deletion
 // (`+++ /dev/null`) keeps its name.
-const added = [], removed = [], deleted = [];
+const added = [], removed = [], deleted = [], renamed = [];
 const pathOf = (s) => s.replace(/^[ab]\//, '');
 let file = '', oldFile = '', inHeader = false;
 for (const line of diff.split('\n')) {
   if (line.startsWith('diff ')) inHeader = true;
   else if (line.startsWith('@@')) inHeader = false;
   else if (inHeader) {
-    if (line.startsWith('--- ')) oldFile = pathOf(line.slice(4));
+    if (line.startsWith('rename from ')) renamed.push({ from: line.slice(12), to: '' });
+    else if (line.startsWith('rename to ')) renamed[renamed.length - 1].to = line.slice(10);
+    else if (line.startsWith('--- ')) oldFile = pathOf(line.slice(4));
     else if (line.startsWith('+++ ')) {
       const newFile = pathOf(line.slice(4));
       file = newFile === '/dev/null' ? oldFile : newFile;
@@ -78,21 +82,44 @@ const STUBS = /throw new (Error|NotImplemented).*[Nn]ot implemented|catch\s*\(\w
 // 2. A test made easier (added skips).
 const SKIPS = /\.(skip|todo)\b|\bxit\(|\bxdescribe\(|@pytest\.mark\.skip|t\.Skip\(/;
 
+const isGuard = (f) => f === 'ci/floor-guard.mjs';
+
 for (const { file, text } of added) {
-  if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);
-  if (STUBS.test(text)) flag('unfinished-work', file, text);
-  if (SKIPS.test(text)) flag('test-made-easier', file, text);
+  // Stack addition: a CONSTRAINTS.md names every marker it forbids (its rules get their own checks),
+  // and the guard's source holds the patterns themselves, so neither is scanned for markers. The guard
+  // is on the watch list instead, so editing it needs a reason in the PR description.
+  if (!isConstraints(file) && !isGuard(file)) {
+    if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);
+    if (STUBS.test(text)) flag('unfinished-work', file, text);
+    if (SKIPS.test(text)) flag('test-made-easier', file, text);
+  }
   if (isConstraints(file) && /^\| *(W|E)\d+ *\|/.test(text)) flag('new-exception', file, text);
 }
 
 // 2b. A test file deleted, or an assertion removed from a test file that still exists.
 for (const f of deleted) if (isTest(f)) flag('test-deleted', f, 'file deleted');
+// A test moved to a path no test pattern matches is deleted too; one moved to a test path is not.
+for (const { from, to } of renamed) if (isTest(from) && !isTest(to)) flag('test-deleted', from, 'renamed to ' + to);
 
 // 6 (stack addition). A watched file changed: checker configs, check tasks, workflows, CONSTRAINTS.md.
 // A rule switched off in a config file is invisible to the regexes above, so the change itself is
 // the finding; the owner reads the diff at the merge prompt. package.json counts only when a
 // scripts line changed (dependency bumps are Renovate's).
-const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted));
+// A watched change passes when the PR description gives a reason, read from PR_BODY as data: a line
+// "floor-guard: <reason>" covers every watched file, "floor-guard <path>: <reason>" one file. A
+// reason excuses only this rule; push events have no description and keep the finding. HTML
+// comments (PR templates) are not shown on GitHub, and a <placeholder> or a reason with no letter
+// or digit is not a reason.
+const reasons = new Map();
+let reasonForAll = '';
+for (const line of (process.env.PR_BODY ?? '').replace(/<!--[\s\S]*?(-->|$)/g, '').split(/\r?\n/)) {
+  const m = line.match(/^\s*(?:[-*]\s+)?floor-guard(?:\s+(\S+))?:\s*(\S.*?)\s*$/);
+  if (!m || /^<[^>]*>$/.test(m[2]) || !/[\p{L}\p{N}]/u.test(m[2])) continue;
+  if (m[1]) reasons.set(m[1], m[2]);
+  else reasonForAll = m[2];
+}
+const excused = [];
+const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted, renamed.flatMap((r) => [r.from, r.to])));
 for (const f of touched) {
   if (!watch.test(f)) continue;
   if (/(^|\/)package\.json$/.test(f)) {
@@ -100,7 +127,9 @@ for (const f of touched) {
     if (!scriptLine) continue;
   }
   if (isConstraints(f)) continue; // CONSTRAINTS.md has its own rule-level checks above and below
-  flag('watched-file-changed', f, 'on the watch list; review the change at the merge prompt');
+  const reason = reasons.get(f) ?? reasonForAll;
+  if (reason) excused.push({ file: f, reason });
+  else flag('watched-file-changed', f, 'on the watch list; give the reason in the PR description: floor-guard: <reason>');
 }
 for (const { file, text } of removed) {
   if (isTest(file) && !deleted.includes(file) && /\b(expect|assert|should)\b/.test(text)) {
@@ -165,7 +194,13 @@ for (const r of removedRules) {
   if (verdict) flag(verdict, r.file, r.text + '  ->  ' + a.text);
 }
 
-if (findings.length === 0) { console.log('floor-guard: clean'); process.exit(0); }
+const showExcused = (log) => {
+  if (excused.length === 0) return;
+  log('watched files changed, with the reason given in the PR description (review them at the merge):');
+  for (const e of excused) log(`  ${e.file}: ${e.reason}`);
+};
+if (findings.length === 0) { console.log('floor-guard: clean'); showExcused(console.log); process.exit(0); }
+showExcused(console.error);
 console.error('floor-guard: ' + findings.length + ' floor violation(s):');
 for (const f of findings) console.error(`  [${f.rule}] ${f.file}: ${f.text}`);
 if (findings.some((f) => f.rule === 'rule-removed')) {

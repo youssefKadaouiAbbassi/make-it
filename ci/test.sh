@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for the CI brick. Docker only (nothing installed on the host) except zizmor when present.
 #   bash ci/test.sh
-# 1. floor-guard contract (17 cases) in the eval image.
+# 1. floor-guard contract (ci/floor-cases.sh) in the eval image.
 # 2. zizmor at the auditor persona on every workflow (local binary, or the zizmor image).
 # 3. actionlint 1.7.12 on every workflow (rhysd/actionlint image, run as the host user).
 # 4. JSON parse of the rulesets, renovate.json, budget.json and the release-please templates.
@@ -20,6 +20,9 @@ else
 fi
 cp ../templates/project/CONSTRAINTS.md . && docker run --rm -u node -v "$here:/w" -w /w claude-eval:latest bash floor-cases.sh | tail -1 || fail=1
 /bin/rm -rf repo out.txt CONSTRAINTS.md
+
+# Adding the floor-guard reason to the PR description must re-run the gate.
+if grep -qF "types: [opened, synchronize, reopened, edited]" .github/workflows/gate-caller.yml; then echo "ok caller re-runs on an edited PR"; else echo "FAIL the caller does not re-run when the PR description is edited"; fail=1; fi
 
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then

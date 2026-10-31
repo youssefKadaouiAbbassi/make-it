@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
-# docs.sh: SessionStart. Lists the project's direct dependencies from its manifests (go.mod,
-# package.json, pyproject.toml, Cargo.toml, requirements.txt; cwd and two levels down) and tells
-# the agent to check the docs index and index what is missing or out of date before it relies
-# on that library. Runs no npx itself: the agent has list_libraries and the docs-manage skill.
-# Silent when no manifest is found. Needs jq; python3 is optional (TOML manifests are skipped
-# without it). Exits 0 on every path.
+# docs.sh: SessionStart and PostToolUse (Bash, Edit, Write, MultiEdit). Starts
+# `makeit docs sync --if-changed --quiet <cwd>` in the background, which indexes the project's
+# dependency docs when a manifest or lockfile changed since the last sync (makeit takes its own
+# docs lock, so a second trigger exits at once). On SessionStart it also lists the direct dependencies
+# (go.mod, package.json, pyproject.toml, Cargo.toml, requirements.txt; cwd and two levels down;
+# not the go directive, since the standard library is not indexed) and tells the agent they are
+# indexed and to search them. Silent and exit 0 when makeit or jq is
+# missing; python3 is optional (TOML manifests are skipped without it).
 set -u
 input=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
-[ "$(jq -r '.hook_event_name // empty' <<<"$input")" = "SessionStart" ] || exit 0
+event=$(jq -r '.hook_event_name // empty' <<<"$input")
 cwd=$(jq -r '.cwd // "."' <<<"$input")
 [ -d "$cwd" ] || exit 0
+case "$event" in SessionStart | PostToolUse) ;; *) exit 0 ;; esac
+# Detached: the session never waits for the sync.
+if command -v makeit >/dev/null 2>&1; then
+  (nohup makeit docs sync --if-changed --quiet "$cwd" </dev/null >/dev/null 2>&1 &)
+fi
+[ "$event" = SessionStart ] || exit 0
 
 deps=""
 add() { deps+="$1"$'\n'; }
@@ -19,7 +27,6 @@ while IFS= read -r f; do
   case "$f" in
     */go.mod)
       while IFS= read -r line; do add "$line ($rel)"; done < <(awk '
-        /^go [0-9]/ { print "go " $2 }
         /^require \(/ { inreq = 1; next }
         inreq && /^\)/ { inreq = 0; next }
         inreq && $0 !~ /\/\/ indirect/ && NF >= 2 { print $1 " " $2 }
@@ -56,6 +63,6 @@ list=$(printf '%s' "$deps" | head -n 40)
 note="Project dependencies (direct, from manifests):
 $list
 
-Docs index: before you rely on one of these libraries for the task, check what is indexed with the docs-search skill (or list_libraries). If the library is missing, or indexed at a different version than the manifest, index it with the docs-manage skill: find the official documentation URL for that version and scrape it with --version. If its indexedAt is more than 30 days old, run refresh. Index only what the task needs, then search it (docs-search skill or search_docs)."
+These are indexed by makeit; search them (search_docs or the docs-search skill) before you rely on their API."
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}\n' "$(jq -Rs . <<<"$note")"
 exit 0

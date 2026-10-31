@@ -51,6 +51,11 @@ type Requires struct {
 	Marketplace   string `json:"marketplace"`
 	Bundle        string `json:"bundle"`
 	ProjectBundle string `json:"projectBundle"`
+	// CI.GateRef is the released gate a project's caller pins, "owner/repo@<40-hex sha> # <tag>";
+	// the release fills it, and init seeds no caller while it is empty.
+	CI struct {
+		GateRef string `json:"gateRef"`
+	} `json:"ci"`
 }
 
 // Source is a catalog to read files from: the embedded copy or a directory on disk.

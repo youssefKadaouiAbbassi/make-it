@@ -21,6 +21,14 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs.sh\"", "timeout": 5, "async": true }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [

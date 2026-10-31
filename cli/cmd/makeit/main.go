@@ -32,8 +32,15 @@ var catalogFlags = []cli.Flag{
 
 // commands lists only what this build has, so usage never names a command that does not exist.
 var commands = []cli.Command{
+	{Name: "docs", Args: "sync [dir]", Summary: "index the docs of a project's dependencies for the docs MCP server", Flags: []cli.Flag{
+		{Name: "if-changed", Help: "only when a manifest or lockfile changed since the last sync (the hooks use it)"},
+	}},
 	{Name: "doctor", Summary: "check this machine against what the stack expects; changes nothing"},
 	{Name: "help", Args: "[command|exit-codes|environment]", Summary: "show help for a command or a topic"},
+	{Name: "init", Args: "[dir]", Summary: "set up a project the stack's way: docs, checks, hooks, settings, CI and its docs index", Flags: []cli.Flag{
+		{Name: "update", Help: "also update files init wrote earlier that nobody changed since"},
+		{Name: "rulesets", Help: "also send the stack's GitHub rulesets to the repository (needs gh and a GitHub remote)"},
+	}},
 	{Name: "self", Args: "install|update|rollback", Summary: "install, update or roll back makeit itself", Flags: []cli.Flag{
 		{Name: "prefix", Value: "<dir>", Help: "self install: where to put makeit (default ~/.local/bin)"},
 		{Name: "to", Value: "<version>", Help: "self update: this version instead of the latest; clears a skip"},
@@ -166,6 +173,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 		return runSetup(ctx, p, args, stdout, stderr)
 	case "self":
 		return runSelf(ctx, p, stdout, stderr)
+	case "docs":
+		return runDocs(ctx, p, stdout, stderr)
+	case "init":
+		return runInit(ctx, p, stdout, stderr)
 	case "version":
 		if len(p.Positionals) > 0 {
 			fmt.Fprintf(stderr, "%s: version takes no arguments\n", prog)

@@ -200,6 +200,9 @@ type RepoFile struct {
 	Template      string `json:"template"`
 	WrittenSha256 string `json:"writtenSha256"`
 	PreExisted    bool   `json:"preExisted"`
+	// Added are the entries a merge added (JSON pointers or lines), so a later run never adds
+	// back one the user removed.
+	Added []string `json:"added,omitempty"`
 }
 
 // RepoRuleset is a GitHub ruleset `init` sent.

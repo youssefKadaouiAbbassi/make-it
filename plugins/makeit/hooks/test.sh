@@ -127,8 +127,15 @@ printf 'module m\n\ngo 1.27.3\n\nrequire (\n\tgolang.org/x/term v0.47.0\n\tgolan
 printf '{"dependencies":{"react":"^19.2.0"},"devDependencies":{"vitest":"4.1.0"}}\n' >"$dp/web/package.json"
 printf '{"dependencies":{"ignored":"1.0.0"}}\n' >"$dp/web/node_modules/x/package.json"
 printf '[project]\nname = "p"\ndependencies = ["httpx>=0.28", "pydantic==2.12.0"]\n' >"$dp/pyproject.toml"
-ctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$dp" | bash "$here/docs.sh" | jq -r '.hookSpecificOutput.additionalContext')
-expect "docs lists the go version" 'go 1.27.3 (cli/go.mod)' "$ctx"
+# A fake makeit records the sync the hook starts; the real one is never reached from here.
+mkdir -p "$tmp/mbin"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/makeit.log"\n' "$tmp" >"$tmp/mbin/makeit"; chmod +x "$tmp/mbin/makeit"
+nomakeit=/usr/bin:/bin # makeit is never installed there
+docs_hook() { PATH="$1" bash "$here/docs.sh"; }
+waitlog() { for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$tmp/makeit.log" ] && break; sleep 0.2; done; cat "$tmp/makeit.log" 2>/dev/null; : >"$tmp/makeit.log"; }
+ctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit" | jq -r '.hookSpecificOutput.additionalContext')
+expect "docs SessionStart starts the sync" "docs sync --if-changed --quiet $dp" "$(waitlog)"
+case "$ctx" in *"go 1.27.3"*) bad "docs leaves out the go directive (the standard library is not indexed)" ;; *) ok "docs leaves out the go directive (the standard library is not indexed)" ;; esac
 expect "docs lists a direct go require" 'golang.org/x/term v0.47.0' "$ctx"
 expect "docs lists a single-line require" 'github.com/a/b v1.2.3' "$ctx"
 case "$ctx" in *x/sys*) bad "docs skips indirect requires" ;; *) ok "docs skips indirect requires" ;; esac
@@ -136,9 +143,14 @@ expect "docs lists package.json deps" 'react ^19.2.0 (web/package.json)' "$ctx"
 expect "docs lists devDependencies" 'vitest 4.1.0' "$ctx"
 case "$ctx" in *ignored*) bad "docs skips node_modules" ;; *) ok "docs skips node_modules" ;; esac
 command -v python3 >/dev/null 2>&1 && expect "docs lists pyproject deps" 'pydantic ==2.12.0' "$ctx"
-expect "docs tells the agent what to do" 'list_libraries' "$ctx"
+expect "docs says they are indexed and to search" 'These are indexed by makeit; search them (search_docs or the docs-search skill) before you rely on their API.' "$ctx"
+case "$ctx" in *"docs-manage skill"*) bad "docs no longer tells the agent to index" ;; *) ok "docs no longer tells the agent to index" ;; esac
+expect_empty "docs PostToolUse prints nothing" "$(printf '{"hook_event_name":"PostToolUse","cwd":"%s","tool_name":"Bash"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit")"
+expect "docs PostToolUse starts the sync" "docs sync --if-changed --quiet $dp" "$(waitlog)"
+out=$(printf '{"hook_event_name":"PostToolUse","cwd":"%s","tool_name":"Edit"}' "$dp" | docs_hook "$nomakeit"); rc=$?
+if [ -z "$out" ] && [ "$rc" = 0 ]; then ok "docs without makeit: silent, exit 0"; else bad "docs without makeit: rc $rc out [$out]"; fi
 mkdir -p "$tmp/empty"
-expect_empty "docs silent without manifests" "$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$tmp/empty" | bash "$here/docs.sh")"
+expect_empty "docs silent without manifests" "$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$tmp/empty" | docs_hook "$nomakeit")"
 
 
 # --- check-task-stop.sh (optional) -------------------------------------------------------------
@@ -163,5 +175,36 @@ for loc in C C.UTF-8; do
     bad "options_test.sh under LC_ALL=$loc: $(grep '^FAIL' "$tmp/options-$loc.out" | head -3)"
   fi
 done
+
+# --- skills/init/SKILL.md: the /makeit:init agent step (cli/INIT.md) ---------------------------
+sk="$here/../skills/init/SKILL.md"
+if [ -f "$sk" ]; then
+  ok "init skill exists"
+  front=$(awk 'NR == 1 && /^---$/ { f = 1; next } f && /^---$/ { exit } f' "$sk")
+  body=$(awk 'NR == 1 && /^---$/ { f = 1; next } f && /^---$/ { f = 0; b = 1; next } b' "$sk")
+  expect "init skill: only the user starts it" "disable-model-invocation: true" "$front"
+  expect "init skill: pre-approves exactly the init call" "allowed-tools: Bash(makeit init --yes --json)" "$front"
+  if grep -Eq '^description: [^>|].*' <<<"$front" && ! grep -Eq '^description: .*: ' <<<"$front"; then ok "init skill: one-line description, no ': '"; else bad "init skill: description"; fi
+  if grep -Eq '^name:' <<<"$front"; then bad "init skill: no name: line (the directory names it)"; else ok "init skill: no name: line"; fi
+  if grep -Fq '!`' "$sk"; then bad "init skill: no !\` injection"; else ok "init skill: no shell injection"; fi
+  expect "init skill: runs the CLI first, with a long timeout" "makeit init --yes --json" "$body"
+  expect "init skill: timeout" "600000" "$body"
+  expect "init skill: run recipe path" ".claude/skills/run-<project>/SKILL.md" "$body"
+  if grep -Fq '.claude/skills/run/' "$sk"; then bad "init skill: never .claude/skills/run/"; else ok "init skill: never .claude/skills/run/"; fi
+  expect "init skill: first commit asked" "AskUserQuestion" "$body"
+  expect "init skill: --rulesets only on request" "--rulesets" "$body"
+  expect "init skill: the init call stands alone (the exact allowed-tools rule)" "as a command on its own" "$body"
+  expect "init skill: Coverage and Mutation rows are never deleted" "Never delete the Coverage or Mutation row" "$body"
+  expect "init skill: the commit carries the floor-guard reason line" "floor-guard: makeit init seeds the gate, the check tasks and the hook config" "$body"
+  expect "init skill: a repository with no commit yet gets its first commit on the default branch" "no commit yet" "$body"
+  wire=$(grep -n 'Wire the check' "$sk" | head -1 | cut -d: -f1)
+  full=$(grep -n 'Run check:full' "$sk" | head -1 | cut -d: -f1)
+  if [ -n "$wire" ] && [ -n "$full" ] && [ "$wire" -lt "$full" ]; then ok "init skill: check:full after the stubs are wired"; else bad "init skill: order of wiring and check:full ($wire, $full)"; fi
+  if command -v claude >/dev/null 2>&1; then
+    if claude plugin validate "$here/.." --strict >"$tmp/validate.out" 2>&1; then ok "claude plugin validate --strict"; else bad "claude plugin validate: $(tail -3 "$tmp/validate.out")"; fi
+  fi
+else
+  bad "init skill missing: $sk"
+fi
 
 [ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }
