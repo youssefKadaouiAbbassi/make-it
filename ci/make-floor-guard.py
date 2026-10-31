@@ -36,8 +36,19 @@ rep(
 )
 rep(
     "const tracked = git(['diff', '--unified=0', mergeBase, '--']);",
-    "// --no-renames: a pure rename has no +/- lines, so a watched file moved away would pass unseen.\n"
-    "const tracked = git(['diff', '--no-renames', '--unified=0', mergeBase, '--']);",
+    "// Renames found (whatever diff.renames says): a moved file keeps its lines, so the markers it\n"
+    "// already held are not new; its rename lines name both paths for the rules below.\n"
+    "const tracked = git(['diff', '--find-renames', '--unified=0', mergeBase, '--']);",
+)
+rep(
+    "const added = [], removed = [], deleted = [];",
+    "const added = [], removed = [], deleted = [], renamed = [];",
+)
+rep(
+    "    if (line.startsWith('--- ')) oldFile = pathOf(line.slice(4));",
+    "    if (line.startsWith('rename from ')) renamed.push({ from: line.slice(12), to: '' });\n"
+    "    else if (line.startsWith('rename to ')) renamed[renamed.length - 1].to = line.slice(10);\n"
+    "    else if (line.startsWith('--- ')) oldFile = pathOf(line.slice(4));",
 )
 rep(
     "const SUPPRESSIONS = /@ts-ignore|@ts-nocheck|eslint-disable|biome-ignore|# *noqa|# *type: *ignore|istanbul ignore|nosemgrep|gitleaks:allow|Stryker disable/;",
@@ -45,7 +56,9 @@ rep(
 )
 rep(
     "for (const f of deleted) if (isTest(f)) flag('test-deleted', f, 'file deleted');",
-    "for (const f of deleted) if (isTest(f)) flag('test-deleted', f, 'file deleted');\n\n"
+    "for (const f of deleted) if (isTest(f)) flag('test-deleted', f, 'file deleted');\n"
+    "// A test moved to a path no test pattern matches is deleted too; one moved to a test path is not.\n"
+    "for (const { from, to } of renamed) if (isTest(from) && !isTest(to)) flag('test-deleted', from, 'renamed to ' + to);\n\n"
     "// 6 (stack addition). A watched file changed: checker configs, check tasks, workflows, CONSTRAINTS.md.\n"
     "// A rule switched off in a config file is invisible to the regexes above, so the change itself is\n"
     "// the finding; the owner reads the diff at the merge prompt. package.json counts only when a\n"
@@ -64,7 +77,7 @@ rep(
     "  else reasonForAll = m[2];\n"
     "}\n"
     "const excused = [];\n"
-    "const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted));\n"
+    "const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted, renamed.flatMap((r) => [r.from, r.to])));\n"
     "for (const f of touched) {\n"
     "  if (!watch.test(f)) continue;\n"
     "  if (/(^|\\/)package\\.json$/.test(f)) {\n"

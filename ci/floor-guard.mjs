@@ -33,8 +33,9 @@ const mergeBase = git(['merge-base', base, 'HEAD'])?.trim();
 if (!mergeBase) bail('no merge base against ' + base);
 
 // Unified diff plus untracked files (git diff alone cannot see new files).
-// --no-renames: a pure rename has no +/- lines, so a watched file moved away would pass unseen.
-const tracked = git(['diff', '--no-renames', '--unified=0', mergeBase, '--']);
+// Renames found (whatever diff.renames says): a moved file keeps its lines, so the markers it
+// already held are not new; its rename lines name both paths for the rules below.
+const tracked = git(['diff', '--find-renames', '--unified=0', mergeBase, '--']);
 if (tracked === null) bail('could not diff against ' + mergeBase);
 const untrackedFiles = git(['ls-files', '--others', '--exclude-standard']);
 if (untrackedFiles === null) bail('could not list untracked files');
@@ -49,14 +50,16 @@ const diff = tracked + '\n' + untracked;
 // `@@` hunk; inside a hunk every line is content, so an added `++i` (shown as `+++i`) or a removed
 // `-- comment` is a change, not a header. Both headers name the file, so a deletion
 // (`+++ /dev/null`) keeps its name.
-const added = [], removed = [], deleted = [];
+const added = [], removed = [], deleted = [], renamed = [];
 const pathOf = (s) => s.replace(/^[ab]\//, '');
 let file = '', oldFile = '', inHeader = false;
 for (const line of diff.split('\n')) {
   if (line.startsWith('diff ')) inHeader = true;
   else if (line.startsWith('@@')) inHeader = false;
   else if (inHeader) {
-    if (line.startsWith('--- ')) oldFile = pathOf(line.slice(4));
+    if (line.startsWith('rename from ')) renamed.push({ from: line.slice(12), to: '' });
+    else if (line.startsWith('rename to ')) renamed[renamed.length - 1].to = line.slice(10);
+    else if (line.startsWith('--- ')) oldFile = pathOf(line.slice(4));
     else if (line.startsWith('+++ ')) {
       const newFile = pathOf(line.slice(4));
       file = newFile === '/dev/null' ? oldFile : newFile;
@@ -95,6 +98,8 @@ for (const { file, text } of added) {
 
 // 2b. A test file deleted, or an assertion removed from a test file that still exists.
 for (const f of deleted) if (isTest(f)) flag('test-deleted', f, 'file deleted');
+// A test moved to a path no test pattern matches is deleted too; one moved to a test path is not.
+for (const { from, to } of renamed) if (isTest(from) && !isTest(to)) flag('test-deleted', from, 'renamed to ' + to);
 
 // 6 (stack addition). A watched file changed: checker configs, check tasks, workflows, CONSTRAINTS.md.
 // A rule switched off in a config file is invisible to the regexes above, so the change itself is
@@ -114,7 +119,7 @@ for (const line of (process.env.PR_BODY ?? '').replace(/<!--[\s\S]*?(-->|$)/g, '
   else reasonForAll = m[2];
 }
 const excused = [];
-const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted));
+const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted, renamed.flatMap((r) => [r.from, r.to])));
 for (const f of touched) {
   if (!watch.test(f)) continue;
   if (/(^|\/)package\.json$/.test(f)) {
