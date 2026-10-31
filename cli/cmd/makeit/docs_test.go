@@ -120,6 +120,17 @@ func TestDocsSyncFailureRetries(t *testing.T) {
 	}
 }
 
+func TestDocsSyncOffline(t *testing.T) {
+	m := newDocsMachine(t)
+	code, out, errOut := run2(t, "docs", "sync", "--offline", m.dir)
+	if code != 0 || !strings.Contains(out, "--offline: no docs sync") || len(m.take()) != 0 {
+		t.Fatalf("exit %d %q %q", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(m.stack, "docs")); !os.IsNotExist(err) {
+		t.Error("an offline run wrote the docs record or lock")
+	}
+}
+
 func TestDocsSyncDryRunWritesNothing(t *testing.T) {
 	m := newDocsMachine(t)
 	code, out, errOut := run2(t, "docs", "sync", "--dry-run", m.dir)

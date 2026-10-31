@@ -41,6 +41,10 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, format+"\n", a...)
 		}
 	}
+	if p.Bool["offline"] {
+		say("--offline: no docs sync")
+		return 0
+	}
 	roots, err := paths.Current()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
