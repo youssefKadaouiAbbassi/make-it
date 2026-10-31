@@ -111,3 +111,9 @@ Run the repository's `check:full` and fix what fails, until it passes or a failu
 Ask with AskUserQuestion before committing: name the branch and what the commit holds. On a yes,
 create a branch from the current one and commit there; never on the default branch. On a no,
 leave everything uncommitted.
+
+End the commit message body with this line, so it is there for the PR description when the
+branch is pushed: the gate's floor-guard fails a PR that changes workflows, check tasks or hook
+and checker configs unless its description gives the reason.
+
+    floor-guard: makeit init seeds the gate, the check tasks and the hook config

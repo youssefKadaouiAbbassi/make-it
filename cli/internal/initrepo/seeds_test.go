@@ -220,6 +220,12 @@ func TestSeedsCI(t *testing.T) {
 				t.Errorf("%s: caller lacks %q\n%s", c.name, w, caller)
 			}
 		}
+		if !strings.Contains(caller, "    types: [opened, synchronize, reopened, edited]\n") {
+			t.Errorf("%s: the caller does not re-run on an edited PR\n%s", c.name, caller)
+		}
+		if !slices.ContainsFunc(rep.Notices, func(n string) bool { return strings.Contains(n, "floor-guard: <reason>") }) {
+			t.Errorf("%s: no notice about the floor-guard reason: %q", c.name, rep.Notices)
+		}
 		guard, _ := catalog.Embedded.ReadFile("ci/floor-guard.mjs")
 		if seedBody(t, seeds, "ci/floor-guard.mjs") != string(guard) {
 			t.Errorf("%s: floor-guard.mjs not a byte copy", c.name)
@@ -227,7 +233,6 @@ func TestSeedsCI(t *testing.T) {
 		if web := strings.Contains(c.name, "web"); web != (seedBody(t, seeds, "ci/budget.json") != "") {
 			t.Errorf("%s: budget.json seeded %v", c.name, !web)
 		}
-		_ = rep
 	}
 	seeds, _, rep = seedsFor(t, tree(t, map[string]string{"package.json": `{"dependencies": {"react": "19.2.0"}}`, "package-lock.json": "{}",
 		".github/workflows/gate.yml": "name: theirs\n", ".git/refs/remotes/origin/HEAD": "ref: refs/remotes/origin/trunk\n", ".git/config": ""}), gateRef)
