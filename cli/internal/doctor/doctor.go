@@ -193,7 +193,9 @@ func (r *report) prereqs(m Machine) {
 		}
 		fix := s.Prereq.Manual
 		// The fix is for a person at a terminal, so sudo may prompt (no -n).
-		if cmd, ok := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false); ok {
+		if s.Via != nil {
+			fix = execx.Quote(s.Via)
+		} else if cmd, ok := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false); ok {
 			fix = execx.Quote(cmd.Argv)
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)

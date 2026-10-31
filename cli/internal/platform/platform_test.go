@@ -245,3 +245,46 @@ func TestRepoKeyCheck(t *testing.T) {
 		}
 	}
 }
+
+// An LSP row applies only when the toolchain it serves is on PATH, and its fix is the toolchain's
+// own route when that program is there (LSP-ROWS.md).
+func TestStatusWhenAndVia(t *testing.T) {
+	p := Platform{OS: "linux", PM: APT}
+	state := func(present func(string) bool, id string) (State, bool) {
+		for _, s := range Status(p, present) {
+			if s.Prereq.ID == id {
+				return s, true
+			}
+		}
+		return State{}, false
+	}
+	for _, id := range []string{"rust-analyzer", "gopls"} {
+		if _, ok := state(only(), id); ok {
+			t.Errorf("%s applies without its toolchain", id)
+		}
+	}
+	if s, ok := state(only("cargo"), "rust-analyzer"); !ok || s.Present || s.Via != nil {
+		t.Errorf("cargo only: %+v %v", s, ok)
+	}
+	if s, ok := state(only("rustup"), "rust-analyzer"); !ok || !slices.Equal(s.Via, []string{"rustup", "component", "add", "rust-analyzer"}) {
+		t.Errorf("rustup: %+v %v", s, ok)
+	}
+	if s, _ := state(only("cargo", "rust-analyzer"), "rust-analyzer"); !s.Present {
+		t.Error("rust-analyzer on PATH is not present")
+	}
+	if s, ok := state(only("go"), "gopls"); !ok || !slices.Equal(s.Via, []string{"go", "install", "golang.org/x/tools/gopls@latest"}) {
+		t.Errorf("go: %+v %v", s, ok)
+	}
+	// A row without When is unchanged: listed whatever is on PATH.
+	if s, ok := state(only(), "typescript-language-server"); !ok || s.Via != nil {
+		t.Errorf("no npm: %+v %v", s, ok)
+	}
+	if s, _ := state(only("npm"), "pyright"); !slices.Equal(s.Via, []string{"npm", "install", "-g", "pyright"}) {
+		t.Errorf("npm: %+v", s)
+	}
+	for _, id := range []string{"typescript-language-server", "pyright", "rust-analyzer", "gopls"} {
+		if r := Find(id); r.Required || !strings.Contains(r.Why, "-lsp plugin") || r.Manual == "" {
+			t.Errorf("%s: optional, a why naming its plugin, a manual route: %+v", id, r)
+		}
+	}
+}

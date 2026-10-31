@@ -91,6 +91,38 @@ func TestPrereqStepsRequiredOnly(t *testing.T) {
 	}
 }
 
+// The LSP rows are optional: never an install step, skipped when missing, and the toolchain-bound
+// ones only on a machine with that toolchain (LSP-ROWS.md).
+func TestPrereqLSPRowsSkipped(t *testing.T) {
+	for _, c := range []struct {
+		bins      []string
+		in, notIn []string
+	}{
+		{[]string{"cargo"}, []string{"typescript-language-server", "pyright", "rust-analyzer"}, []string{"gopls"}},
+		{nil, []string{"typescript-language-server", "pyright"}, []string{"rust-analyzer", "gopls"}},
+		{[]string{"go", "gopls"}, nil, []string{"gopls", "rust-analyzer"}},
+	} {
+		e, _ := newEnv(t, append([]string{"apt-get", "git", "node", "jq"}, c.bins...)...)
+		if ids := stepIDs(e); len(ids) != 0 {
+			t.Errorf("%v: install steps %v", c.bins, ids)
+		}
+		var skipped []string
+		for _, r := range e.skipped {
+			skipped = append(skipped, r.ID)
+		}
+		for _, id := range c.in {
+			if !slices.Contains(skipped, id) {
+				t.Errorf("%v: %s not skipped: %v", c.bins, id, skipped)
+			}
+		}
+		for _, id := range c.notIn {
+			if slices.Contains(skipped, id) {
+				t.Errorf("%v: %s skipped: %v", c.bins, id, skipped)
+			}
+		}
+	}
+}
+
 func TestPrereqAptUpdateOnce(t *testing.T) {
 	e, f := newEnv(t, "apt-get", "node")
 	for _, s := range e.prereqSteps() {

@@ -133,12 +133,15 @@ func TestPrereqMissing(t *testing.T) {
 		{Prereq: platform.Prereq{ID: "git", Required: true, Pkgs: map[platform.PM][]string{platform.APT: {"git"}}}},
 		{Prereq: platform.Prereq{ID: "gh", Pkgs: map[platform.PM][]string{platform.APT: {"gh"}}}},
 		{Prereq: platform.Prereq{ID: "chrome", Manual: "https://www.google.com/chrome/"}},
+		// A toolchain route Status found on PATH comes before the package manager.
+		{Prereq: platform.Prereq{ID: "rust-analyzer", Pkgs: map[platform.PM][]string{platform.APT: {"rust-analyzer"}}}, Via: []string{"rustup", "component", "add", "rust-analyzer"}},
 	}
 	checks := Run(context.Background(), m)
 	for id, want := range map[string]Check{
-		"prereq.git":    {Level: Error, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y git"},
-		"prereq.gh":     {Level: Warn, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y gh"},
-		"prereq.chrome": {Level: Warn, Fix: "https://www.google.com/chrome/"},
+		"prereq.git":           {Level: Error, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y git"},
+		"prereq.gh":            {Level: Warn, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y gh"},
+		"prereq.chrome":        {Level: Warn, Fix: "https://www.google.com/chrome/"},
+		"prereq.rust-analyzer": {Level: Warn, Fix: "rustup component add rust-analyzer"},
 	} {
 		if got := byID(t, checks, id); got.Level != want.Level || got.Fix != want.Fix || got.Group != "prereqs" {
 			t.Errorf("%s = %+v, want level %s fix %q", id, got, want.Level, want.Fix)

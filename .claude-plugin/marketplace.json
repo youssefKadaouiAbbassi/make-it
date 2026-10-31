@@ -14,8 +14,8 @@
   "plugins": [
     {
       "name": "makeit-bundle",
-      "description": "Bundle: the day-to-day layer for every developer (makeit, superpowers, ponytail, chrome-devtools-mcp, deja-vu, security-audit, the three LSP plugins). Install at user scope.",
-      "version": "3.10.0",
+      "description": "Bundle: the day-to-day layer for every developer (makeit, superpowers, ponytail, chrome-devtools-mcp, deja-vu, security-audit, the four LSP plugins). Install at user scope.",
+      "version": "3.11.0",
       "source": "./plugins/makeit-bundle"
     },
     {
