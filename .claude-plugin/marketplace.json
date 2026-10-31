@@ -27,7 +27,7 @@
     {
       "name": "makeit",
       "description": "Our own plugin: the MCP servers with telemetry off (chrome-devtools without CrUX, docs-mcp-server read-only); hooks, skills and evals land here in later bricks.",
-      "version": "3.13.0",
+      "version": "3.14.0",
       "source": "./plugins/makeit"
     },
     {

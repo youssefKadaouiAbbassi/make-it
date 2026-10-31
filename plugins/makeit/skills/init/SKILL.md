@@ -1,0 +1,106 @@
+---
+description: Set up this project the makeit way. Runs makeit init, then does the parts that need judgment, runs check:full, and asks before the first commit.
+disable-model-invocation: true
+allowed-tools: Bash(makeit init --yes --json)
+---
+
+# /makeit:init
+
+The user typed /makeit:init: that is their consent for `makeit init --yes`. makeit does the
+deterministic part (files, merges, the docs index, the record in `.makeit.json`); you do the parts
+that need judgment, in this order, and stop at the end of each step only when it says so.
+
+## The order
+
+1. Run makeit init (step 1 below). If it fails, stop there.
+2. Fill the project facts and the sections the docs lack.
+3. Wire the check tasks to the real tools.
+4. Apply the lines makeit reported for files it does not edit.
+5. Web frontend: Playwright + axe. API: schemathesis. Only when makeit detected them.
+6. Write the run recipe, or a HANDOFF item when nothing can start yet.
+7. Run check:full and fix what it finds.
+8. Ask before the first commit, with AskUserQuestion, and commit only on a yes.
+
+Never run `makeit init --rulesets` unless the user asks for it in so many words: it sends
+rulesets to GitHub, which is outward-facing and needs its own consent.
+
+## 1. Run makeit init
+
+Run it with the Bash tool from the project root, with `timeout: 600000` (the docs index can take
+minutes on a repository with many dependencies):
+
+    makeit init --yes --json
+
+- Exit 0: read the JSON on stdout: `plan` (what each step did), `kept` (what makeit left as the
+  user had it, and why), `manual` (exact text for files makeit does not edit), `notices` (what the
+  user should know: prerequisites such as Docker for check:api, `prek install` per clone) and
+  `docs` (the libraries indexed, and those that could not be).
+- `makeit: command not found`: makeit is not installed. Stop and say so in one line; do not set
+  the project up another way.
+- Exit 1: a step failed, or init refused before changing anything; the JSON's `error` says why
+  ("not a git repository" means the directory has files but no git). Show it in one line and
+  stop. Exit 2 should not happen with `--yes`; if it does, show the error and stop.
+
+Search the docs index (search_docs, or the docs-search skill) before you rely on a library's API
+in the steps below; makeit indexed the project's dependencies at their versions.
+
+## 2. Project facts and missing sections
+
+- CLAUDE.md: replace each remaining `<...>` placeholder with what the code shows (the one-sentence
+  description, the layout lines, the known traps you find). The **Product priority** line must be
+  in the user's words: ask once, with AskUserQuestion, and write their answer as given.
+- A CLAUDE.md or CONSTRAINTS.md that `kept` lists as the user's: add the sections of
+  `templates/project/` (in the makeit catalog, `~/.makeit/catalog`) that it lacks, and keep every
+  section it has. Never rewrite theirs.
+- HANDOFF.md: small numbered items, one action each.
+
+## 3. Wire the check tasks
+
+makeit added `check:fast`, `check:task` and `check:full` stubs that fail on purpose (or reported
+them in `manual` for a Makefile, justfile, Taskfile or pyproject). Wire each to the repository's
+real tools, named in the global rules for its language (`~/.claude/rules/`): formatter, linter and
+type checker for check:fast; plus the related tests for check:task; everything CI runs for
+check:full. Use the package manager and runner the repository already has.
+
+## 4. Apply the manual lines
+
+Each `manual` entry is exact text for a file makeit does not edit (YAML, TOML, Makefile, justfile,
+Taskfile, a gate caller input). Apply it with the Edit tool, keeping the file's comments and
+order. When an entry says a value must wait for something (has-web-ui until test:e2e exists),
+apply it once that something exists.
+
+## 5. Web and API
+
+- Web frontend (`web` in the record's types): add Playwright with @axe-core/playwright and a
+  `test:e2e` task that runs it; then set `has-web-ui: true` in the gate caller.
+- OpenAPI spec (`api`): add schemathesis against the running server to `check:api`, since it
+  needs a server makeit cannot start.
+
+## 6. The run recipe
+
+Write `.claude/skills/run-<project>/SKILL.md`, where `<project>` is the project directory name,
+lowercased, with spaces as dashes. Use exactly this frontmatter, each value on one plain line:
+
+    ---
+    name: run-<project>
+    description: Build, run, and drive <project>. Use when asked to start <project>, run its tests, build it, take a screenshot of its UI, or interact with the running app.
+    ---
+
+Then the sections Setup, Build, Run (agent path: start it in the background with logs to
+`/tmp/<project>.log`, poll until it is ready, interact with it once for real, stop it), Test, and
+Gotchas only for errors you hit. Every command in it must be one you ran in this session and saw
+work. The name must start with `run-`: a skill named exactly `run` would replace Claude Code's
+built-in run skill, which finds this recipe by its description.
+
+If nothing can be started yet (a fresh project), write no recipe; add a HANDOFF item instead.
+
+## 7. Run check:full
+
+Run the repository's `check:full` and fix what fails, until it passes or a failure needs the user
+(say which, and why, in one line).
+
+## 8. The first commit
+
+Ask with AskUserQuestion before committing: name the branch and what the commit holds. On a yes,
+create a branch from the current one and commit there; never on the default branch. On a no,
+leave everything uncommitted.

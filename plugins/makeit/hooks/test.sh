@@ -176,4 +176,31 @@ for loc in C C.UTF-8; do
   fi
 done
 
+# --- skills/init/SKILL.md: the /makeit:init agent step (cli/INIT.md) ---------------------------
+sk="$here/../skills/init/SKILL.md"
+if [ -f "$sk" ]; then
+  ok "init skill exists"
+  front=$(awk 'NR == 1 && /^---$/ { f = 1; next } f && /^---$/ { exit } f' "$sk")
+  body=$(awk 'NR == 1 && /^---$/ { f = 1; next } f && /^---$/ { f = 0; b = 1; next } b' "$sk")
+  expect "init skill: only the user starts it" "disable-model-invocation: true" "$front"
+  expect "init skill: pre-approves exactly the init call" "allowed-tools: Bash(makeit init --yes --json)" "$front"
+  if grep -Eq '^description: [^>|].*' <<<"$front" && ! grep -Eq '^description: .*: ' <<<"$front"; then ok "init skill: one-line description, no ': '"; else bad "init skill: description"; fi
+  if grep -Eq '^name:' <<<"$front"; then bad "init skill: no name: line (the directory names it)"; else ok "init skill: no name: line"; fi
+  if grep -Fq '!`' "$sk"; then bad "init skill: no !\` injection"; else ok "init skill: no shell injection"; fi
+  expect "init skill: runs the CLI first, with a long timeout" "makeit init --yes --json" "$body"
+  expect "init skill: timeout" "600000" "$body"
+  expect "init skill: run recipe path" ".claude/skills/run-<project>/SKILL.md" "$body"
+  if grep -Fq '.claude/skills/run/' "$sk"; then bad "init skill: never .claude/skills/run/"; else ok "init skill: never .claude/skills/run/"; fi
+  expect "init skill: first commit asked" "AskUserQuestion" "$body"
+  expect "init skill: --rulesets only on request" "--rulesets" "$body"
+  wire=$(grep -n 'Wire the check' "$sk" | head -1 | cut -d: -f1)
+  full=$(grep -n 'Run check:full' "$sk" | head -1 | cut -d: -f1)
+  if [ -n "$wire" ] && [ -n "$full" ] && [ "$wire" -lt "$full" ]; then ok "init skill: check:full after the stubs are wired"; else bad "init skill: order of wiring and check:full ($wire, $full)"; fi
+  if command -v claude >/dev/null 2>&1; then
+    if claude plugin validate "$here/.." --strict >"$tmp/validate.out" 2>&1; then ok "claude plugin validate --strict"; else bad "claude plugin validate: $(tail -3 "$tmp/validate.out")"; fi
+  fi
+else
+  bad "init skill missing: $sk"
+fi
+
 [ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }
