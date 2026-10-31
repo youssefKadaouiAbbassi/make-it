@@ -90,6 +90,27 @@ func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 	}
 }
 
+// A sync that failed saves no record, so the next --if-changed trigger tries again.
+func TestDocsSyncFailureRetries(t *testing.T) {
+	m := newDocsMachine(t)
+	ok := docsRun
+	docsRun = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		_, _ = ok(ctx, c)
+		return execx.Result{Code: 1, Stderr: "npx: network down"}, nil
+	}
+	if code, out, _ := run2(t, "docs", "sync", m.dir); code != 0 || !strings.Contains(out, "not indexed golang.org/x/term") {
+		t.Fatalf("failed sync: exit %d %q", code, out)
+	}
+	m.take()
+	docsRun = ok
+	if code, _, _ := run2(t, "docs", "sync", "--if-changed", "--quiet", m.dir); code != 0 {
+		t.Fatal("exit")
+	}
+	if c := m.take(); len(c) != 2 {
+		t.Fatalf("the failed sync was not retried: %q", c)
+	}
+}
+
 func TestDocsSyncDryRunWritesNothing(t *testing.T) {
 	m := newDocsMachine(t)
 	code, out, errOut := run2(t, "docs", "sync", "--dry-run", m.dir)

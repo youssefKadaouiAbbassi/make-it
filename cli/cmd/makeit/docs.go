@@ -79,6 +79,9 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	for _, l := range rep.Lines() {
 		say("%s", l)
 	}
+	if rep.Failed() {
+		return 0
+	}
 	// The record holds what Detect read before the sync, so an edit made meanwhile syncs next time.
 	if err := docs.SaveRecord(roots.Stack, dir, docs.Record{Dir: dir, Manifests: proj.Manifests, SyncedAt: time.Now().UTC()}); err != nil {
 		say("docs: %v", err)

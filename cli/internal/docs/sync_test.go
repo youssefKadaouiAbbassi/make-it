@@ -117,3 +117,22 @@ func TestSyncListFails(t *testing.T) {
 		t.Errorf("report %+v, calls %v", rep, s.calls)
 	}
 }
+
+// A sync is retried unless every library it left out had no docs URL to find.
+func TestReportFailed(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		s    *server
+		libs []Lib
+		want bool
+	}{
+		{"clean", &server{listJSON: `[]`}, []Lib{{"serde", "1.0.200", "cargo"}}, false},
+		{"unresolvable only", &server{listJSON: `[]`}, []Lib{{"nowhere", "1.0.0", "maven"}}, false},
+		{"list failed", &server{listErr: errors.New("npx: not found")}, []Lib{{"serde", "1.0.200", "cargo"}}, true},
+		{"timed out", &server{listJSON: `[]`, block: map[string]bool{"slow": true}}, []Lib{{"slow", "1.0.0", "cargo"}, {"nowhere", "1.0.0", "maven"}}, true},
+	} {
+		if got := Sync(context.Background(), c.libs, opts(c.s)).Failed(); got != c.want {
+			t.Errorf("%s: Failed() = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
