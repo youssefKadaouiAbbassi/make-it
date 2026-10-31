@@ -75,11 +75,11 @@ func TestPrepare(t *testing.T) {
 			t.Errorf("%s without CA certificates: err %v, want %q", c.arg, err, c.want)
 		}
 	}
-	for _, c := range []struct{ name, key, value string }{
-		{"renamed marketplace", "makeit.json", `{"schemaVersion": 1, "marketplace": "other", "bundle": "makeit-bundle@makeit"}`},
-		{"another bundle", "makeit.json", `{"schemaVersion": 1, "marketplace": "makeit", "bundle": "other@makeit"}`},
-		{"newer schema", "makeit.json", `{"schemaVersion": 2, "marketplace": "makeit", "bundle": "makeit-bundle@makeit"}`},
-		{"marketplace.json renamed", ".claude-plugin/marketplace.json", `{"name": "other", "owner": {"name": "t"}, "plugins": []}`},
+	for _, c := range []struct{ name, key, value, want string }{
+		{"renamed marketplace", "makeit.json", `{"schemaVersion": 1, "marketplace": "other", "bundle": "makeit-bundle@makeit"}`, ""},
+		{"another bundle", "makeit.json", `{"schemaVersion": 1, "marketplace": "makeit", "bundle": "other@makeit"}`, ""},
+		{"newer schema", "makeit.json", `{"schemaVersion": 2, "marketplace": "makeit", "bundle": "makeit-bundle@makeit"}`, "this catalog needs a newer makeit: run `makeit self update`"},
+		{"marketplace.json renamed", ".claude-plugin/marketplace.json", `{"name": "other", "owner": {"name": "t"}, "plugins": []}`, ""},
 	} {
 		t.Run(c.name+" is refused", func(t *testing.T) {
 			f := newFixture(t)
@@ -88,8 +88,8 @@ func TestPrepare(t *testing.T) {
 			f.push(t)
 			p := params(t.TempDir(), stateWith(nil))
 			p.Arg = f.url + "#v2.0.0"
-			if _, err := Prepare(ctx, p); err == nil {
-				t.Error("taken")
+			if _, err := Prepare(ctx, p); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("err %v, want %q", err, c.want)
 			}
 		})
 	}

@@ -110,7 +110,7 @@ func LoadRequires(src Source) (Requires, error) {
 		return r, fmt.Errorf("makeit.json: %w", err)
 	}
 	if r.SchemaVersion != 1 {
-		return r, fmt.Errorf("makeit.json schemaVersion %d is newer than this makeit understands; update makeit", r.SchemaVersion)
+		return r, fmt.Errorf("this catalog needs a newer makeit: run `makeit self update` (makeit.json schemaVersion %d)", r.SchemaVersion)
 	}
 	return r, nil
 }
