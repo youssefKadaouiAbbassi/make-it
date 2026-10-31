@@ -1,6 +1,7 @@
 {
   "name": "makeit-ui",
-  "version": "3.9.0",
+  "version": "0.1.0",
+  "license": "MIT",
   "author": {
     "name": "makeit owners"
   },

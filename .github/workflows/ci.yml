@@ -1,0 +1,42 @@
+# makeit's own checks on every pull request and push to main: the Go module's gate as
+# cli/DESIGN.md lists it. The container suites (ci/test.sh, hooks/test.sh, the distro runs) need
+# Docker images and a Claude Code install, so they run before a release, not here.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: go checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+      - name: gate, staticcheck, govulncheck, modules
+        working-directory: cli
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go generate ./...
+          test -z "$(gofmt -l internal tools cmd)"
+          go vet ./...
+          CGO_ENABLED=1 go test -race -count=1 ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          go mod tidy -diff
+          go mod verify

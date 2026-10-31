@@ -3,7 +3,7 @@
 # Checks: SessionStart injected HANDOFF.md (the model can quote it); the Stop hook ran the ntfy
 # script (fake curl log); the Stop handoff hook blocked once because a file changed and
 # HANDOFF.md was stale, and the model rewrote HANDOFF.md. Run from the host:
-#   TOKEN_ENV=~/.config/claude-eval/token.env bash plugins/makeit/hooks/live-test.sh
+#   TOKEN_ENV=<env file with your Claude token> EVAL_IMAGE=<image> bash plugins/makeit/hooks/live-test.sh
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 plugin=$(cd "$here/.." && pwd)
@@ -26,5 +26,5 @@ echo "--- HANDOFF.md after:"; cat /w/repo/HANDOFF.md
 echo "--- curl.log:"; cat /w/curl.log 2>/dev/null || echo "(no curl calls)"
 echo "--- files:"; ls /w/repo
 EOF
-docker run --rm -u node --env-file "$token_env" -e HOME=/w/home -v "$work:/w" -w /w/repo claude-eval:latest bash /w/probe.sh | tee "$here/live-test.out"
+docker run --rm -u node --env-file "$token_env" -e HOME=/w/home -v "$work:/w" -w /w/repo "${EVAL_IMAGE:-claude-eval:latest}" bash /w/probe.sh | tee "$here/live-test.out"
 /bin/rm -rf "$work"

@@ -1,6 +1,7 @@
 {
   "name": "makeit-bundle",
-  "version": "3.11.0",
+  "version": "0.1.0",
+  "license": "MIT",
   "author": {
     "name": "makeit owners"
   },
