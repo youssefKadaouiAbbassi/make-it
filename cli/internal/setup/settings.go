@@ -24,7 +24,7 @@ func (e *env) settingsStep() plan.Step {
 	if res, _, err := e.mergeSettings(path); err == nil {
 		detail = diff(res.Changes)
 	}
-	return plan.Step{ID: "settings", Title: "Merge the stack's settings into " + path, Detail: detail,
+	return plan.Step{ID: "settings", Title: "Merge makeit's settings into " + path, Detail: detail,
 		Already: func(context.Context) (bool, error) {
 			res, _, err := e.mergeSettings(path)
 			e.keepHeld(res.Changes)

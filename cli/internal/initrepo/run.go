@@ -320,7 +320,7 @@ func (r *run) seedStep(s Seed) plan.Step {
 // mergeStep adds what the stack needs to a file without removing or changing what is there.
 func (r *run) mergeStep(m MergeSeed) plan.Step {
 	prev := r.prev.Files[m.Path]
-	return plan.Step{ID: "merge:" + m.Path, Title: "Add the stack's entries to " + m.Path,
+	return plan.Step{ID: "merge:" + m.Path, Title: "Add makeit's entries to " + m.Path,
 		Already: func(context.Context) (bool, error) {
 			if r.linked(m.Path) {
 				if prev != nil {

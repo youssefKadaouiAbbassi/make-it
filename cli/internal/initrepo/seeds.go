@@ -355,7 +355,7 @@ func (s *seeder) ci(gateRef string) error {
 	}
 	m := gateRefPattern.FindStringSubmatch(gateRef)
 	if m == nil {
-		s.rep.Notices = append(s.rep.Notices, fmt.Sprintf("catalog ci.gateRef %q is not owner/repo@<40-hex sha> # <tag>: no CI caller", gateRef))
+		s.rep.Notices = append(s.rep.Notices, fmt.Sprintf("the plugin set's ci.gateRef %q is not owner/repo@<40-hex sha> # <tag>: no CI caller", gateRef))
 		return nil
 	}
 	switch {
