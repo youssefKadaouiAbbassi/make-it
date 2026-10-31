@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -217,12 +218,30 @@ func TestCatalogGuessedGitHubShown(t *testing.T) {
 		t.Fatalf("setup: exit %d\n%s", code, errOut)
 	}
 	const line = "catalog: https://github.com/owner/repo.git (no local path owner/repo.git)"
-	for _, flags := range [][]string{{"--yes"}, {"--yes", "--json"}} {
-		code, _, errOut := run2(t, append(append([]string{"update"}, flags...), "--catalog", "owner/repo.git")...)
-		i, j := strings.Index(errOut, line), strings.Index(errOut, "could not fetch")
-		if code != 1 || i < 0 || j < 0 || i > j {
-			t.Errorf("%v: exit %d, want the source line before the fetch error\n%s", flags, code, errOut)
-		}
+	code, _, errOut := run2(t, "update", "--yes", "--catalog", "owner/repo.git")
+	if i, j := strings.Index(errOut, line), strings.Index(errOut, "could not fetch"); code != 1 || i < 0 || j < 0 || i > j {
+		t.Errorf("--yes: exit %d, want the source line before the fetch error\n%s", code, errOut)
+	}
+	// With --json the error is in the JSON document on stdout; the line stays on stderr.
+	code, out, errOut := run2(t, "update", "--yes", "--json", "--catalog", "owner/repo.git")
+	if code != 1 || !strings.Contains(errOut, line) || !strings.Contains(out, "could not fetch") {
+		t.Errorf("--json: exit %d\nstdout %s\nstderr %s", code, out, errOut)
+	}
+}
+
+// --json keeps its promise when the catalog cannot be prepared: one JSON document with the error.
+func TestCatalogPrepareErrorJSON(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes", "--catalog", m.url); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	code, out, _ := run2(t, "update", "--yes", "--json", "--catalog", "file:///no/such/cat.git")
+	var got struct {
+		Plan  []json.RawMessage `json:"plan"`
+		Error string            `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); code != 1 || err != nil || got.Plan == nil || !strings.Contains(got.Error, credentialHint) {
+		t.Errorf("exit %d, not one JSON document with the error: %v\n%s", code, err, out)
 	}
 }
 

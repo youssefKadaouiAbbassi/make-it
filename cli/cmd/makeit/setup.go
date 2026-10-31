@@ -117,6 +117,14 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	var catalogNotices []string
 	if m.prepare != nil {
 		if catalogNotices, err = m.prepare(ctx, p, &e); err != nil {
+			if asJSON {
+				return emit(stdout, stderr, struct {
+					Version string         `json:"version"`
+					Plan    []plan.Outcome `json:"plan"`
+					Summary string         `json:"summary"`
+					Error   string         `json:"error"`
+				}{buildinfo.Version, []plan.Outcome{}, "nothing applied", err.Error()}, 1)
+			}
 			fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 			return 1
 		}
