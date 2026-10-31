@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -242,5 +243,60 @@ func TestFetchReadsPastALongPath(t *testing.T) {
 	}
 	if _, ok := tr.Files["makeit.json"]; !ok {
 		t.Errorf("makeit.json after the long entry was dropped: %v", tr.Manifest.Files)
+	}
+}
+
+// An inherited GIT_DIR (a makeit run from a git hook, say) must not redirect the catalog's git:
+// the fetch's init and fetch would land in that repository.
+func TestGitIgnoresInheritedRepoEnv(t *testing.T) {
+	f := newFixture(t)
+	commit := sh(t, f.work, "rev-parse", "HEAD")
+	other := t.TempDir()
+	t.Setenv("GIT_DIR", other)
+	t.Setenv("GIT_WORK_TREE", other)
+	if _, err := LsRemote(context.Background(), local, f.url); err != nil {
+		t.Fatalf("ls-remote: %v", err)
+	}
+	if _, err := Fetch(context.Background(), local, f.url, "refs/tags/v1.0.0", commit); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if entries, _ := os.ReadDir(other); len(entries) != 0 {
+		t.Errorf("git wrote into the inherited GIT_DIR: %v", entries)
+	}
+}
+
+// The BatchMode default is only a default: a user's GIT_SSH, GIT_SSH_COMMAND or core.sshCommand wins.
+func TestGitSSHDefault(t *testing.T) {
+	for _, c := range []struct {
+		name, env, config string
+		want              bool
+	}{
+		{"nothing set", "", "", true},
+		{"GIT_SSH", "GIT_SSH", "", false},
+		{"GIT_SSH_COMMAND", "GIT_SSH_COMMAND", "", false},
+		{"core.sshCommand", "", "ssh -i ~/.ssh/work", false},
+	} {
+		t.Setenv("GIT_SSH", "")
+		t.Setenv("GIT_SSH_COMMAND", "")
+		if c.env != "" {
+			t.Setenv(c.env, "my-ssh")
+		}
+		var lsEnv []string
+		g := Git{Protocols: "ssh", Run: func(_ context.Context, cmd execx.Cmd) (execx.Result, error) {
+			if slices.Contains(cmd.Argv, "config") {
+				if c.config == "" {
+					return execx.Result{Code: 1}, nil
+				}
+				return execx.Result{Stdout: c.config + "\n"}, nil
+			}
+			lsEnv = cmd.Env
+			return execx.Result{}, nil
+		}}
+		if _, err := LsRemote(context.Background(), g, "ssh://example.com/x"); err != nil {
+			t.Fatal(err)
+		}
+		if got := slices.Contains(lsEnv, "GIT_SSH_COMMAND=ssh -o BatchMode=yes"); got != c.want {
+			t.Errorf("%s: default set %v, want %v (env %v)", c.name, got, c.want, lsEnv)
+		}
 	}
 }

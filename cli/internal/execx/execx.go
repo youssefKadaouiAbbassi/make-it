@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -21,7 +22,9 @@ type Cmd struct {
 	Argv []string
 	Dir  string
 	// Env entries are added to the inherited environment, overriding keys of the same name.
-	Env   []string
+	Env []string
+	// Unset are inherited variables removed before Env is added.
+	Unset []string
 	Stdin io.Reader
 	// Inherit connects the terminal, for package managers and sudo that prompt the user.
 	Inherit bool
@@ -91,8 +94,12 @@ func Run(ctx context.Context, c Cmd) (Result, error) {
 	cmd.Dir = c.Dir
 	// A killed program's children can keep the output pipes open; stop waiting for them.
 	cmd.WaitDelay = time.Second
-	if len(c.Env) > 0 {
-		cmd.Env = append(os.Environ(), c.Env...)
+	if len(c.Env) > 0 || len(c.Unset) > 0 {
+		env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
+			k, _, _ := strings.Cut(kv, "=")
+			return slices.Contains(c.Unset, k)
+		})
+		cmd.Env = append(env, c.Env...)
 	}
 	var out, errb bytes.Buffer
 	if c.Inherit {

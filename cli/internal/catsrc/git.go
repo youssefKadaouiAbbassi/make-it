@@ -23,20 +23,34 @@ type Git struct {
 
 const gitTimeout = 5 * time.Minute
 
+// repoEnv are inherited variables that would point git at another repository (a makeit run from a
+// git hook inherits GIT_DIR): the catalog's git never reads them.
+var repoEnv = []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}
+
 func (g Git) git(ctx context.Context, dir string, args ...string) (execx.Result, error) {
 	argv := append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "submodule.recurse=false"}, args...)
 	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_ALLOW_PROTOCOL=" + g.Protocols}
-	if os.Getenv("GIT_SSH_COMMAND") == "" {
-		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
-	}
 	if dir == "" {
 		dir = os.TempDir()
 	}
-	res, err := g.Run(ctx, execx.Cmd{Argv: argv, Dir: dir, Env: env, Timeout: gitTimeout})
+	// No password prompt on ssh, unless the user chose their own ssh command.
+	if (args[0] == "ls-remote" || args[0] == "fetch") && !g.ownSSH(ctx, dir) {
+		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
+	res, err := g.Run(ctx, execx.Cmd{Argv: argv, Dir: dir, Env: env, Unset: repoEnv, Timeout: gitTimeout})
 	if err == nil && res.Code != 0 {
 		err = fmt.Errorf("git %s: %s", args[0], strings.TrimSpace(res.Stderr))
 	}
 	return res, err
+}
+
+// ownSSH reports a user's GIT_SSH, GIT_SSH_COMMAND or core.sshCommand.
+func (g Git) ownSSH(ctx context.Context, dir string) bool {
+	if os.Getenv("GIT_SSH") != "" || os.Getenv("GIT_SSH_COMMAND") != "" {
+		return true
+	}
+	res, err := g.Run(ctx, execx.Cmd{Argv: []string{"git", "config", "--get", "core.sshCommand"}, Dir: dir, Unset: repoEnv, Timeout: gitTimeout})
+	return err == nil && res.Code == 0 && strings.TrimSpace(res.Stdout) != ""
 }
 
 // LsRemote lists the remote's tags, peeled to their commits, and its branch heads.
