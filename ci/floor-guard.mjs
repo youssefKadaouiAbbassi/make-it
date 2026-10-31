@@ -98,6 +98,18 @@ for (const f of deleted) if (isTest(f)) flag('test-deleted', f, 'file deleted');
 // A rule switched off in a config file is invisible to the regexes above, so the change itself is
 // the finding; the owner reads the diff at the merge prompt. package.json counts only when a
 // scripts line changed (dependency bumps are Renovate's).
+// A watched change passes when the PR description gives a reason, read from PR_BODY as data: a line
+// "floor-guard: <reason>" covers every watched file, "floor-guard <path>: <reason>" one file. A
+// reason excuses only this rule; push events have no description and keep the finding.
+const reasons = new Map();
+let reasonForAll = '';
+for (const line of (process.env.PR_BODY ?? '').split(/\r?\n/)) {
+  const m = line.match(/^\s*(?:[-*]\s+)?floor-guard(?:\s+(\S+))?:\s*(\S.*?)\s*$/);
+  if (!m) continue;
+  if (m[1]) reasons.set(m[1], m[2]);
+  else reasonForAll = m[2];
+}
+const excused = [];
 const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted));
 for (const f of touched) {
   if (!watch.test(f)) continue;
@@ -106,7 +118,9 @@ for (const f of touched) {
     if (!scriptLine) continue;
   }
   if (isConstraints(f)) continue; // CONSTRAINTS.md has its own rule-level checks above and below
-  flag('watched-file-changed', f, 'on the watch list; review the change at the merge prompt');
+  const reason = reasons.get(f) ?? reasonForAll;
+  if (reason) excused.push({ file: f, reason });
+  else flag('watched-file-changed', f, 'on the watch list; give the reason in the PR description: floor-guard: <reason>');
 }
 for (const { file, text } of removed) {
   if (isTest(file) && !deleted.includes(file) && /\b(expect|assert|should)\b/.test(text)) {
@@ -171,7 +185,13 @@ for (const r of removedRules) {
   if (verdict) flag(verdict, r.file, r.text + '  ->  ' + a.text);
 }
 
-if (findings.length === 0) { console.log('floor-guard: clean'); process.exit(0); }
+const showExcused = (log) => {
+  if (excused.length === 0) return;
+  log('watched files changed, with the reason given in the PR description (review them at the merge):');
+  for (const e of excused) log(`  ${e.file}: ${e.reason}`);
+};
+if (findings.length === 0) { console.log('floor-guard: clean'); showExcused(console.log); process.exit(0); }
+showExcused(console.error);
 console.error('floor-guard: ' + findings.length + ' floor violation(s):');
 for (const f of findings) console.error(`  [${f.rule}] ${f.file}: ${f.text}`);
 if (findings.some((f) => f.rule === 'rule-removed')) {

@@ -101,6 +101,8 @@ jobs:
       - name: "floor-guard (diff against the base branch; exit 1 = violation, 2 = could not run)"
         env:
           BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+          # Read by floor-guard as data ("floor-guard: <reason>" lines); never expanded into run:.
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           git fetch --no-tags origin "$BASE_REF"
           node ci/floor-guard.mjs --base "origin/$BASE_REF"

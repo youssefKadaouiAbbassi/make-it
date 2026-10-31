@@ -3,8 +3,9 @@
 #   docker run --rm -u node -v "$PWD:/w" -w /w claude-eval:latest bash floor-cases.sh
 # Fresh repo with the project CONSTRAINTS.md template, a source file, a test file, a tsconfig,
 # a package.json with scripts and a workflow on main; one edit per case on a branch.
-# Loosening moves and watched-file changes exit 1; no-op, tightening, dependency bumps and the files
-# makeit init seeds (the guard itself, a CONSTRAINTS.md) exit 0.
+# Loosening moves and watched-file changes exit 1; no-op, tightening, dependency bumps, the files
+# makeit init seeds (the guard itself, a CONSTRAINTS.md) and a watched change with a reason in the
+# PR description (PR_BODY) exit 0.
 set -uo pipefail
 git config --global user.email t@example.com; git config --global user.name t; git config --global init.defaultBranch main
 /bin/rm -rf repo; git init -q repo && cp CONSTRAINTS.md floor-guard.mjs repo/ && cd repo
@@ -15,11 +16,11 @@ printf '{\n  "name": "t",\n  "scripts": {\n    "check:full": "tsc && vitest run"
 printf 'name: ci\non: push\npermissions: {}\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n' >.github/workflows/ci.yml
 git add -A && git commit -qm base && git update-ref refs/remotes/origin/main HEAD
 fail=0
-run_case() { # name expected-exit edit-command [extra guard args]
+run_case() { # name expected-exit edit-command [extra guard args] [PR body] [text the output must hold]
   git checkout -q main; git checkout -q -B case
   eval "$3"; git add -A; git commit -qm "$1" >/dev/null
-  eval "node floor-guard.mjs --base origin/main ${4:-}" >../out.txt 2>&1; rc=$?
-  if [ "$rc" = "$2" ]; then echo "ok   $1 (exit $rc)"; else echo "FAIL $1: expected $2 got $rc"; cat ../out.txt; fail=1; fi
+  PR_BODY="${5:-}" eval "node floor-guard.mjs --base origin/main ${4:-}" >../out.txt 2>&1; rc=$?
+  if [ "$rc" = "$2" ] && { [ -z "${6:-}" ] || grep -qF -- "$6" ../out.txt; }; then echo "ok   $1 (exit $rc)"; else echo "FAIL $1: expected $2 got $rc"; cat ../out.txt; fail=1; fi
   git checkout -q main; git branch -q -D case
 }
 run_case noop-edit 0 "printf '\n' >>src.ts"
@@ -42,4 +43,12 @@ run_case custom-watch-miss 0 "printf 'x\n' >>src.ts" "--watch '^docs/'"
 # What makeit init seeds: the guard's own source and a CONSTRAINTS.md name every marker they forbid.
 run_case seeded-guard-not-flagged 0 "mkdir -p ci && cp floor-guard.mjs ci/floor-guard.mjs"
 run_case seeded-constraints-not-flagged 0 "mkdir -p svc && cp CONSTRAINTS.md svc/CONSTRAINTS.md"
+# A watched change passes with a reason in the PR description: "floor-guard: <reason>" for every
+# watched file, "floor-guard <path>: <reason>" for one. A reason excuses nothing else.
+wf="printf '      - run: echo more\\n' >>.github/workflows/ci.yml"
+run_case reason-empty 1 "$wf" "" "floor-guard:   "
+run_case reason-for-all 0 "$wf" "" $'Adds a step.\n\nfloor-guard: the release needs the extra step' "the release needs the extra step"
+run_case reason-for-the-file 0 "$wf" "" "- floor-guard .github/workflows/ci.yml: the release needs it" ".github/workflows/ci.yml"
+run_case reason-for-another-file 1 "$wf" "" "floor-guard tsconfig.json: unrelated"
+run_case reason-does-not-excuse-a-suppression 1 "$wf; printf '// eslint-disable-next-line\\nexport const y = 2;\\n' >>src.ts" "" "floor-guard: the release needs the extra step"
 [ "$fail" = 0 ] && echo "FLOOR OK" || { echo "FLOOR FAILURES"; exit 1; }

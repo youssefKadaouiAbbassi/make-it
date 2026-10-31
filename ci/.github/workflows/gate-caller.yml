@@ -4,6 +4,8 @@ name: gate
 
 on:
   pull_request:
+    # edited: adding the floor-guard reason to the description re-runs the gate.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 

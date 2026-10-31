@@ -45,6 +45,18 @@ rep(
     "// A rule switched off in a config file is invisible to the regexes above, so the change itself is\n"
     "// the finding; the owner reads the diff at the merge prompt. package.json counts only when a\n"
     "// scripts line changed (dependency bumps are Renovate's).\n"
+    "// A watched change passes when the PR description gives a reason, read from PR_BODY as data: a line\n"
+    "// \"floor-guard: <reason>\" covers every watched file, \"floor-guard <path>: <reason>\" one file. A\n"
+    "// reason excuses only this rule; push events have no description and keep the finding.\n"
+    "const reasons = new Map();\n"
+    "let reasonForAll = '';\n"
+    "for (const line of (process.env.PR_BODY ?? '').split(/\\r?\\n/)) {\n"
+    "  const m = line.match(/^\\s*(?:[-*]\\s+)?floor-guard(?:\\s+(\\S+))?:\\s*(\\S.*?)\\s*$/);\n"
+    "  if (!m) continue;\n"
+    "  if (m[1]) reasons.set(m[1], m[2]);\n"
+    "  else reasonForAll = m[2];\n"
+    "}\n"
+    "const excused = [];\n"
     "const touched = new Set([...added, ...removed].map((l) => l.file).concat(deleted));\n"
     "for (const f of touched) {\n"
     "  if (!watch.test(f)) continue;\n"
@@ -53,7 +65,9 @@ rep(
     "    if (!scriptLine) continue;\n"
     "  }\n"
     "  if (isConstraints(f)) continue; // CONSTRAINTS.md has its own rule-level checks above and below\n"
-    "  flag('watched-file-changed', f, 'on the watch list; review the change at the merge prompt');\n"
+    "  const reason = reasons.get(f) ?? reasonForAll;\n"
+    "  if (reason) excused.push({ file: f, reason });\n"
+    "  else flag('watched-file-changed', f, 'on the watch list; give the reason in the PR description: floor-guard: <reason>');\n"
     "}",
 )
 
@@ -76,6 +90,17 @@ rep(
         "    if (SKIPS.test(text)) flag('test-made-easier', file, text);\n"
         '  }\n'
     ),
+)
+
+rep(
+    "if (findings.length === 0) { console.log('floor-guard: clean'); process.exit(0); }",
+    "const showExcused = (log) => {\n"
+    "  if (excused.length === 0) return;\n"
+    "  log('watched files changed, with the reason given in the PR description (review them at the merge):');\n"
+    "  for (const e of excused) log(`  ${e.file}: ${e.reason}`);\n"
+    "};\n"
+    "if (findings.length === 0) { console.log('floor-guard: clean'); showExcused(console.log); process.exit(0); }\n"
+    "showExcused(console.error);"
 )
 
 open(out, "w", encoding="utf-8").write(text)

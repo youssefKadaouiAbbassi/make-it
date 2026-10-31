@@ -21,6 +21,9 @@ fi
 cp ../templates/project/CONSTRAINTS.md . && docker run --rm -u node -v "$here:/w" -w /w claude-eval:latest bash floor-cases.sh | tail -1 || fail=1
 /bin/rm -rf repo out.txt CONSTRAINTS.md
 
+# Adding the floor-guard reason to the PR description must re-run the gate.
+if grep -qF "types: [opened, synchronize, reopened, edited]" .github/workflows/gate-caller.yml; then echo "ok caller re-runs on an edited PR"; else echo "FAIL the caller does not re-run when the PR description is edited"; fail=1; fi
+
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
   zizmor --no-progress --min-severity low --persona auditor .github/workflows || fail=1
