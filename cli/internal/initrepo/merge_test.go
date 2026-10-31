@@ -25,7 +25,7 @@ func TestPackageScriptsKeepStyle(t *testing.T) {
     }
 }
 `, "\n", "\r\n")
-	m, err := PackageScripts([]byte(in), checkScripts)
+	m, err := PackageScripts([]byte(in), checkScripts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestPackageScriptsStyles(t *testing.T) {
 		{"tab, no final newline", "{\n\t\"name\": \"a\"\n}", "{\n\t\"name\": \"a\",\n\t\"scripts\": {\n\t\t\"check:fast\": \"x\"\n\t}\n}"},
 		{"two spaces", "{\n  \"name\": \"a\",\n  \"scripts\": {}\n}\n", "{\n  \"name\": \"a\",\n  \"scripts\": {\n    \"check:fast\": \"x\"\n  }\n}\n"},
 	} {
-		m, err := PackageScripts([]byte(c.in), [][2]string{{"check:fast", "x"}})
+		m, err := PackageScripts([]byte(c.in), [][2]string{{"check:fast", "x"}}, nil)
 		if err != nil || string(m.Body) != c.want {
 			t.Errorf("%s: %q %v\nwant %q", c.name, m.Body, err, c.want)
 		}
@@ -64,7 +64,7 @@ func TestPackageScriptsStyles(t *testing.T) {
 
 func TestMergeJSONNoChange(t *testing.T) {
 	in := "{\n    \"a\": {\"b\": 1},\n    \"c\": [1,2]\n}"
-	m, err := MergeJSON([]byte(in), []byte(`{"a": {"b": 1}, "c": [1, 2]}`), nil)
+	m, err := MergeJSON([]byte(in), []byte(`{"a": {"b": 1}, "c": [1, 2]}`), nil, nil)
 	if err != nil || m.Changed || string(m.Body) != in || len(m.Added)+len(m.Conflicts) != 0 {
 		t.Errorf("%+v %v", m, err)
 	}
@@ -73,7 +73,7 @@ func TestMergeJSONNoChange(t *testing.T) {
 func TestMergeJSONDeep(t *testing.T) {
 	theirs := `{"enabledPlugins": {"theirs@x": true}, "env": {"A": "1"}}`
 	ours := `{"enabledPlugins": {"makeit-ui@makeit": true}, "env": {"A": "2", "B": "3"}, "permissions": {"ask": ["Bash(git push:*)"]}}`
-	m, err := MergeJSON([]byte(theirs), []byte(ours), nil)
+	m, err := MergeJSON([]byte(theirs), []byte(ours), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestMergeJSONDeep(t *testing.T) {
 	if string(m.Body) != want {
 		t.Errorf("body\n%s", m.Body)
 	}
-	if !slices.Equal(m.Added, []string{"/enabledPlugins/makeit-ui@makeit", "/env/B", "/permissions"}) || !slices.Equal(m.Conflicts, []string{"/env/A"}) {
+	if !slices.Equal(m.Added, []string{"/enabledPlugins/makeit-ui@makeit", "/env/B", "/permissions/ask"}) || !slices.Equal(m.Conflicts, []string{"/env/A"}) {
 		t.Errorf("added %v conflicts %v", m.Added, m.Conflicts)
 	}
 }
@@ -89,7 +89,7 @@ func TestMergeJSONDeep(t *testing.T) {
 func TestMergeRenovate(t *testing.T) {
 	theirs := `{"extends": ["config:recommended"], "packageRules": [{"description": "group eslint", "groupName": "theirs"}]}`
 	ours := `{"extends": ["config:best-practices"], "packageRules": [{"description": "group eslint", "groupName": "ours"}, {"description": "pin actions", "pinDigests": true}], "customManagers": [{"description": "catalog pins", "customType": "regex"}]}`
-	m, err := MergeJSON([]byte(theirs), []byte(ours), map[string]string{"/packageRules": "description", "/customManagers": "description"})
+	m, err := MergeJSON([]byte(theirs), []byte(ours), map[string]string{"/packageRules": "description", "/customManagers": "description"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,33 +107,57 @@ func TestMergeRenovate(t *testing.T) {
 }
 
 func TestMergeJSONRefusesJSON5(t *testing.T) {
-	if _, err := MergeJSON([]byte("{\n  // comment\n  \"a\": 1,\n}"), []byte(`{"b": 2}`), nil); err == nil || !strings.Contains(err.Error(), "not plain JSON") {
+	if _, err := MergeJSON([]byte("{\n  // comment\n  \"a\": 1,\n}"), []byte(`{"b": 2}`), nil, nil); err == nil || !strings.Contains(err.Error(), "not plain JSON") {
 		t.Errorf("err %v", err)
 	}
-	if _, err := MergeJSON([]byte(`[1]`), []byte(`{"b": 2}`), nil); err == nil {
+	if _, err := MergeJSON([]byte(`[1]`), []byte(`{"b": 2}`), nil, nil); err == nil {
 		t.Error("a JSON array was taken as an object")
 	}
 }
 
 func TestMergeLines(t *testing.T) {
 	lines := []string{".env", ".env.*", "!.env.example"}
-	m := MergeLines([]byte("node_modules\n.env\n"), lines)
+	m := MergeLines([]byte("node_modules\n.env\n"), lines, nil)
 	if string(m.Body) != "node_modules\n.env\n.env.*\n!.env.example\n" || !slices.Equal(m.Added, []string{".env.*", "!.env.example"}) {
 		t.Errorf("%q %v", m.Body, m.Added)
 	}
-	m = MergeLines([]byte("dist"), lines)
+	m = MergeLines([]byte("dist"), lines, nil)
 	if string(m.Body) != "dist\n.env\n.env.*\n!.env.example\n" {
 		t.Errorf("no final newline: %q", m.Body)
 	}
-	m = MergeLines([]byte("dist\r\n.env\r\n"), lines)
+	m = MergeLines([]byte("dist\r\n.env\r\n"), lines, nil)
 	if string(m.Body) != "dist\r\n.env\r\n.env.*\r\n!.env.example\r\n" {
 		t.Errorf("crlf: %q", m.Body)
 	}
-	m = MergeLines([]byte("  .env  \n.env.*\n!.env.example\n"), lines)
+	m = MergeLines([]byte("  .env  \n.env.*\n!.env.example\n"), lines, nil)
 	if m.Changed {
 		t.Errorf("present lines added again: %q", m.Body)
 	}
-	if m = MergeLines(nil, lines); string(m.Body) != ".env\n.env.*\n!.env.example\n" || !m.Changed {
+	if m = MergeLines(nil, lines, nil); string(m.Body) != ".env\n.env.*\n!.env.example\n" || !m.Changed {
 		t.Errorf("new file: %q", m.Body)
+	}
+}
+
+// What a merge adds is recorded leaf by leaf, and a leaf in skip (added before, since removed by
+// the user) is not added again, even inside an object that is missing as a whole.
+func TestMergeSkipsRemovedLeaves(t *testing.T) {
+	ours := `{"scripts": {"check:fast": "a", "check:task": "b", "check:api": "c"}}`
+	m, err := MergeJSON([]byte(`{"name": "x"}`), []byte(ours), nil, map[string]bool{"/scripts/check:task": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(m.Body), "check:task") || !slices.Equal(m.Added, []string{"/scripts/check:fast", "/scripts/check:api"}) {
+		t.Errorf("added %v\n%s", m.Added, m.Body)
+	}
+	m, _ = MergeJSON([]byte(`{}`), []byte(`{"a": {"b": 1}}`), nil, map[string]bool{"/a/b": true})
+	if m.Changed || strings.Contains(string(m.Body), `"a"`) {
+		t.Errorf("an object with only skipped leaves was added: %s", m.Body)
+	}
+	m, _ = MergeJSON([]byte(`{"rules": []}`), []byte(`{"rules": [{"description": "x"}, {"description": "y"}]}`), map[string]string{"/rules": "description"}, map[string]bool{"/rules/x": true})
+	if !slices.Equal(m.Added, []string{"/rules/y"}) {
+		t.Errorf("matched array: %v", m.Added)
+	}
+	if l := MergeLines([]byte("a\n"), []string{".env", ".env.*"}, map[string]bool{".env": true}); !slices.Equal(l.Added, []string{".env.*"}) {
+		t.Errorf("lines: %v", l.Added)
 	}
 }

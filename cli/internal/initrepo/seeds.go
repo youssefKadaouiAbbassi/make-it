@@ -7,10 +7,11 @@ import (
 )
 
 // MergeSeed is one file init merges into rather than writes: Apply returns theirs with what the
-// stack adds. Class is "merge"; Template names what the additions come from.
+// stack adds, leaving out the entries in skip (added by an earlier run and since removed).
+// Template names what the additions come from.
 type MergeSeed struct {
 	Path, Template string
-	Apply          func(theirs []byte) (Merged, error)
+	Apply          func(theirs []byte, skip map[string]bool) (Merged, error)
 }
 
 // SeedReport is what Seeds could not do itself: Manual lines for the agent step (exact text to
@@ -38,9 +39,13 @@ func Seeds(p Project, src catalog.Source, req catalog.Requires) ([]Seed, []Merge
 	var rep SeedReport
 	if slices.Contains(p.Types, "node") {
 		merges = append(merges, MergeSeed{Path: "package.json", Template: "makeit:check-stubs",
-			Apply: func(theirs []byte) (Merged, error) { return PackageScripts(theirs, checkStubs) }})
+			Apply: func(theirs []byte, skip map[string]bool) (Merged, error) {
+				return PackageScripts(theirs, checkStubs, skip)
+			}})
 	}
 	merges = append(merges, MergeSeed{Path: ".gitignore", Template: "makeit:env-lines",
-		Apply: func(theirs []byte) (Merged, error) { return MergeLines(theirs, envLines), nil }})
+		Apply: func(theirs []byte, skip map[string]bool) (Merged, error) {
+			return MergeLines(theirs, envLines, skip), nil
+		}})
 	return seeds, merges, rep
 }

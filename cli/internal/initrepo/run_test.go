@@ -117,7 +117,7 @@ func TestInitFresh(t *testing.T) {
 	}
 	pkg := r.Files["package.json"]
 	if pkg == nil || pkg.Class != "merge" || !pkg.PreExisted || pkg.WrittenSha256 != sha(t, filepath.Join(dir, "package.json")) ||
-		!slices.Equal(pkg.Added, []string{"/scripts"}) {
+		!slices.Equal(pkg.Added, []string{"/scripts/check:fast", "/scripts/check:task", "/scripts/check:full"}) {
 		t.Errorf("package.json record %+v", pkg)
 	}
 	if gi := r.Files[".gitignore"]; gi == nil || gi.PreExisted || !slices.Equal(gi.Added, []string{".env", ".env.*", "!.env.example"}) {

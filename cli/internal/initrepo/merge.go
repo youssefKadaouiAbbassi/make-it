@@ -19,10 +19,12 @@ type Merged struct {
 
 // MergeJSON adds what ours has and theirs lacks: object keys at any depth, and, for the arrays
 // named in match (pointer -> identity field), the elements whose identity theirs does not have.
-// It never removes anything or changes a value theirs has. The result keeps theirs' key order,
+// It never removes anything or changes a value theirs has. Added lists leaf pointers (an added
+// object is listed by its members, an array whole or by element identity), and a leaf in skip is
+// never added: it was added before and the user removed it. The result keeps theirs' key order,
 // indentation, line endings and final newline; when nothing is added, Body is theirs unchanged.
 // Empty theirs is an empty object.
-func MergeJSON(theirs, ours []byte, match map[string]string) (Merged, error) {
+func MergeJSON(theirs, ours []byte, match map[string]string, skip map[string]bool) (Merged, error) {
 	m := Merged{Body: theirs}
 	style := detectStyle(theirs)
 	dst, err := jsonx.DecodeObject(bytes.TrimPrefix(theirs, bom))
@@ -33,7 +35,7 @@ func MergeJSON(theirs, ours []byte, match map[string]string) (Merged, error) {
 	if err != nil {
 		return m, err
 	}
-	addMissing(dst, src, "", match, &m)
+	addMissing(dst, src, "", match, skip, &m)
 	if len(m.Added) == 0 {
 		return m, nil
 	}
@@ -54,8 +56,8 @@ func MergeJSON(theirs, ours []byte, match map[string]string) (Merged, error) {
 	return m, nil
 }
 
-// PackageScripts adds the scripts package.json lacks, in the order given.
-func PackageScripts(theirs []byte, scripts [][2]string) (Merged, error) {
+// PackageScripts adds the scripts package.json lacks, in the order given, except those in skip.
+func PackageScripts(theirs []byte, scripts [][2]string, skip map[string]bool) (Merged, error) {
 	ours := jsonx.NewObject()
 	s := jsonx.NewObject()
 	for _, kv := range scripts {
@@ -66,12 +68,12 @@ func PackageScripts(theirs []byte, scripts [][2]string) (Merged, error) {
 	if err != nil {
 		return Merged{}, err
 	}
-	return MergeJSON(theirs, b, nil)
+	return MergeJSON(theirs, b, nil, skip)
 }
 
-// MergeLines appends the lines theirs lacks (compared without surrounding spaces), keeping its
-// line endings and ending with a newline.
-func MergeLines(theirs []byte, lines []string) Merged {
+// MergeLines appends the lines theirs lacks (compared without surrounding spaces) and skip does
+// not name, keeping its line endings and ending with a newline.
+func MergeLines(theirs []byte, lines []string, skip map[string]bool) Merged {
 	m := Merged{Body: theirs}
 	eol := "\n"
 	if bytes.Contains(theirs, []byte("\r\n")) {
@@ -83,7 +85,7 @@ func MergeLines(theirs []byte, lines []string) Merged {
 	}
 	var add []string
 	for _, l := range lines {
-		if !have[l] {
+		if !have[l] && !skip[l] {
 			add, have[l] = append(add, l), true
 		}
 	}
@@ -126,27 +128,32 @@ func detectStyle(b []byte) jsonStyle {
 	return s
 }
 
-// addMissing copies into dst what src has and dst lacks, recording pointers in m.
-func addMissing(dst, src *jsonx.Object, ptr string, match map[string]string, m *Merged) {
+// addMissing copies into dst what src has and dst lacks, recording leaf pointers in m.
+func addMissing(dst, src *jsonx.Object, ptr string, match map[string]string, skip map[string]bool, m *Merged) {
 	for _, k := range src.Keys() {
 		sv, _ := src.Get(k)
 		p := ptr + "/" + escapePointer(k)
+		if skip[p] {
+			continue
+		}
 		dv, ok := dst.Get(k)
 		if !ok {
-			dst.Set(k, jsonx.Clone(sv))
-			m.Added = append(m.Added, p)
+			if v, leaves := withoutSkipped(sv, p, skip); len(leaves) > 0 {
+				dst.Set(k, v)
+				m.Added = append(m.Added, leaves...)
+			}
 			continue
 		}
 		do, dObj := dv.(*jsonx.Object)
 		so, sObj := sv.(*jsonx.Object)
 		if dObj && sObj {
-			addMissing(do, so, p, match, m)
+			addMissing(do, so, p, match, skip, m)
 			continue
 		}
 		da, dArr := dv.([]any)
 		sa, sArr := sv.([]any)
 		if id := match[p]; id != "" && dArr && sArr {
-			dst.Set(k, appendMissing(da, sa, id, p, m))
+			dst.Set(k, appendMissing(da, sa, id, p, skip, m))
 			continue
 		}
 		if !jsonx.Equal(dv, sv) {
@@ -155,8 +162,30 @@ func addMissing(dst, src *jsonx.Object, ptr string, match map[string]string, m *
 	}
 }
 
+// withoutSkipped is a copy of v at pointer p without the leaves skip names, and the leaves kept.
+// An object is a set of leaves; anything else is one leaf.
+func withoutSkipped(v any, p string, skip map[string]bool) (any, []string) {
+	o, ok := v.(*jsonx.Object)
+	if !ok || o.Len() == 0 {
+		if skip[p] {
+			return nil, nil
+		}
+		return jsonx.Clone(v), []string{p}
+	}
+	out := jsonx.NewObject()
+	var leaves []string
+	for _, k := range o.Keys() {
+		cv, _ := o.Get(k)
+		if c, l := withoutSkipped(cv, p+"/"+escapePointer(k), skip); len(l) > 0 {
+			out.Set(k, c)
+			leaves = append(leaves, l...)
+		}
+	}
+	return out, leaves
+}
+
 // appendMissing appends the objects of ours whose id field no element of theirs has.
-func appendMissing(theirs, ours []any, id, ptr string, m *Merged) []any {
+func appendMissing(theirs, ours []any, id, ptr string, skip map[string]bool, m *Merged) []any {
 	have := map[string]any{}
 	for _, e := range theirs {
 		if v, ok := idOf(e, id); ok {
@@ -166,7 +195,7 @@ func appendMissing(theirs, ours []any, id, ptr string, m *Merged) []any {
 	out := theirs
 	for _, e := range ours {
 		v, ok := idOf(e, id)
-		if !ok {
+		if !ok || skip[ptr+"/"+escapePointer(v)] {
 			continue
 		}
 		if prev, dup := have[v]; dup {

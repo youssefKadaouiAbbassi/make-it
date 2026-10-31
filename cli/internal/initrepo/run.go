@@ -231,7 +231,15 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 			if err != nil {
 				return false, err
 			}
-			res, err := m.Apply(cur)
+			// Entries an earlier run added that are gone now were removed by the user.
+			var skip map[string]bool
+			if prev != nil {
+				skip = map[string]bool{}
+				for _, a := range prev.Added {
+					skip[a] = true
+				}
+			}
+			res, err := m.Apply(cur, skip)
 			if err != nil {
 				r.keep(m.Path, "not edited: "+err.Error())
 				if prev != nil {
