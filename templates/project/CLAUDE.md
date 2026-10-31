@@ -47,10 +47,6 @@ Run `check:task` before saying a task is done; `check:full` before a push.
 5. A check that could not run is inconclusive, never a pass.
 6. Start the app (`run`, `/verify`) and exercise the change before calling a
    feature done; if nothing can start it, say manual verification is required.
-7. UI repos: after every UI change, open the page with the browser tools
-   (chrome-devtools) at 1280 px and 375 px, read the screenshots, the console and
-   any overflow, and fix what is wrong before finishing. Delete this item in a
-   repository without a UI.
 
 ## Gotchas
 
