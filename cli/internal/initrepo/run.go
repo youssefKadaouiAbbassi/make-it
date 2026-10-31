@@ -322,6 +322,11 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 			if err != nil {
 				return false, err
 			}
+			if prev != nil && !prev.PreExisted && !exists {
+				r.next[m.Path] = prev
+				r.keep(m.Path, "removed by you: not written again")
+				return true, nil
+			}
 			// Entries an earlier run added that are gone now were removed by the user.
 			var skip map[string]bool
 			if prev != nil {
