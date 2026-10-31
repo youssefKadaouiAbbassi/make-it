@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # docs.sh: SessionStart and PostToolUse (Bash, Edit, Write, MultiEdit). Starts
 # `makeit docs sync --if-changed --quiet <cwd>` in the background, which indexes the project's
-# dependency docs when a manifest or lockfile changed since the last sync (makeit takes its run
-# lock, so a second trigger exits at once). On SessionStart it also lists the direct dependencies
+# dependency docs when a manifest or lockfile changed since the last sync (makeit takes its own
+# docs lock, so a second trigger exits at once). On SessionStart it also lists the direct dependencies
 # (go.mod, package.json, pyproject.toml, Cargo.toml, requirements.txt; cwd and two levels down;
 # not the go directive, since the standard library is not indexed) and tells the agent they are
 # indexed and to search them. Silent and exit 0 when makeit or jq is

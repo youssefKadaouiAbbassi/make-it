@@ -57,7 +57,7 @@ func (m *docsMachine) take() []string {
 // nothing, and an edit made while the sync ran is caught by the next trigger.
 func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 	m := newDocsMachine(t)
-	lock, err := fsx.Acquire(filepath.Join(m.stack, "lock"), time.Now())
+	lock, err := fsx.Acquire(filepath.Join(m.stack, "docs", "lock"), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +65,17 @@ func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 		t.Fatalf("locked: exit %d %q %q", code, out, errOut)
 	}
 	lock.Release()
+	// The stack run lock (setup, update, init) does not stop a docs sync, and the sync leaves it alone.
+	run, err := fsx.Acquire(filepath.Join(m.stack, "lock"), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer run.Release()
 	if code, _, errOut := run2(t, "docs", "sync", m.dir); code != 0 {
 		t.Fatalf("first: exit %d %s", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(m.stack, "lock")); err != nil {
+		t.Fatalf("the docs sync removed the run lock: %v", err)
 	}
 	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "scrape golang.org/x/term https://pkg.go.dev/golang.org/x/term@v0.47.0 --version v0.47.0") {
 		t.Fatalf("first calls %q", c)
