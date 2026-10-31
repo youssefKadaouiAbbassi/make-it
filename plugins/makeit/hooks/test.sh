@@ -58,7 +58,7 @@ out=$(payload Stop ',"stop_hook_active":false' | bash "$here/handoff.sh")
 expect_empty "handoff Stop clean tree: no block" "$out"
 sleep 1; printf 'b\n' >>"$repo/a.txt"
 out=$(payload Stop ',"stop_hook_active":false' | bash "$here/handoff.sh")
-expect "handoff Stop stale HANDOFF blocks" '"decision":"block"' "$out"
+expect "handoff Stop stale HANDOFF reminds" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
 out=$(payload Stop ',"stop_hook_active":true' | bash "$here/handoff.sh")
 expect_empty "handoff Stop does not block twice" "$out"
 sleep 1; printf '# Handoff\n- **Goal:** rewritten\n' >"$repo/HANDOFF.md"
@@ -66,7 +66,7 @@ out=$(payload Stop ',"stop_hook_active":false' | bash "$here/handoff.sh")
 expect_empty "handoff Stop after rewrite: no block" "$out"
 sleep 1; printf 'c\n' >"$repo/new.txt"
 out=$(payload Stop ',"stop_hook_active":false' | bash "$here/handoff.sh")
-expect "handoff Stop untracked newer file blocks" '"decision":"block"' "$out"
+expect "handoff Stop untracked newer file reminds" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
 out=$(printf '{"hook_event_name":"Stop","cwd":"%s/notgit","stop_hook_active":false}' "$tmp" | bash "$here/handoff.sh")
 expect_empty "handoff Stop outside git: silent" "$out"
 # Edits made before this session started (another session, a copy) do not count.
@@ -75,7 +75,7 @@ sleep 1; printf 'd\n' >>"$repo/a.txt"
 sleep 1; late SessionStart ',"source":"startup"' >/dev/null
 expect_empty "handoff Stop ignores edits from before the session" "$(late Stop ',"stop_hook_active":false')"
 sleep 1; printf 'e\n' >>"$repo/a.txt"
-expect "handoff Stop blocks on an edit in this session" '"decision":"block"' "$(late Stop ',"stop_hook_active":false')"
+expect "handoff Stop reminds on an edit in this session" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$(late Stop ',"stop_hook_active":false')"
 sleep 1; late SessionStart ',"source":"compact"' >/dev/null; printf '# Handoff\n- **Goal:** again\n' >"$repo/HANDOFF.md"
 expect_empty "handoff compact keeps the start marker" "$(late Stop ',"stop_hook_active":false')"
 out=$(printf '{"hook_event_name":"Stop","cwd":"%s","session_id":"nostart","stop_hook_active":false}' "$repo" | bash "$here/handoff.sh")

@@ -65,11 +65,12 @@ tail=$(printf '%s\n' "$clean" | awk 'BEGIN { RS = "" } { a = b; b = $0 } END { i
 asks=$(printf '%s\n' "$tail" | awk 'BEGIN { RS = "" } { sub(/\n+$/, ""); n = split($0, l, "\n"); print l[n] }' |
   sed -E 's/[][[:space:]*_`"»”)]+$//' | grep -c '?$') || true
 hand=$(IFS='|' && printf '%s' "${pats[*]}")
-# decision:block shows as "Stop hook error: <reason>" under the reply (about five lines at 110
-# columns). AskUserQuestion is allowed only when the work cannot go on: on a false flag (a finished
+# Stop additionalContext reaches Claude as a reminder at the end of the turn and continues it, with
+# no "Stop hook error" (decision:block) under the reply; it is phrased as facts, not commands, as the
+# hooks docs advise. AskUserQuestion is allowed only when the work cannot go on: on a false flag (a finished
 # report ending on a rhetorical "?") the dialog would hide the report.
 if [ "${asks:-0}" -gt 0 ] || grep -Eqi -- "$hand" <<<"$tail"; then
-  jq -n --arg r 'Your reply ends on a question or a request in prose. Without repeating your reply: only if the work cannot go on until the user answers or acts (a release, a merge, a choice, a step only they can do), ask with AskUserQuestion, the question naming the item and the fact it turns on. If the work is finished and you are suggesting next steps, end on 2-3 numbered options under your close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), nothing after them. If you were only answering a question, end on the answer; if nothing needs the user, end on one plain line.' \
-    '{decision: "block", reason: $r}'
+  jq -cn --arg r 'This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a release, a merge, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.' \
+    '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'
 fi
 exit 0
