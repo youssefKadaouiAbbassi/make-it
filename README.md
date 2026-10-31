@@ -20,6 +20,11 @@ The script checks the binary's sha256 against the release's `checksums.txt`. Wit
 that list, and stops if it does not verify; without minisign it says the signature was not checked.
 Then it runs `makeit self install`, which puts makeit in `~/.local/bin`. Then run `makeit setup`.
 
+The release key (also in [minisign.pub](minisign.pub)), to check a download yourself with
+`minisign -V -P <key> -m checksums.txt`:
+
+    RWSX6Cc3XFkIxiPHeM4IZ4jBFnOnfiMOROpHoZkjxB3p39XW6qrkkp79
+
 ## Commands
 
 | command | what it changes |
