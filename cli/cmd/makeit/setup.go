@@ -47,7 +47,7 @@ var setupEnv = func(context.Context) (setup.Env, error) {
 }
 
 func runSetup(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {
-	return runModifying(ctx, p, stdout, stderr, modifying{name: "setup", question: "Apply this plan?", yesFirst: true, prepare: prepareCatalog("setup"),
+	return runModifying(ctx, p, stdout, stderr, modifying{name: "setup", question: "Apply this plan?", yesFirst: true, prepare: prepareCatalog("setup", stderr),
 		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
 			return setup.Run(ctx, e, mode, confirm, args)
 		}})
@@ -74,7 +74,7 @@ type modifying struct {
 var catalogGit = catsrc.Git{Run: execx.Run, Protocols: "https:ssh"}
 
 // prepareCatalog resolves --catalog, or the recorded source, into the catalog the run plans with.
-func prepareCatalog(command string) func(ctx context.Context, p cli.Parsed, e *setup.Env) ([]string, error) {
+func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, p cli.Parsed, e *setup.Env) ([]string, error) {
 	return func(ctx context.Context, p cli.Parsed, e *setup.Env) ([]string, error) {
 		st, _, err := state.LoadState(filepath.Join(e.Roots.Stack, "state.json"))
 		if err != nil {
@@ -90,7 +90,8 @@ func prepareCatalog(command string) func(ctx context.Context, p cli.Parsed, e *s
 			return true // not a prerequisite here
 		}
 		prep, err := catsrc.Prepare(ctx, catsrc.Params{Arg: p.String["catalog"], AllowBranch: p.Bool["allow-branch"],
-			Offline: p.Bool["offline"], Command: command, State: st, Stack: e.Roots.Stack, Git: catalogGit, Prereq: prereq})
+			Offline: p.Bool["offline"], Command: command, State: st, Stack: e.Roots.Stack, Git: catalogGit, Prereq: prereq,
+			Show: func(line string) { fmt.Fprintln(stderr, line) }})
 		if err != nil {
 			return nil, err
 		}

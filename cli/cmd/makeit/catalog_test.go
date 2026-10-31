@@ -209,6 +209,23 @@ func TestUpdateCatalogUnreachable(t *testing.T) {
 	}
 }
 
+// owner/repo.git with no such local directory is read as GitHub: the full URL is printed before
+// the fetch, with --yes and with --json alike, so a mistyped path is visible.
+func TestCatalogGuessedGitHubShown(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes", "--catalog", m.url); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	const line = "catalog: https://github.com/owner/repo.git (no local path owner/repo.git)"
+	for _, flags := range [][]string{{"--yes"}, {"--yes", "--json"}} {
+		code, _, errOut := run2(t, append(append([]string{"update"}, flags...), "--catalog", "owner/repo.git")...)
+		i, j := strings.Index(errOut, line), strings.Index(errOut, "could not fetch")
+		if code != 1 || i < 0 || j < 0 || i > j {
+			t.Errorf("%v: exit %d, want the source line before the fetch error\n%s", flags, code, errOut)
+		}
+	}
+}
+
 const credentialHint = "a private repository needs a git credential helper or an SSH key"
 
 // A deleted ~/.makeit/catalog is fetched again from the recorded git source, not replaced by the

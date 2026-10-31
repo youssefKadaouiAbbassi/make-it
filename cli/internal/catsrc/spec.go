@@ -23,6 +23,8 @@ type Spec struct {
 	Ref         string
 	Commit      bool
 	AllowBranch bool
+	// Guessed is the argument when it was read as GitHub's owner/repo for lack of a local path.
+	Guessed string
 }
 
 // ErrCredentials is a URL that carries a secret, which state.json would record.
@@ -75,6 +77,9 @@ func Parse(arg string, allowBranch bool) (Spec, error) {
 			return Spec{}, ErrCredentials
 		}
 		s.Location = loc
+	case strings.HasSuffix(loc, ".git") && ownerRepo.MatchString(loc):
+		// Not an existing directory (checked above): GitHub, named in full before the fetch.
+		s.Location, s.Guessed = "https://github.com/"+loc, loc
 	case strings.HasPrefix(loc, "git@"), strings.HasSuffix(loc, ".git"):
 		if user, _, ok := strings.Cut(loc, "@"); ok && strings.Contains(user, ":") {
 			return Spec{}, ErrCredentials
