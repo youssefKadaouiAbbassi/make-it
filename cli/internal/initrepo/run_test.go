@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -338,6 +340,36 @@ func TestInitOffline(t *testing.T) {
 	_, err = Run(context.Background(), e, plan.Apply, nil, Options{Offline: true, Rulesets: true})
 	if err == nil || err.Error() != "--rulesets needs the network; drop --offline" {
 		t.Errorf("--offline --rulesets: %v", err)
+	}
+}
+
+// The docs record is saved only when the sync had no failure but unresolvable libraries: a failed
+// list or scrape leaves it out, so the next run syncs again.
+func TestInitDocsRecordOnlyAfterSync(t *testing.T) {
+	registry := httptest.NewServer(http.NotFoundHandler())
+	defer registry.Close()
+	for _, c := range []struct {
+		name string
+		list execx.Result
+		save bool
+	}{
+		{"list fails", execx.Result{Stderr: "npx: not found", Code: 127}, false},
+		{"only unresolvable", execx.Result{Stdout: "[]"}, true},
+	} {
+		dir := nodeRepo(t)
+		e, _ := testEnv(t, dir)
+		e.Docs.Resolver = docs.Resolver{NPM: registry.URL}
+		e.Docs.Run = func(_ context.Context, cmd execx.Cmd) (execx.Result, error) { return c.list, nil }
+		rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+		if err != nil || rep.Plan.Failed() {
+			t.Fatalf("%s: %v %s", c.name, err, rep.Plan.Summary())
+		}
+		if saved := len(docs.LoadRecord(e.Stack, dir).Manifests) > 0; saved != c.save {
+			t.Errorf("%s: docs record saved %v, docs %q", c.name, saved, rep.Docs)
+		}
+		if c.save && !strings.Contains(strings.Join(rep.Docs, "\n"), "no versioned docs URL") {
+			t.Errorf("%s: docs %q", c.name, rep.Docs)
+		}
 	}
 }
 
