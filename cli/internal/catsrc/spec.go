@@ -81,6 +81,12 @@ func Parse(arg string, allowBranch bool) (Spec, error) {
 	case strings.HasSuffix(loc, ".git") && ownerRepo.MatchString(loc):
 		// Not an existing directory (checked above): GitHub, named in full before the fetch.
 		s.Location, s.Guessed = "https://github.com/"+loc, loc
+	case strings.HasSuffix(loc, ".git") && !strings.HasPrefix(loc, "git@") && !strings.Contains(loc, "://") && !scpLike(loc):
+		// A local path: makeit's git reads only https and ssh, so name what is wrong with the path.
+		if fi, err := os.Stat(loc); err == nil && !fi.IsDir() {
+			return Spec{}, fmt.Errorf("not a directory: %s", loc)
+		}
+		return Spec{}, fmt.Errorf("no such directory: %s", loc)
 	case strings.HasPrefix(loc, "git@"), strings.HasSuffix(loc, ".git"):
 		if user, _, ok := strings.Cut(loc, "@"); ok && strings.Contains(user, ":") {
 			return Spec{}, ErrCredentials
@@ -97,4 +103,10 @@ func Parse(arg string, allowBranch bool) (Spec, error) {
 		return Spec{}, errors.New("--allow-branch needs #<branch>")
 	}
 	return s, nil
+}
+
+// scpLike is git's host:path form (a colon before the first slash), an ssh source.
+func scpLike(loc string) bool {
+	i := strings.Index(loc, ":")
+	return i > 0 && !strings.Contains(loc[:i], "/")
 }
