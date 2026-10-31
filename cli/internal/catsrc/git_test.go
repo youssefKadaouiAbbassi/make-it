@@ -226,3 +226,21 @@ func TestFetchRefusesTraversal(t *testing.T) {
 		t.Errorf("taken: %v", tr.Manifest.Files)
 	}
 }
+
+// An ls-tree entry past bufio.Scanner's 64 KiB token limit must not end the read early and drop the
+// entries after it (the long name sorts first here).
+func TestFetchReadsPastALongPath(t *testing.T) {
+	f := newFixture(t)
+	blob := sh(t, f.work, "hash-object", "-w", "makeit.json")
+	root := treeObject(t, f.work, "100644", strings.Repeat("a", 70000), blob, "100644", "makeit.json", blob)
+	commit := sh(t, f.work, "commit-tree", root, "-m", "long")
+	sh(t, f.work, "update-ref", "refs/heads/long", commit)
+	sh(t, f.work, "push", "-q", f.bare, "refs/heads/long")
+	tr, err := Fetch(context.Background(), local, f.url, "refs/heads/long", commit)
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if _, ok := tr.Files["makeit.json"]; !ok {
+		t.Errorf("makeit.json after the long entry was dropped: %v", tr.Manifest.Files)
+	}
+}

@@ -1,8 +1,6 @@
 package catsrc
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -101,10 +99,9 @@ func Fetch(ctx context.Context, g Git, url, src, commit string) (*catalog.Tree, 
 	}
 	files, exec := map[string][]byte{}, map[string]bool{}
 	var total int64
-	sc := bufio.NewScanner(strings.NewReader(res.Stdout))
-	sc.Split(splitNUL)
-	for sc.Scan() {
-		meta, path, ok := strings.Cut(sc.Text(), "\t")
+	// Split, not bufio.Scanner: a path past the Scanner's 64 KiB limit would end the read early.
+	for entry := range strings.SplitSeq(res.Stdout, "\x00") {
+		meta, path, ok := strings.Cut(entry, "\t")
 		f := strings.Fields(meta)
 		if !ok || len(f) != 4 || !allowlist.Allowed(path) {
 			continue
@@ -134,14 +131,4 @@ func refusedByID(err error) bool {
 	m := err.Error()
 	return strings.Contains(m, "not our ref") || strings.Contains(m, "unadvertised object") ||
 		strings.Contains(m, "couldn't find remote ref") || strings.Contains(m, "not found in upstream")
-}
-
-func splitNUL(data []byte, atEOF bool) (int, []byte, error) {
-	if i := bytes.IndexByte(data, 0); i >= 0 {
-		return i + 1, data[:i], nil
-	}
-	if atEOF && len(data) > 0 {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
 }
