@@ -300,3 +300,17 @@ func TestGitSSHDefault(t *testing.T) {
 		}
 	}
 }
+
+// A gitlink (mode 160000, a submodule) in an allow-listed folder is refused, not skipped.
+func TestFetchRefusesSubmodule(t *testing.T) {
+	f := newFixture(t)
+	blob := sh(t, f.work, "hash-object", "-w", "makeit.json")
+	templates := treeObject(t, f.work, "160000", "sub", sh(t, f.work, "rev-parse", "HEAD"))
+	root := treeObject(t, f.work, "100644", "makeit.json", blob, "40000", "templates", templates)
+	commit := sh(t, f.work, "commit-tree", root, "-m", "submodule")
+	sh(t, f.work, "update-ref", "refs/heads/sub", commit)
+	sh(t, f.work, "push", "-q", f.bare, "refs/heads/sub")
+	if _, err := Fetch(context.Background(), local, f.url, "refs/heads/sub", commit); err == nil || !strings.Contains(err.Error(), "submodule") {
+		t.Errorf("submodule: %v", err)
+	}
+}

@@ -276,7 +276,7 @@ func TestCatalogDryRunWritesNothing(t *testing.T) {
 	}
 	before := hashes(t, m.stack)
 	code, _, errOut := run2(t, "update", "--dry-run", "--catalog", m.url)
-	if code != 0 || !strings.Contains(errOut, "Write the catalog to") {
+	if code != 0 || !strings.Contains(errOut, "will: Write the catalog to") {
 		t.Errorf("exit %d\n%s", code, errOut)
 	}
 	if after := hashes(t, m.stack); !slices.Equal(before, after) {
