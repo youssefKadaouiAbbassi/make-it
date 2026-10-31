@@ -291,9 +291,9 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 // docsStep indexes the dependencies' docs. It runs Detect again, after the merges, so the record
 // holds what this sync read; it is already done while no manifest changed since the last sync.
 func (r *run) docsStep() plan.Step {
-	return plan.Step{ID: "docs", Title: fmt.Sprintf("Index the docs of %d libraries (docs-mcp-server)", len(r.p.Deps)),
+	return plan.Step{ID: "docs", Title: fmt.Sprintf("Index the docs of %d libraries (docs-mcp-server)", len(Libs(r.p))),
 		Already: func(context.Context) (bool, error) {
-			if len(r.p.Deps) == 0 {
+			if len(Libs(r.p)) == 0 {
 				return true, nil
 			}
 			now, err := ManifestHashes(r.Dir)
@@ -343,10 +343,14 @@ func (r *run) recordStep() plan.Step {
 		}}
 }
 
-// Libs are a project's dependencies as docs libraries.
+// Libs are a project's dependencies as docs libraries. The go directive is left out: it names the
+// standard library, whose pkg.go.dev page at depth 0 is only the package list.
 func Libs(p Project) []docs.Lib {
 	out := make([]docs.Lib, 0, len(p.Deps))
 	for _, d := range p.Deps {
+		if d.Ecosystem == "go" && d.Name == "go" {
+			continue
+		}
 		out = append(out, docs.Lib{Name: d.Name, Version: d.Version, Ecosystem: d.Ecosystem})
 	}
 	return out

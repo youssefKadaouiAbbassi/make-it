@@ -41,7 +41,9 @@ var ErrUnresolvable = errors.New("no versioned docs URL")
 
 var (
 	goArgs = []string{"--max-depth", "0", "--scrape-mode", "fetch"}
-	mdArgs = []string{"--include-pattern", "**/*.md"}
+	// Markdown and MDX at the tag, without archived versions of the docs (a docs-v3 folder, Docusaurus
+	// versioned_docs): zod 4 keeps its docs in .mdx and its Zod 3 docs in packages/docs-v3.
+	mdArgs = []string{"--include-pattern", "**/*.md", "--include-pattern", "**/*.mdx", "--exclude-pattern", "**/docs-v[0-9]*/**", "--exclude-pattern", "**/versioned_docs/**"}
 	ghRepo = regexp.MustCompile(`github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/#?].*)?$`)
 )
 
@@ -51,9 +53,6 @@ func (r Resolver) Resolve(ctx context.Context, l Lib) (Target, error) {
 	switch l.Ecosystem {
 	case "go":
 		t.URL, t.Args = "https://pkg.go.dev/"+l.Name+"@"+l.Version, goArgs
-		if l.Name == "go" {
-			t.URL = "https://pkg.go.dev/std@go" + strings.TrimPrefix(l.Version, "go")
-		}
 		return t, nil
 	case "cargo":
 		t.URL = "https://docs.rs/" + l.Name + "/" + l.Version + "/"

@@ -27,7 +27,7 @@ func newDocsMachine(t *testing.T) *docsMachine {
 	m := &docsMachine{stack: t.TempDir(), dir: t.TempDir()}
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("MAKEIT_DIR", m.stack)
-	write(t, filepath.Join(m.dir, "go.mod"), "module x\n\ngo 1.27.3\n")
+	write(t, filepath.Join(m.dir, "go.mod"), "module x\n\ngo 1.27.3\n\nrequire golang.org/x/term v0.47.0\n")
 	saved := docsRun
 	docsRun = func(_ context.Context, c execx.Cmd) (execx.Result, error) {
 		m.mu.Lock()
@@ -68,14 +68,16 @@ func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 	if code, _, errOut := run2(t, "docs", "sync", m.dir); code != 0 {
 		t.Fatalf("first: exit %d %s", code, errOut)
 	}
-	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "scrape go https://pkg.go.dev/std@go1.27.3 --version 1.27.3") {
+	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "scrape golang.org/x/term https://pkg.go.dev/golang.org/x/term@v0.47.0 --version v0.47.0") {
 		t.Fatalf("first calls %q", c)
 	}
 	if code, _, _ := run2(t, "docs", "sync", "--if-changed", "--quiet", m.dir); code != 0 || len(m.take()) != 0 {
 		t.Fatal("unchanged manifests synced again")
 	}
-	write(t, filepath.Join(m.dir, "go.mod"), "module x\n\ngo 1.27.4\n")
-	m.onScrape = func() { write(t, filepath.Join(m.dir, "go.mod"), "module x\n\ngo 1.27.5\n") }
+	write(t, filepath.Join(m.dir, "go.mod"), "module x\n\ngo 1.27.3\n\nrequire golang.org/x/term v0.48.0\n")
+	m.onScrape = func() {
+		write(t, filepath.Join(m.dir, "go.mod"), "module x\n\ngo 1.27.3\n\nrequire golang.org/x/term v0.49.0\n")
+	}
 	if code, _, _ := run2(t, "docs", "sync", "--if-changed", "--quiet", m.dir); code != 0 || len(m.take()) != 2 {
 		t.Fatal("a changed manifest was not synced")
 	}
@@ -83,7 +85,7 @@ func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 	if code, _, _ := run2(t, "docs", "sync", "--if-changed", "--quiet", m.dir); code != 0 {
 		t.Fatal("exit")
 	}
-	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "--version 1.27.5") {
+	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "--version v0.49.0") {
 		t.Fatalf("the edit made during the sync was not caught: %q", c)
 	}
 }
@@ -91,7 +93,7 @@ func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 func TestDocsSyncDryRunWritesNothing(t *testing.T) {
 	m := newDocsMachine(t)
 	code, out, errOut := run2(t, "docs", "sync", "--dry-run", m.dir)
-	if code != 0 || !strings.Contains(out+errOut, "go 1.27.3") || len(m.take()) != 0 {
+	if code != 0 || !strings.Contains(out+errOut, "golang.org/x/term v0.47.0") || strings.Contains(out+errOut, "go 1.27.3") || len(m.take()) != 0 {
 		t.Fatalf("exit %d %q %q", code, out, errOut)
 	}
 	if _, err := os.Stat(filepath.Join(m.stack, "docs")); !os.IsNotExist(err) {

@@ -8,14 +8,14 @@ import (
 	"testing"
 )
 
-// initRepo is a git repository with a node and a Go manifest whose only library is the Go
-// standard library, so the docs step needs no network.
+// initRepo is a git repository with a node and a Go manifest whose only library is a Go module,
+// so the docs step needs no network (pkg.go.dev URLs are built, not looked up).
 func initRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	gitIn(t, dir, "init", "-q")
 	write(t, filepath.Join(dir, "package.json"), "{\n  \"name\": \"shop\"\n}\n")
-	write(t, filepath.Join(dir, "go.mod"), "module x\n\ngo 1.27.3\n")
+	write(t, filepath.Join(dir, "go.mod"), "module x\n\ngo 1.27.3\n\nrequire golang.org/x/term v0.47.0\n")
 	return dir
 }
 
@@ -35,10 +35,10 @@ func TestInitJSON(t *testing.T) {
 			t.Errorf("JSON lacks %q: %s", k, out)
 		}
 	}
-	if !strings.Contains(string(got["docs"]), "indexed go 1.27.3") {
+	if !strings.Contains(string(got["docs"]), "indexed golang.org/x/term v0.47.0") || strings.Contains(string(got["docs"]), "go 1.27.3") {
 		t.Errorf("docs %s", got["docs"])
 	}
-	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "scrape go https://pkg.go.dev/std@go1.27.3") {
+	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "scrape golang.org/x/term https://pkg.go.dev/golang.org/x/term@v0.47.0") {
 		t.Errorf("docs calls %q", c)
 	}
 	for _, f := range []string{"CLAUDE.md", "CONSTRAINTS.md", "HANDOFF.md", ".gitignore", ".makeit.json"} {

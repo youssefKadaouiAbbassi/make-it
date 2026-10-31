@@ -272,3 +272,13 @@ func TestInitConsent(t *testing.T) {
 		t.Errorf("declined: %v", err)
 	}
 }
+
+// The go directive names the standard library, whose pkg.go.dev page at depth 0 is only a package
+// list: indexing it would claim docs that answer nothing, so it is left out.
+func TestLibsLeaveOutTheGoDirective(t *testing.T) {
+	p := Project{Deps: []Dep{{Name: "go", Version: "1.27.3", Ecosystem: "go"}, {Name: "golang.org/x/term", Version: "v0.47.0", Ecosystem: "go"}}}
+	got := Libs(p)
+	if len(got) != 1 || got[0].Name != "golang.org/x/term" {
+		t.Errorf("libs %v", got)
+	}
+}

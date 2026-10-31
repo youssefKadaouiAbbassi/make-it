@@ -201,13 +201,13 @@ mkdir -p "$p"
 cd "$p"
 git init -q
 printf '{\n  "name": "shop"\n}\n' > package.json
-printf 'module x\n\ngo 1.27.3\n' > go.mod
+printf 'module x\n\ngo 1.27.3\n\nrequire golang.org/x/term v0.47.0\n' > go.mod
 i init --yes > /tmp/initchain-1.log 2>&1 || { cat /tmp/initchain-1.log; exit 1; }
 for f in CLAUDE.md CONSTRAINTS.md HANDOFF.md .gitignore .env.example .makeit.json .pre-commit-config.yaml renovate.json .grype.yaml; do
   if [ ! -f "$p/$f" ]; then echo "init did not write $f"; cat /tmp/initchain-1.log; exit 1; fi
 done
 if ! grep -q '"check:full"' package.json; then echo "no check stubs"; cat package.json; exit 1; fi
-if ! grep -q "scrape go https://pkg.go.dev/std@go1.27.3 --version 1.27.3" /tmp/initchain-npx.log; then echo "no docs sync"; cat /tmp/initchain-npx.log; exit 1; fi
+if ! grep -q "scrape golang.org/x/term https://pkg.go.dev/golang.org/x/term@v0.47.0 --version v0.47.0" /tmp/initchain-npx.log; then echo "no docs sync"; cat /tmp/initchain-npx.log; exit 1; fi
 echo "init writes the project files and indexes the docs: ok"
 i init --yes --json > /tmp/initchain-2.json 2>/tmp/initchain-2.log || { cat /tmp/initchain-2.log /tmp/initchain-2.json; exit 1; }
 if grep -q '"status": "done"' /tmp/initchain-2.json; then echo "the second init changed something"; cat /tmp/initchain-2.json; exit 1; fi

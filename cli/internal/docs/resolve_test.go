@@ -51,7 +51,7 @@ func TestResolve(t *testing.T) {
 			}
 			return nil, errors.New("no such repository")
 		}}
-	md := []string{"--include-pattern", "**/*.md"}
+	md := []string{"--include-pattern", "**/*.md", "--include-pattern", "**/*.mdx", "--exclude-pattern", "**/docs-v[0-9]*/**", "--exclude-pattern", "**/versioned_docs/**"}
 	for _, c := range []struct {
 		lib  Lib
 		url  string
@@ -59,7 +59,6 @@ func TestResolve(t *testing.T) {
 		err  error
 	}{
 		{Lib{"golang.org/x/term", "v0.47.0", "go"}, "https://pkg.go.dev/golang.org/x/term@v0.47.0", []string{"--max-depth", "0", "--scrape-mode", "fetch"}, nil},
-		{Lib{"go", "1.27.3", "go"}, "https://pkg.go.dev/std@go1.27.3", []string{"--max-depth", "0", "--scrape-mode", "fetch"}, nil},
 		{Lib{"serde", "1.0.200", "cargo"}, "https://docs.rs/serde/1.0.200/", nil, nil},
 		{Lib{"zod", "4.1.12", "npm"}, "https://github.com/colinhacks/zod/tree/v4.1.12", md, nil},
 		{Lib{"plain", "1.0.0", "npm"}, "https://github.com/o/plain/tree/1.0.0", md, nil},

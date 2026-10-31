@@ -135,7 +135,7 @@ docs_hook() { PATH="$1" bash "$here/docs.sh"; }
 waitlog() { for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$tmp/makeit.log" ] && break; sleep 0.2; done; cat "$tmp/makeit.log" 2>/dev/null; : >"$tmp/makeit.log"; }
 ctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit" | jq -r '.hookSpecificOutput.additionalContext')
 expect "docs SessionStart starts the sync" "docs sync --if-changed --quiet $dp" "$(waitlog)"
-expect "docs lists the go version" 'go 1.27.3 (cli/go.mod)' "$ctx"
+case "$ctx" in *"go 1.27.3"*) bad "docs leaves out the go directive (the standard library is not indexed)" ;; *) ok "docs leaves out the go directive (the standard library is not indexed)" ;; esac
 expect "docs lists a direct go require" 'golang.org/x/term v0.47.0' "$ctx"
 expect "docs lists a single-line require" 'github.com/a/b v1.2.3' "$ctx"
 case "$ctx" in *x/sys*) bad "docs skips indirect requires" ;; *) ok "docs skips indirect requires" ;; esac
