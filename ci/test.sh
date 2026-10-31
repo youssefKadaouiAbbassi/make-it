@@ -21,6 +21,14 @@ fi
 cp ../templates/project/CONSTRAINTS.md . && docker run --rm -u node -v "$here:/w" -w /w claude-eval:latest bash floor-cases.sh | tail -1 || fail=1
 /bin/rm -rf repo out.txt CONSTRAINTS.md
 
+# The cases set a git identity; it must land in their own config, never the user's ~/.gitconfig.
+t=$(mktemp -d "${TMPDIR:-/tmp}/floor-home.XXXXXX"); mkdir -p "$t/w/.github/workflows" "$t/home"
+cp floor-cases.sh floor-guard.mjs ../templates/project/CONSTRAINTS.md "$t/w/"; cp .github/workflows/gate.yml "$t/w/.github/workflows/"
+printf '[user]\n\tname = Keep Me\n\temail = keep@example.org\n' >"$t/home/.gitconfig"; cp "$t/home/.gitconfig" "$t/want"
+(cd "$t/w" && HOME="$t/home" XDG_CONFIG_HOME="$t/home/.config" bash floor-cases.sh >/dev/null 2>&1)
+if cmp -s "$t/home/.gitconfig" "$t/want"; then echo "ok floor-cases leaves ~/.gitconfig alone"; else echo "FAIL floor-cases changed ~/.gitconfig"; fail=1; fi
+/bin/rm -rf "$t"
+
 # Adding the floor-guard reason to the PR description must re-run the gate.
 if grep -qF "types: [opened, synchronize, reopened, edited]" .github/workflows/gate-caller.yml; then echo "ok caller re-runs on an edited PR"; else echo "FAIL the caller does not re-run when the PR description is edited"; fail=1; fi
 
