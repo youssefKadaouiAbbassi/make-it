@@ -25,7 +25,7 @@ cp ../templates/project/CONSTRAINTS.md . && docker run --rm -u node -v "$here:/w
 t=$(mktemp -d "${TMPDIR:-/tmp}/floor-home.XXXXXX"); mkdir -p "$t/w/.github/workflows" "$t/home"
 cp floor-cases.sh floor-guard.mjs ../templates/project/CONSTRAINTS.md "$t/w/"; cp .github/workflows/gate.yml "$t/w/.github/workflows/"
 printf '[user]\n\tname = Keep Me\n\temail = keep@example.org\n' >"$t/home/.gitconfig"; cp "$t/home/.gitconfig" "$t/want"
-(cd "$t/w" && HOME="$t/home" XDG_CONFIG_HOME="$t/home/.config" bash floor-cases.sh >/dev/null 2>&1)
+(cd "$t/w" && env -u GIT_CONFIG_GLOBAL HOME="$t/home" XDG_CONFIG_HOME="$t/home/.config" bash floor-cases.sh >/dev/null 2>&1)
 if cmp -s "$t/home/.gitconfig" "$t/want"; then echo "ok floor-cases leaves ~/.gitconfig alone"; else echo "FAIL floor-cases changed ~/.gitconfig"; fail=1; fi
 /bin/rm -rf "$t"
 

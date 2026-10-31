@@ -10,6 +10,7 @@
 set -uo pipefail
 # Its own global config: the identity below must never reach the user's ~/.gitconfig.
 GIT_CONFIG_GLOBAL=$(mktemp); export GIT_CONFIG_GLOBAL
+trap '/bin/rm -f "$GIT_CONFIG_GLOBAL"' EXIT
 git config --global user.email t@example.com; git config --global user.name t; git config --global init.defaultBranch main
 /bin/rm -rf repo; git init -q repo && cp CONSTRAINTS.md floor-guard.mjs repo/ && cd repo || exit 1
 mkdir -p .github/workflows
