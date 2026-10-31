@@ -267,12 +267,16 @@ func defaultBranch(gitDir string) string {
 	return "main"
 }
 
-// findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories.
+// findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories
+// and any directory below dir it cannot read (a database bind mount owned by another user).
 func findManifests(dir string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			if path == dir || d == nil || !d.IsDir() {
+				return err
+			}
+			return filepath.SkipDir
 		}
 		rel, _ := filepath.Rel(dir, path)
 		rel = filepath.ToSlash(rel)

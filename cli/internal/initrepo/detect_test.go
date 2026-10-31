@@ -192,3 +192,27 @@ func TestDetectRepoFacts(t *testing.T) {
 		t.Errorf("biome wins, main by default, no lockfile: %+v", p)
 	}
 }
+
+// One unreadable directory (a database bind mount owned by another user) is skipped, not fatal.
+func TestDetectUnreadableDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 0000 directory")
+	}
+	dir := tree(t, map[string]string{"package.json": pkg, "pgdata/go.mod": "module hidden\n", "apps/api/go.mod": "module api\n"})
+	locked := filepath.Join(dir, "pgdata")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+	if !slices.Equal(p.Types, []string{"node"}) {
+		t.Errorf("types %v", p.Types)
+	}
+	h, err := ManifestHashes(dir)
+	if err != nil || !maps.Equal(h, p.Manifests) || len(h) != 2 {
+		t.Errorf("ManifestHashes %v %v; Detect read %v", h, err, p.Manifests)
+	}
+}
