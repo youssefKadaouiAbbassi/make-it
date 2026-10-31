@@ -24,6 +24,8 @@ v11=$(dirname "$(find "$rel/site" -name checksums.txt)"); v12=$(dirname "$(find 
 # and list, but for another release, served as 1.1.0.
 cp -r "$rel/site" "$rel/tampered"; printf x >>"$rel/tampered/${v11#"$rel/site/"}/makeit-1.1.0-linux-x64"
 cp -r "$rel/site" "$rel/signed12"; cp "$v12/checksums.txt" "$v12/checksums.txt.minisig" "$rel/signed12/${v11#"$rel/site/"}/"
+# unsigned: a release published before the owner uploaded checksums.txt.minisig.
+cp -r "$rel/site" "$rel/unsigned"; /bin/rm "$rel/unsigned/${v11#"$rel/site/"}/checksums.txt.minisig"
 # What release.yml does to the attached copy: fill in the version, repository and key.
 fill() { sed -e "s|@VERSION@|1.1.0|" -e "s|@REPO@|test/makeit|" -e "s|@PUBKEY@|$1|" "$root/install.sh"; }
 fill "$pub" >"$rel/install.sh"
@@ -35,7 +37,7 @@ set -euo pipefail
 apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
 cp /etc/ssl/certs/ca-certificates.crt /tmp/bundle.pem
 port=8443
-for site in site tampered signed12; do
+for site in site tampered signed12 unsigned; do
   /rel/fakerelease serve -dir "/rel/$site" -repo test/makeit -addr "127.0.0.1:$port" -ca "/tmp/ca-$site.pem" -latest /rel/latest &
   i=0; while [ ! -s "/tmp/ca-$site.pem" ]; do i=$((i + 1)); [ "$i" -lt 30 ] || exit 1; sleep 1; done
   cat "/tmp/ca-$site.pem" >>/tmp/bundle.pem
@@ -43,7 +45,7 @@ for site in site tampered signed12; do
 done
 run() { HOME=$1 CURL_CA_BUNDLE=/tmp/bundle.pem MAKEIT_RELEASES_URL=https://127.0.0.1:${3:-8443} sh "$2"; }
 same() { [ "$(sha256sum <"$1")" = "$(sha256sum </rel/makeit-1.1.0)" ]; }
-mkdir -p /tmp/h1 /tmp/h2 /tmp/h3 /tmp/h4 /tmp/h5
+mkdir -p /tmp/h1 /tmp/h2 /tmp/h3 /tmp/h4 /tmp/h5 /tmp/h6
 out=$(run /tmp/h1 /rel/install.sh 2>&1); echo "$out"
 grep -q "signature not checked: install minisign to verify (sha256 only)" <<<"$out"
 same /tmp/h1/.local/bin/makeit
@@ -52,6 +54,10 @@ if out=$(run /tmp/h4 /rel/install.sh 8444 2>&1); then echo "a tampered binary pa
 grep -q "does not match checksums.txt" <<<"$out"
 [ ! -e /tmp/h4/.local/bin/makeit ]
 echo "install.sh with a tampered binary: refused, nothing installed: ok"
+if out=$(run /tmp/h6 /rel/install.sh 8446 2>&1); then echo "a release without its signature passed: $out"; exit 1; fi
+grep -q "could not download checksums.txt.minisig" <<<"$out"
+[ ! -e /tmp/h6/.local/bin/makeit ]
+echo "install.sh with no checksums.txt.minisig: refused, nothing installed: ok"
 apt-get install -y -qq minisign >/dev/null
 out=$(run /tmp/h2 /rel/install.sh 2>&1); echo "$out"
 grep -q "signature verified" <<<"$out"
