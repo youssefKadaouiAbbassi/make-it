@@ -41,7 +41,7 @@ var (
 func Parse(arg string, allowBranch bool) (Spec, error) {
 	if arg == "embedded" {
 		if allowBranch {
-			return Spec{}, errors.New("--allow-branch is for a git catalog's #<branch>")
+			return Spec{}, errors.New("--allow-branch is for a git source's #<branch>")
 		}
 		return Spec{Kind: "embedded"}, nil
 	}
@@ -51,7 +51,7 @@ func Parse(arg string, allowBranch bool) (Spec, error) {
 			return Spec{}, err
 		}
 		if allowBranch {
-			return Spec{}, errors.New("--allow-branch is for a git catalog's #<branch>")
+			return Spec{}, errors.New("--allow-branch is for a git source's #<branch>")
 		}
 		return Spec{Kind: "directory", Location: abs}, nil
 	}
@@ -66,9 +66,9 @@ func Parse(arg string, allowBranch bool) (Spec, error) {
 	}
 	switch {
 	case strings.HasPrefix(loc, "-"):
-		return Spec{}, fmt.Errorf("%s is not a catalog source", arg)
+		return Spec{}, fmt.Errorf("%s is not a plugin set source", arg)
 	case strings.HasPrefix(loc, "http://"):
-		return Spec{}, fmt.Errorf("%s: a git catalog needs https or ssh, not http", arg)
+		return Spec{}, fmt.Errorf("%s: a git source needs https or ssh, not http", arg)
 	case strings.HasPrefix(loc, "https://"), strings.HasPrefix(loc, "ssh://"):
 		u, err := url.Parse(loc)
 		if err != nil || u.Host == "" {

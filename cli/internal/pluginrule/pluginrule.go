@@ -24,13 +24,13 @@ func BundleIDs(src catalog.Source, req catalog.Requires) ([]string, error) {
 	name, _, _ := strings.Cut(req.Bundle, "@")
 	raw, err := src.ReadFile("plugins/" + name + "/.claude-plugin/plugin.json")
 	if err != nil {
-		return nil, fmt.Errorf("the catalog's %s manifest: %w", name, err)
+		return nil, fmt.Errorf("the plugin set's %s manifest: %w", name, err)
 	}
 	var manifest struct {
 		Dependencies []string `json:"dependencies"`
 	}
 	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return nil, fmt.Errorf("the catalog's %s manifest: %w", name, err)
+		return nil, fmt.Errorf("the plugin set's %s manifest: %w", name, err)
 	}
 	ids := []string{req.Bundle}
 	for _, d := range manifest.Dependencies {

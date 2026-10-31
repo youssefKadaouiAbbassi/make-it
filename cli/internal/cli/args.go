@@ -135,7 +135,7 @@ func flagLines(flags []Flag) []string {
 // Usage is the top-level help text.
 func Usage(prog, version string, cmds []Command) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s: install and keep up to date the Claude Code build stack on this machine.\n\n", prog, version)
+	fmt.Fprintf(&b, "%s %s: set up Claude Code the same way on every machine and every project.\n\n", prog, version)
 	fmt.Fprintf(&b, "Usage: %s <command> [flags]\n\nCommands:\n", prog)
 	for _, c := range cmds {
 		fmt.Fprintf(&b, "  %-22s %s\n", strings.TrimSpace(c.Name+" "+c.Args), c.Summary)

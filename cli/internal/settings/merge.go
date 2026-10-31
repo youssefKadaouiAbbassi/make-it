@@ -505,11 +505,11 @@ func (m *merger) mergeValue(key string, path []string, d *leaf, r *Record) {
 	if r.Held {
 		switch {
 		case equalWant:
-			m.add(Change{Path: key, Action: Noop, Note: "your value now equals the stack value"})
+			m.add(Change{Path: key, Action: Noop, Note: "your value now equals makeit's value"})
 			next.setBase(want)
 			next.Held, next.Notified = false, ""
 		case r.Notified != notice(want, r.Secret):
-			m.add(Change{Path: key, Action: Held, Before: t, After: want, Note: "stack value changed; yours kept"})
+			m.add(Change{Path: key, Action: Held, Before: t, After: want, Note: "makeit's value changed; yours kept"})
 			next.setBase(want)
 			next.Notified = notice(want, r.Secret)
 		default:
@@ -535,7 +535,7 @@ func (m *merger) mergeValue(key string, path []string, d *leaf, r *Record) {
 		m.add(Change{Path: key, Action: KeptTheirs, Before: t, After: want, Note: "changed outside makeit"})
 		next.Held, next.Notified = true, notice(want, r.Secret)
 	default:
-		m.add(Change{Path: key, Action: Conflict, Before: t, After: want, Note: "both you and the stack changed it; yours kept"})
+		m.add(Change{Path: key, Action: Conflict, Before: t, After: want, Note: "both you and makeit changed it; yours kept"})
 		next.setBase(want)
 		next.Held, next.Notified = true, notice(want, r.Secret)
 	}

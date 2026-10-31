@@ -26,7 +26,7 @@ const prog = "makeit"
 
 // catalogFlags choose where the catalog comes from (cli/CATALOG-GIT.md).
 var catalogFlags = []cli.Flag{
-	{Name: "catalog", Value: "<src>", Help: "embedded, a directory, owner/repo or a git URL, with #<tag or branch> or @<commit>; kept for later runs"},
+	{Name: "catalog", Value: "<src>", Help: "where the plugin set comes from: embedded (the one in this makeit), a directory, owner/repo or a git URL, with #<tag or branch> or @<commit>; kept for later runs"},
 	{Name: "allow-branch", Help: "let --catalog follow a #<branch>: each update takes its newest commit"},
 }
 
@@ -35,23 +35,23 @@ var commands = []cli.Command{
 	{Name: "docs", Args: "sync [dir]", Summary: "index the docs of a project's dependencies for the docs MCP server", Flags: []cli.Flag{
 		{Name: "if-changed", Help: "only when a manifest or lockfile changed since the last sync (the hooks use it)"},
 	}},
-	{Name: "doctor", Summary: "check this machine against what the stack expects; changes nothing"},
+	{Name: "doctor", Summary: "check this machine against what makeit sets up; changes nothing"},
 	{Name: "help", Args: "[command|exit-codes|environment]", Summary: "show help for a command or a topic"},
-	{Name: "init", Args: "[dir]", Summary: "set up a project the stack's way: docs, checks, hooks, settings, CI and its docs index", Flags: []cli.Flag{
+	{Name: "init", Args: "[dir]", Summary: "set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index", Flags: []cli.Flag{
 		{Name: "update", Help: "also update files init wrote earlier that nobody changed since"},
-		{Name: "rulesets", Help: "also send the stack's GitHub rulesets to the repository (needs gh and a GitHub remote)"},
+		{Name: "rulesets", Help: "also send makeit's GitHub rulesets to the repository (needs gh and a GitHub remote)"},
 	}},
 	{Name: "self", Args: "install|update|rollback", Summary: "install, update or roll back makeit itself", Flags: []cli.Flag{
 		{Name: "prefix", Value: "<dir>", Help: "self install: where to put makeit (default ~/.local/bin)"},
 		{Name: "to", Value: "<version>", Help: "self update: this version instead of the latest; clears a skip"},
 		{Name: "allow-downgrade", Help: "self update: allow --to an older version"},
 	}},
-	{Name: "setup", Summary: "install the stack on this machine: prerequisites, Claude Code, the catalog, settings and global files", Flags: catalogFlags},
+	{Name: "setup", Summary: "set up this machine: prerequisites, Claude Code, the plugin set, settings and global files", Flags: catalogFlags},
 	{Name: "uninstall", Summary: "remove what makeit put on this machine and nobody changed since", Flags: []cli.Flag{
 		{Name: "keep-settings", Help: "leave settings.json as it is"},
 		{Name: "purge", Help: "also delete the data of the plugins makeit installed, and the makeit directory with every backup; cannot be undone"},
 	}},
-	{Name: "update", Summary: "bring this machine to the stack this makeit carries: catalog, plugins, settings and global files", Flags: catalogFlags},
+	{Name: "update", Summary: "bring this machine to what this makeit carries: the plugin set, plugins, settings and global files", Flags: catalogFlags},
 	{Name: "version", Summary: "print the version"},
 }
 
@@ -110,7 +110,7 @@ func signalCode(sig os.Signal) int {
 func catalogDigest() (string, error) {
 	m, err := catalog.EmbeddedManifest()
 	if err != nil {
-		return "", fmt.Errorf("the embedded catalog: %w", err)
+		return "", fmt.Errorf("the embedded plugin set: %w", err)
 	}
 	return catalog.Digest(m), nil
 }

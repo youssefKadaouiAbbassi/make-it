@@ -59,7 +59,7 @@ func Choose(s Spec, refs Refs, rec *state.Catalog, explicit bool) (Choice, []str
 		if n, err := claudecli.Compare(top, rec.Tag); err == nil && n > 0 {
 			return Choice{Commit: refs.Tags[top], Requested: "latest", RefKind: "latest", Tag: top}, nil, nil
 		} else if err == nil && n < 0 {
-			return Choice{}, nil, fmt.Errorf("catalog tag %s is gone from %s; the newest is %s", rec.Tag, s.Location, top)
+			return Choice{}, nil, fmt.Errorf("plugin set tag %s is gone from %s; the newest is %s", rec.Tag, s.Location, top)
 		}
 		if refs.Tags[top] != rec.Resolved {
 			cur.Hold = true
@@ -69,7 +69,7 @@ func Choose(s Spec, refs Refs, rec *state.Catalog, explicit bool) (Choice, []str
 	case "tag":
 		at, ok := refs.Tags[rec.Tag]
 		if !ok {
-			return Choice{}, nil, fmt.Errorf("catalog tag %s is gone from %s", rec.Tag, s.Location)
+			return Choice{}, nil, fmt.Errorf("plugin set tag %s is gone from %s", rec.Tag, s.Location)
 		}
 		var notices []string
 		if at != rec.Resolved {
@@ -99,7 +99,7 @@ func Choose(s Spec, refs Refs, rec *state.Catalog, explicit bool) (Choice, []str
 	case "branch":
 		head, ok := refs.Heads[cur.Requested]
 		if !ok {
-			return Choice{}, nil, fmt.Errorf("catalog branch %s is gone from %s", cur.Requested, s.Location)
+			return Choice{}, nil, fmt.Errorf("plugin set branch %s is gone from %s", cur.Requested, s.Location)
 		}
 		cur.Commit = head
 		return cur, nil, nil
@@ -131,11 +131,11 @@ func fresh(s Spec, refs Refs) (Choice, []string, error) {
 }
 
 func moved(tag, now, recorded, command string) string {
-	return fmt.Sprintf("catalog tag %s now points to %s, not %s: `%s` accepts it", tag, now, recorded, command)
+	return fmt.Sprintf("plugin set tag %s now points to %s, not %s: `%s` accepts it", tag, now, recorded, command)
 }
 
 func newer(top, recorded, command string) string {
-	return fmt.Sprintf("catalog %s is newer than %s: `%s` takes it (and follows newer tags)", top, recorded, command)
+	return fmt.Sprintf("plugin set %s is newer than %s: `%s` takes it (and follows newer tags)", top, recorded, command)
 }
 
 func deref(s *string) string {

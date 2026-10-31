@@ -56,7 +56,7 @@ func TestUpdateGlobalWritesNew(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r := e.st.Files["claude:rules/go.md"]; r == nil || r.PreExisted || r.Sha256 != fsx.Sha256([]byte(catalogText(t, "rules/go.md"))) {
-		t.Errorf("record %+v, want owned with the catalog's sha256", r)
+		t.Errorf("record %+v, want owned with the plugin set's sha256", r)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestUpdateGlobalReplacesUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := read(t, path); got != catalogText(t, "rules/go.md") {
-		t.Errorf("file not replaced with the catalog's version")
+		t.Errorf("file not replaced with the plugin set's version")
 	}
 	ops := e.gen.Manifest.Ops
 	if len(ops) != 1 || ops[0].PreImage == "" || read(t, filepath.Join(e.gen.Dir, ops[0].PreImage)) != "old rules\n" {
@@ -159,7 +159,7 @@ func TestUpdateGlobalDropped(t *testing.T) {
 	if done, _ := step(t, steps, "global.drop.rules/old2.md").Already(context.Background()); !done {
 		t.Error("a changed file the catalog dropped would be removed")
 	}
-	if read(t, mine) != "edited\n" || keptReason(e, "claude:rules/old2.md") != "no longer in the catalog; changed since makeit wrote it" {
+	if read(t, mine) != "edited\n" || keptReason(e, "claude:rules/old2.md") != "no longer in the plugin set; changed since makeit wrote it" {
 		t.Errorf("kept %q", keptReason(e, "claude:rules/old2.md"))
 	}
 }

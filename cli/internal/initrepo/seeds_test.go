@@ -189,7 +189,7 @@ func TestSeedsCI(t *testing.T) {
 			t.Errorf("seeded %s with an empty gateRef", s.Path)
 		}
 	}
-	if !slices.Contains(rep.Notices, "the gate caller needs a released makeit (catalog ci.gateRef is empty); init adds it when run again after an update") {
+	if !slices.Contains(rep.Notices, "the CI caller needs a released makeit (the plugin set's ci.gateRef is empty); init adds it when run again after an update") {
 		t.Errorf("notices %q", rep.Notices)
 	}
 	if body := seedBody(t, seeds, ".grype.yaml"); !strings.Contains(body, "fail-on-severity: high") {
@@ -215,7 +215,7 @@ func TestSeedsCI(t *testing.T) {
 		seeds, _, rep := seedsFor(t, dir, gateRef)
 		caller := seedBody(t, seeds, ".github/workflows/gate.yml")
 		if !strings.Contains(caller, "    uses: o/makeit/.github/workflows/gate.yml@0123456789abcdef0123456789abcdef01234567 # v1.0.0\n") ||
-			!strings.Contains(caller, "    branches: [main]\n") || strings.Contains(caller, "Copy to <repo>") || !strings.HasPrefix(caller, "# The stack's gate, written by makeit init.") {
+			!strings.Contains(caller, "    branches: [main]\n") || strings.Contains(caller, "Copy to <repo>") || !strings.HasPrefix(caller, "# makeit's CI checks, written by makeit init.") {
 			t.Errorf("%s caller:\n%s", c.name, caller)
 		}
 		for _, w := range c.with {

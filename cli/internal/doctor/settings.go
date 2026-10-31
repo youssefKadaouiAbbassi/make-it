@@ -68,12 +68,12 @@ func (r *report) stack(m Machine, live *jsonx.Object, marketplace, skip string) 
 	}
 	raw, err := m.Catalog.ReadFile("settings.baseline.json")
 	if err != nil {
-		r.add(id, g, Error, "the catalog's settings.baseline.json: "+err.Error(), "")
+		r.add(id, g, Error, "the plugin set's settings.baseline.json: "+err.Error(), "")
 		return
 	}
 	baseline, err := jsonx.DecodeObject(raw)
 	if err != nil {
-		r.add(id, g, Error, "the catalog's settings.baseline.json: "+err.Error(), "")
+		r.add(id, g, Error, "the plugin set's settings.baseline.json: "+err.Error(), "")
 		return
 	}
 	baseline = settings.Desired(baseline, marketplace)
@@ -81,9 +81,9 @@ func (r *report) stack(m Machine, live *jsonx.Object, marketplace, skip string) 
 	for _, c := range settings.Merge(live, baseline, nil, settings.DefaultOptions()).Changes {
 		switch c.Action {
 		case settings.Set, settings.ReAsserted:
-			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: the stack sets %s", c.Path, settings.Show(c.Path, c.After)), "makeit setup")
+			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: makeit sets %s", c.Path, settings.Show(c.Path, c.After)), "makeit setup")
 		case settings.AddItems:
-			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: the stack adds %s", c.Path, settings.Show(c.Path, c.After)), "makeit setup")
+			r.add(id+":"+c.Path, g, Warn, fmt.Sprintf("%s: makeit adds %s", c.Path, settings.Show(c.Path, c.After)), "makeit setup")
 		case settings.KeptTheirs, settings.Held:
 			r.add(id+":"+c.Path, g, Info, c.Path+": your value is kept", "")
 		default:
@@ -92,6 +92,6 @@ func (r *report) stack(m Machine, live *jsonx.Object, marketplace, skip string) 
 		reported++
 	}
 	if reported == 0 {
-		r.add(id, g, OK, "settings.json has every stack value", "")
+		r.add(id, g, OK, "settings.json has every makeit value", "")
 	}
 }

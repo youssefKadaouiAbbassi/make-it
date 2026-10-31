@@ -65,11 +65,11 @@ type EnvVar struct {
 // Environment lists every variable makeit reads; a test keeps it in step with the code.
 var Environment = []EnvVar{
 	{"CLAUDE_CONFIG_DIR", "Claude Code's configuration directory (default ~/.claude)"},
-	{"MAKEIT_DIR", "where makeit keeps its catalog copy, state and generations (default ~/.makeit)"},
+	{"MAKEIT_DIR", "where makeit keeps its copy of the plugin set, state and generations (default ~/.makeit)"},
 	{"MAKEIT_RELEASES_URL", "where makeit looks for releases (https only; default https://github.com)"},
 	{"MAKEIT_REEXEC", "set by update for the new makeit it runs: the version it replaced"},
-	{"GIT_SSH_COMMAND", "used for a git catalog over ssh when set; otherwise ssh runs in batch mode"},
-	{"GIT_SSH", "used for a git catalog over ssh when set, as is core.sshCommand; makeit then leaves ssh as you set it"},
+	{"GIT_SSH_COMMAND", "used for a --catalog git source over ssh when set; otherwise ssh runs in batch mode"},
+	{"GIT_SSH", "used for a --catalog git source over ssh when set, as is core.sshCommand; makeit then leaves ssh as you set it"},
 	{"HOME", "the home directory (USERPROFILE on Windows)"},
 	{"PATH", "where claude, npm, git and the package managers are looked up"},
 	{"NO_COLOR", "when set, no colour"},

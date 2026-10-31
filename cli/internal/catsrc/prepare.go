@@ -16,7 +16,7 @@ var (
 	// ErrAdopted is --catalog on a machine where the user added the makeit marketplace.
 	ErrAdopted = errors.New("the makeit marketplace on this machine is yours: makeit does not change its source. Your marketplace and your plugins stay as they are; nothing was changed")
 	// ErrFresh is a git catalog on a machine that has neither git nor CA certificates yet.
-	ErrFresh = errors.New("this catalog needs git and CA certificates first")
+	ErrFresh = errors.New("this plugin set needs git and CA certificates first")
 )
 
 // Params is what Prepare reads.
@@ -86,7 +86,7 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 		if rec != nil && rec.Resolved != "" {
 			at = "at " + rec.Resolved[:min(12, len(rec.Resolved))]
 		}
-		cur.Notices = append(cur.Notices, fmt.Sprintf("could not refresh the catalog %s: %v; it stays %s", spec.Location, err, at))
+		cur.Notices = append(cur.Notices, fmt.Sprintf("could not refresh the plugin set %s: %v; it stays %s", spec.Location, err, at))
 		return cur, nil
 	}
 	switch spec.Kind {
@@ -111,17 +111,17 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 		if p.Command == "setup" && explicit {
 			return Prepared{}, fmt.Errorf("%w: run `makeit setup --yes`, then `makeit update --catalog %s --yes`", ErrFresh, p.Arg)
 		}
-		return fail(fmt.Errorf("the catalog %s needs git and CA certificates: install them", spec.Location))
+		return fail(fmt.Errorf("the plugin set %s needs git and CA certificates: install them", spec.Location))
 	}
 	if p.Offline {
 		if explicit {
-			return Prepared{}, errors.New("network disabled (--offline): a git catalog cannot be fetched")
+			return Prepared{}, errors.New("network disabled (--offline): a git source cannot be fetched")
 		}
 		cur, err := current(dir, rec)
 		if err != nil {
 			return Prepared{}, err
 		}
-		cur.Notices = append(cur.Notices, "--offline: the catalog stays where it is")
+		cur.Notices = append(cur.Notices, "--offline: the plugin set stays where it is")
 		return cur, nil
 	}
 	unreached := func(err error) error {
@@ -130,7 +130,7 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 	// A guessed GitHub source could be a mistyped local path: name it before anything is fetched.
 	var guessed []string
 	if spec.Guessed != "" {
-		guessed = []string{fmt.Sprintf("catalog: %s (no local path %s)", spec.Location, spec.Guessed)}
+		guessed = []string{fmt.Sprintf("plugin set: %s (no local path %s)", spec.Location, spec.Guessed)}
 		if p.Show != nil {
 			p.Show(guessed[0])
 		}
@@ -186,13 +186,13 @@ func Check(t *catalog.Tree, want catalog.Requires) error {
 	if b, err := t.ReadFile(".claude-plugin/marketplace.json"); err != nil {
 		return err
 	} else if err := json.Unmarshal(b, &mk); err != nil {
-		return fmt.Errorf("the catalog's marketplace.json: %w", err)
+		return fmt.Errorf("the plugin set's marketplace.json: %w", err)
 	}
 	switch {
 	case req.Marketplace != want.Marketplace || mk.Name != want.Marketplace:
-		return fmt.Errorf("the catalog names its marketplace %q, not %q: plugin ids would change, so it is refused", mk.Name, want.Marketplace)
+		return fmt.Errorf("the plugin set names its marketplace %q, not %q: plugin ids would change, so it is refused", mk.Name, want.Marketplace)
 	case req.Bundle != want.Bundle:
-		return fmt.Errorf("the catalog's bundle is %s, not %s: makeit cannot switch bundles, so it is refused", req.Bundle, want.Bundle)
+		return fmt.Errorf("the plugin set's bundle is %s, not %s: makeit cannot switch bundles, so it is refused", req.Bundle, want.Bundle)
 	}
 	return nil
 }
@@ -222,7 +222,7 @@ func intact(dir string) bool {
 func current(dir string, rec *state.Catalog) (Prepared, error) {
 	if rec != nil && rec.Kind != "embedded" {
 		if !intact(dir) {
-			return Prepared{}, fmt.Errorf("the synced copy of the catalog %s is missing or changed in %s", rec.Location, dir)
+			return Prepared{}, fmt.Errorf("the synced copy of the plugin set %s is missing or changed in %s", rec.Location, dir)
 		}
 		t, err := catalog.DirTree(dir)
 		if err != nil {

@@ -554,7 +554,7 @@ func (e *env) unCatalogStep() plan.Step {
 				if rec := e.st.Marketplaces[own]; name == own && rec != nil && rec.AddedBy == "makeit" && len(e.fromMarketplace(in, own, true)) == 0 {
 					continue
 				}
-				e.keep("catalog "+dir, "the "+name+" marketplace still uses it")
+				e.keep("plugin set "+dir, "the "+name+" marketplace still uses it")
 				return true, nil
 			}
 			return false, nil
@@ -569,7 +569,7 @@ func (e *env) unCatalogStep() plan.Step {
 				}
 			}
 			if names := users(in); len(names) > 0 {
-				e.keep("catalog "+dir, "the "+names[0]+" marketplace still uses it")
+				e.keep("plugin set "+dir, "the "+names[0]+" marketplace still uses it")
 				return "", plan.ErrSkip
 			}
 			if err := os.RemoveAll(dir); err != nil {
@@ -607,7 +607,7 @@ func (e *env) remaining() []string {
 		left = append(left, "settings")
 	}
 	if e.catalogLeft {
-		left = append(left, "catalog")
+		left = append(left, "plugin set")
 	}
 	slices.Sort(left)
 	return left

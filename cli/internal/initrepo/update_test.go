@@ -56,7 +56,7 @@ func TestUpdateEditedAndDeleted(t *testing.T) {
 	}
 	// The plain run says which unchanged files have a newer version, and how to take it.
 	plain, _ := Run(context.Background(), e, plan.DryRunOnly, nil, Options{})
-	if !slices.Contains(plain.Notices, "1 file makeit wrote has a newer version in the catalog (CLAUDE.md): makeit init --update rewrites it") {
+	if !slices.Contains(plain.Notices, "1 file makeit wrote has a newer version in the plugin set (CLAUDE.md): makeit init --update rewrites it") {
 		t.Errorf("notices %q", plain.Notices)
 	}
 	before := loadRepo(t, dir).Files["CLAUDE.md"].WrittenSha256

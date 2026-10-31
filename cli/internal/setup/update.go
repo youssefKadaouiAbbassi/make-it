@@ -75,7 +75,7 @@ func (e *env) updateGlobalSteps() []plan.Step {
 				switch {
 				case rec.PreExisted:
 					if !bytes.Equal(cur, want) {
-						e.keep(key, "yours; the catalog's version differs")
+						e.keep(key, "yours; the plugin set's version differs")
 					}
 					return true, nil
 				case e.linked(path):
@@ -111,7 +111,7 @@ func (e *env) updateGlobalSteps() []plan.Step {
 		rec := e.st.Files[key]
 		path := e.Roots.Abs(key)
 		rel := strings.TrimPrefix(key, "claude:")
-		steps = append(steps, plan.Step{ID: "global.drop." + rel, Title: "Remove " + path + " (no longer in the catalog)",
+		steps = append(steps, plan.Step{ID: "global.drop." + rel, Title: "Remove " + path + " (no longer in the plugin set)",
 			Already: func(context.Context) (bool, error) {
 				if e.linked(path) {
 					e.keep(key, "a link, so it is yours")
@@ -126,7 +126,7 @@ func (e *env) updateGlobalSteps() []plan.Step {
 					return true, nil
 				}
 				if fsx.Sha256(cur) != rec.Sha256 {
-					e.keep(key, "no longer in the catalog; changed since makeit wrote it")
+					e.keep(key, "no longer in the plugin set; changed since makeit wrote it")
 					return true, nil
 				}
 				return false, nil
@@ -162,10 +162,10 @@ func (e *env) gather(ctx context.Context) (pluginrule.Inputs, error) {
 			slices.ContainsFunc(in.Markets, func(m claudecli.Marketplace) bool { return m.Name == own && m.Path == copyDir }) {
 			raw, err := e.Catalog.ReadFile(".claude-plugin/marketplace.json")
 			if err != nil {
-				return in, fmt.Errorf("the catalog's marketplace.json: %w", err)
+				return in, fmt.Errorf("the plugin set's marketplace.json: %w", err)
 			}
 			if in.Entries[own], err = pluginrule.ParseMarketplace(raw); err != nil {
-				return in, fmt.Errorf("the catalog's marketplace.json: %w", err)
+				return in, fmt.Errorf("the plugin set's marketplace.json: %w", err)
 			}
 		}
 		e.inputs = &in

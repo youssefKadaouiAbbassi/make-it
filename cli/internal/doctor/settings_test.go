@@ -80,7 +80,7 @@ func TestSettingsMatchTheStack(t *testing.T) {
 	}
 }
 
-// The baseline's entry for the catalog's own marketplace is for a git-hosted catalog; the
+// The baseline's entry for the plugin set's own marketplace is for a git-hosted catalog; the
 // embedded catalog is a directory marketplace, which never auto-updates (tools/applysettings).
 func TestStackSkipsTheCatalogsOwnMarketplace(t *testing.T) {
 	m, _ := healthy(t)
@@ -92,7 +92,7 @@ func TestStackSkipsTheCatalogsOwnMarketplace(t *testing.T) {
 	official := false
 	for _, c := range checks {
 		if strings.HasPrefix(c.ID, "settings.stack:/extraKnownMarketplaces/makeit") {
-			t.Errorf("reported the catalog's own marketplace entry: %+v", c)
+			t.Errorf("reported the plugin set's own marketplace entry: %+v", c)
 		}
 		official = official || strings.HasPrefix(c.ID, "settings.stack:/extraKnownMarketplaces/claude-plugins-official")
 	}

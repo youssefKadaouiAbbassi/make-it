@@ -157,7 +157,7 @@ func (s *seeder) checks() {
 		}
 		s.manual("%s", strings.Join(lines, "\n"))
 	case len(s.p.Types) > 0 && s.p.Runner == "":
-		s.manual("add check:fast, check:task and check:full tasks to the project's task runner; the gate calls them by name")
+		s.manual("add check:fast, check:task and check:full tasks to the project's task runner; the CI checks call them by name")
 	}
 }
 
@@ -350,20 +350,20 @@ func (s *seeder) ci(gateRef string) error {
 		return nil
 	}
 	if gateRef == "" {
-		s.rep.Notices = append(s.rep.Notices, "the gate caller needs a released makeit (catalog ci.gateRef is empty); init adds it when run again after an update")
+		s.rep.Notices = append(s.rep.Notices, "the CI caller needs a released makeit (the plugin set's ci.gateRef is empty); init adds it when run again after an update")
 		return nil
 	}
 	m := gateRefPattern.FindStringSubmatch(gateRef)
 	if m == nil {
-		s.rep.Notices = append(s.rep.Notices, fmt.Sprintf("catalog ci.gateRef %q is not owner/repo@<40-hex sha> # <tag>: no gate caller", gateRef))
+		s.rep.Notices = append(s.rep.Notices, fmt.Sprintf("catalog ci.gateRef %q is not owner/repo@<40-hex sha> # <tag>: no CI caller", gateRef))
 		return nil
 	}
 	switch {
 	case s.p.PM == "bun":
-		s.manual("makeit seeds no gate caller for bun: the GitHub runner image has no bun; write the caller with a setup that installs it")
+		s.manual("makeit seeds no CI caller for bun: the GitHub runner image has no bun; write the caller with a setup that installs it")
 		return nil
 	case s.p.Runner == "":
-		s.manual("makeit seeds no gate caller for a %s project without a task runner (pip): move to uv, or write the caller by hand", s.p.PM)
+		s.manual("makeit seeds no CI caller for a %s project without a task runner (pip): move to uv, or write the caller by hand", s.p.PM)
 		return nil
 	}
 	path := ".github/workflows/gate.yml"
@@ -406,7 +406,7 @@ func (s *seeder) ci(gateRef string) error {
 		s.manual("%s: set has-migrations: true once check:drift exists (the job also runs squawk on ./migrations/*.sql)", path)
 	}
 	if s.p.PM == "npm" && !s.p.Lockfile {
-		s.manual("the gate runs npm ci, which needs a committed package-lock.json: run npm install and commit it")
+		s.manual("the CI checks run npm ci, which needs a committed package-lock.json: run npm install and commit it")
 	}
 	return nil
 }
@@ -429,7 +429,7 @@ func caller(tpl []byte, uses, branch string, values map[string]string) []byte {
 			lines[i] = l[:len(l)-len(strings.TrimLeft(l, " "))] + key + ": " + v
 		}
 	}
-	out := "# The stack's gate, written by makeit init. makeit init --update rewrites it while nobody has\n# changed it; Renovate keeps the pinned sha current.\n" + strings.Join(lines, "\n")
+	out := "# makeit's CI checks, written by makeit init. makeit init --update rewrites it while nobody has\n# changed it; Renovate keeps the pinned sha current.\n" + strings.Join(lines, "\n")
 	out = usesLine.ReplaceAllString(out, "${1}"+strings.ReplaceAll(uses, "$", "$$"))
 	return []byte(branchLine.ReplaceAllString(out, "${1}["+strings.ReplaceAll(branch, "$", "$$")+"]"))
 }
@@ -446,7 +446,7 @@ func (s *seeder) dbhub() error {
 			return MergeJSON(theirs, []byte(server), nil, skip)
 		}})
 	if s.theirs(".dbhub.toml") {
-		s.manual(".dbhub.toml exists, so makeit kept it: the stack's version is templates/project/dbhub.toml (read and write sources, writes behind the ask rule)")
+		s.manual(".dbhub.toml exists, so makeit kept it: makeit's version is templates/project/dbhub.toml (read and write sources, writes behind the ask rule)")
 		return nil
 	}
 	return s.copySeed(".dbhub.toml", "templates/project/dbhub.toml", "settings")

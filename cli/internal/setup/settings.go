@@ -80,11 +80,11 @@ func (e *env) settingsStep() plan.Step {
 func (e *env) mergeSettings(path string) (settings.Result, []byte, error) {
 	raw, err := e.Catalog.ReadFile("settings.baseline.json")
 	if err != nil {
-		return settings.Result{}, nil, fmt.Errorf("the catalog's settings.baseline.json: %w", err)
+		return settings.Result{}, nil, fmt.Errorf("the plugin set's settings.baseline.json: %w", err)
 	}
 	baseline, err := jsonx.DecodeObject(raw)
 	if err != nil {
-		return settings.Result{}, nil, fmt.Errorf("the catalog's settings.baseline.json: %w", err)
+		return settings.Result{}, nil, fmt.Errorf("the plugin set's settings.baseline.json: %w", err)
 	}
 	old, found, err := fsx.ReadOptional(path)
 	if err != nil {

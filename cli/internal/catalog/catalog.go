@@ -83,7 +83,7 @@ func EmbeddedManifest() (Manifest, error) {
 	var m Manifest
 	b, err := data.ReadFile("data/MANIFEST.json")
 	if err != nil {
-		return m, errors.New("this binary was built without a catalog (run go generate ./... before go build)")
+		return m, errors.New("this binary was built without a plugin set (run go generate ./... before go build)")
 	}
 	return m, json.Unmarshal(b, &m)
 }
@@ -104,13 +104,13 @@ func LoadRequires(src Source) (Requires, error) {
 	var r Requires
 	b, err := src.ReadFile("makeit.json")
 	if err != nil {
-		return r, fmt.Errorf("catalog has no makeit.json: %w", err)
+		return r, fmt.Errorf("plugin set has no makeit.json: %w", err)
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return r, fmt.Errorf("makeit.json: %w", err)
 	}
 	if r.SchemaVersion != 1 {
-		return r, fmt.Errorf("this catalog needs a newer makeit: run `makeit self update` (makeit.json schemaVersion %d)", r.SchemaVersion)
+		return r, fmt.Errorf("this plugin set needs a newer makeit: run `makeit self update` (makeit.json schemaVersion %d)", r.SchemaVersion)
 	}
 	return r, nil
 }

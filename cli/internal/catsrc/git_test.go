@@ -246,7 +246,7 @@ func TestFetchReadsPastALongPath(t *testing.T) {
 	}
 }
 
-// An inherited GIT_DIR (a makeit run from a git hook, say) must not redirect the catalog's git:
+// An inherited GIT_DIR (a makeit run from a git hook, say) must not redirect the plugin set's git:
 // the fetch's init and fetch would land in that repository.
 func TestGitIgnoresInheritedRepoEnv(t *testing.T) {
 	f := newFixture(t)
