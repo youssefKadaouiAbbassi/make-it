@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -209,6 +210,44 @@ func TestUpdateCatalogUnreachable(t *testing.T) {
 	}
 }
 
+// owner/repo.git with no such local directory is read as GitHub: the full URL is printed before
+// the fetch, with --yes and with --json alike, so a mistyped path is visible.
+func TestCatalogGuessedGitHubShown(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes", "--catalog", m.url); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	const line = "catalog: https://github.com/owner/repo.git (no local path owner/repo.git)"
+	code, _, errOut := run2(t, "update", "--yes", "--catalog", "owner/repo.git")
+	if i, j := strings.Index(errOut, line), strings.Index(errOut, "could not fetch"); code != 1 || i < 0 || j < 0 || i > j {
+		t.Errorf("--yes: exit %d, want the source line before the fetch error\n%s", code, errOut)
+	}
+	// With --json the error is in the JSON document on stdout; the line stays on stderr.
+	code, out, errOut := run2(t, "update", "--yes", "--json", "--catalog", "owner/repo.git")
+	if code != 1 || !strings.Contains(errOut, line) || !strings.Contains(out, "could not fetch") {
+		t.Errorf("--json: exit %d\nstdout %s\nstderr %s", code, out, errOut)
+	}
+}
+
+// --json keeps its promise when the catalog cannot be prepared: one JSON document with the error.
+func TestCatalogPrepareErrorJSON(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes", "--catalog", m.url); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	code, out, _ := run2(t, "update", "--yes", "--json", "--catalog", "file:///no/such/cat.git")
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &got); code != 1 || err != nil || !strings.Contains(string(got["error"]), credentialHint) {
+		t.Errorf("exit %d, not one JSON document with the error: %v\n%s", code, err, out)
+	}
+	// The same shape as the normal report, so a consumer reads the same keys.
+	for _, k := range []string{"version", "plan", "skipped", "generation", "summary"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("no %q key: %s", k, out)
+		}
+	}
+}
+
 const credentialHint = "a private repository needs a git credential helper or an SSH key"
 
 // A deleted ~/.makeit/catalog is fetched again from the recorded git source, not replaced by the
@@ -240,7 +279,7 @@ func TestCatalogDryRunWritesNothing(t *testing.T) {
 	}
 	before := hashes(t, m.stack)
 	code, _, errOut := run2(t, "update", "--dry-run", "--catalog", m.url)
-	if code != 0 || !strings.Contains(errOut, "Write the catalog to") {
+	if code != 0 || !strings.Contains(errOut, "will: Write the catalog to") {
 		t.Errorf("exit %d\n%s", code, errOut)
 	}
 	if after := hashes(t, m.stack); !slices.Equal(before, after) {

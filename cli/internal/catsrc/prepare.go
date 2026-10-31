@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"makeit/internal/catalog"
 	"makeit/internal/state"
@@ -30,6 +31,8 @@ type Params struct {
 	Git     Git
 	// Prereq reports whether a platform prerequisite (git, ca-certificates) is present.
 	Prereq func(id string) bool
+	// Show prints a line before anything is fetched: the full source when it was guessed.
+	Show func(string)
 }
 
 // Prepared is the catalog a run plans with: its source, the tree the catalog step writes, what
@@ -103,7 +106,8 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 		}
 		return Prepared{Source: t, Tree: t, Record: state.Catalog{Kind: "directory", Location: spec.Location, Resolved: catalog.Digest(t.Manifest), MarketplaceName: want.Marketplace}}, nil
 	}
-	if !p.Prereq("git") || !p.Prereq("ca-certificates") {
+	// CA certificates are for https; an ssh or file source needs only git.
+	if !p.Prereq("git") || strings.HasPrefix(spec.Location, "https://") && !p.Prereq("ca-certificates") {
 		if p.Command == "setup" && explicit {
 			return Prepared{}, fmt.Errorf("%w: run `makeit setup --yes`, then `makeit update --catalog %s --yes`", ErrFresh, p.Arg)
 		}
@@ -123,6 +127,14 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 	unreached := func(err error) error {
 		return fmt.Errorf("could not fetch %s: %v; a private repository needs a git credential helper or an SSH key", spec.Location, err)
 	}
+	// A guessed GitHub source could be a mistyped local path: name it before anything is fetched.
+	var guessed []string
+	if spec.Guessed != "" {
+		guessed = []string{fmt.Sprintf("catalog: %s (no local path %s)", spec.Location, spec.Guessed)}
+		if p.Show != nil {
+			p.Show(guessed[0])
+		}
+	}
 	refs, err := LsRemote(ctx, p.Git, spec.Location)
 	if err != nil {
 		return fail(unreached(err))
@@ -131,6 +143,7 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 	if err != nil {
 		return fail(err)
 	}
+	notices = append(guessed, notices...)
 	// A missing or changed synced catalog is fetched again from the recorded commit.
 	if !explicit && rec != nil && (choice.Hold || choice.Commit == rec.Resolved) && intact(dir) {
 		cur, err := current(dir, rec)

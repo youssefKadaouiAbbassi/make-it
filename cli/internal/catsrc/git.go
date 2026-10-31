@@ -1,8 +1,6 @@
 package catsrc
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -25,20 +23,38 @@ type Git struct {
 
 const gitTimeout = 5 * time.Minute
 
+// repoEnv are inherited variables that would point git at another repository (a makeit run from a
+// git hook inherits GIT_DIR): the catalog's git never reads them.
+// The list is git's repository-local variables (git rev-parse --local-env-vars) but the -c ones,
+// which carry the user's own settings.
+var repoEnv = []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+	"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE",
+	"GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_CONFIG", "GIT_QUARANTINE_PATH"}
+
 func (g Git) git(ctx context.Context, dir string, args ...string) (execx.Result, error) {
 	argv := append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "submodule.recurse=false"}, args...)
 	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_ALLOW_PROTOCOL=" + g.Protocols}
-	if os.Getenv("GIT_SSH_COMMAND") == "" {
-		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
-	}
 	if dir == "" {
 		dir = os.TempDir()
 	}
-	res, err := g.Run(ctx, execx.Cmd{Argv: argv, Dir: dir, Env: env, Timeout: gitTimeout})
+	// No password prompt on ssh, unless the user chose their own ssh command.
+	if (args[0] == "ls-remote" || args[0] == "fetch") && !g.ownSSH(ctx, dir) {
+		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
+	res, err := g.Run(ctx, execx.Cmd{Argv: argv, Dir: dir, Env: env, Unset: repoEnv, Timeout: gitTimeout})
 	if err == nil && res.Code != 0 {
 		err = fmt.Errorf("git %s: %s", args[0], strings.TrimSpace(res.Stderr))
 	}
 	return res, err
+}
+
+// ownSSH reports a user's GIT_SSH, GIT_SSH_COMMAND or core.sshCommand.
+func (g Git) ownSSH(ctx context.Context, dir string) bool {
+	if os.Getenv("GIT_SSH") != "" || os.Getenv("GIT_SSH_COMMAND") != "" {
+		return true
+	}
+	res, err := g.Run(ctx, execx.Cmd{Argv: []string{"git", "config", "--get", "core.sshCommand"}, Dir: dir, Unset: repoEnv, Timeout: gitTimeout})
+	return err == nil && res.Code == 0 && strings.TrimSpace(res.Stdout) != ""
 }
 
 // LsRemote lists the remote's tags, peeled to their commits, and its branch heads.
@@ -101,10 +117,9 @@ func Fetch(ctx context.Context, g Git, url, src, commit string) (*catalog.Tree, 
 	}
 	files, exec := map[string][]byte{}, map[string]bool{}
 	var total int64
-	sc := bufio.NewScanner(strings.NewReader(res.Stdout))
-	sc.Split(splitNUL)
-	for sc.Scan() {
-		meta, path, ok := strings.Cut(sc.Text(), "\t")
+	// Split, not bufio.Scanner: a path past the Scanner's 64 KiB limit would end the read early.
+	for entry := range strings.SplitSeq(res.Stdout, "\x00") {
+		meta, path, ok := strings.Cut(entry, "\t")
 		f := strings.Fields(meta)
 		if !ok || len(f) != 4 || !allowlist.Allowed(path) {
 			continue
@@ -134,14 +149,4 @@ func refusedByID(err error) bool {
 	m := err.Error()
 	return strings.Contains(m, "not our ref") || strings.Contains(m, "unadvertised object") ||
 		strings.Contains(m, "couldn't find remote ref") || strings.Contains(m, "not found in upstream")
-}
-
-func splitNUL(data []byte, atEOF bool) (int, []byte, error) {
-	if i := bytes.IndexByte(data, 0); i >= 0 {
-		return i + 1, data[:i], nil
-	}
-	if atEOF && len(data) > 0 {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
 }

@@ -50,8 +50,15 @@ func TestChoose(t *testing.T) {
 		{"a pinned tag with a newer one stays", git("v1.0.0", false, false), refs, rec("v1.0.0", "tag", "v1.0.0", c("a")), false,
 			Choice{Commit: c("a"), Requested: "v1.0.0", RefKind: "tag", Tag: "v1.0.0"}, "",
 			[]string{"catalog v1.10.0 is newer than v1.0.0: `makeit update --catalog " + url + "` takes it (and follows newer tags)"}},
-		{"a commit pin with a release tag", git(c("7"), true, false), refs, rec(c("7"), "commit", "", c("7")), false,
-			Choice{Commit: c("7"), Requested: c("7"), RefKind: "commit"}, "", []string{"catalog v1.10.0 is newer than " + c("7")[:12]}},
+		// An untagged pin may be ahead of the newest tag: ls-remote holds no history, so no claim.
+		{"an untagged commit pin", git(c("7"), true, false), refs, rec(c("7"), "commit", "", c("7")), false,
+			Choice{Commit: c("7"), Requested: c("7"), RefKind: "commit"}, "", nil},
+		// A commit that carries the newest tag and an older one is not behind.
+		{"a commit pin at the newest tag and an older one", git(c("d"), true, false),
+			Refs{Tags: map[string]string{"v1.9.0": c("d"), "v1.10.0": c("d")}}, rec(c("d"), "commit", "", c("d")), false,
+			Choice{Commit: c("d"), Requested: c("d"), RefKind: "commit"}, "", nil},
+		{"a commit pin at an older release", git(c("a"), true, false), refs, rec(c("a"), "commit", "", c("a")), false,
+			Choice{Commit: c("a"), Requested: c("a"), RefKind: "commit"}, "", []string{"catalog v1.10.0 is newer than v1.0.0"}},
 		{"a branch follows its head", git("main", false, true), refs, rec("main", "branch", "", c("8")), false,
 			Choice{Commit: c("9"), Requested: "main", RefKind: "branch"}, "", nil},
 		{"latest whose tag is gone for an older one", git("", false, false),

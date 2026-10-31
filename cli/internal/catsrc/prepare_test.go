@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"makeit/internal/catalog"
+	"makeit/internal/execx"
 	"makeit/internal/state"
 )
 
@@ -63,11 +65,41 @@ func TestPrepare(t *testing.T) {
 			t.Errorf("err %v", err)
 		}
 	})
-	for _, c := range []struct{ name, key, value string }{
-		{"renamed marketplace", "makeit.json", `{"schemaVersion": 1, "marketplace": "other", "bundle": "makeit-bundle@makeit"}`},
-		{"another bundle", "makeit.json", `{"schemaVersion": 1, "marketplace": "makeit", "bundle": "other@makeit"}`},
-		{"newer schema", "makeit.json", `{"schemaVersion": 2, "marketplace": "makeit", "bundle": "makeit-bundle@makeit"}`},
-		{"marketplace.json renamed", ".claude-plugin/marketplace.json", `{"name": "other", "owner": {"name": "t"}, "plugins": []}`},
+	// CA certificates are for https: an ssh or file source does not need them.
+	for _, c := range []struct{ arg, want string }{
+		{"git@github.com:o/r.git", "network disabled"},
+		{"https://h/cat.git", "CA certificates"},
+	} {
+		p := params(t.TempDir(), stateWith(nil))
+		p.Arg, p.Offline = c.arg, true
+		p.Prereq = func(id string) bool { return id != "ca-certificates" }
+		if _, err := Prepare(ctx, p); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s without CA certificates: err %v, want %q", c.arg, err, c.want)
+		}
+	}
+	// A guessed GitHub source is named in full before anything is fetched, and in the notices.
+	t.Run("owner/repo.git is shown before the fetch", func(t *testing.T) {
+		p := params(t.TempDir(), stateWith(nil))
+		p.Arg = "owner/repo.git"
+		var shown []string
+		p.Git = Git{Protocols: "file", Run: func(_ context.Context, c execx.Cmd) (execx.Result, error) {
+			if slices.Contains(c.Argv, "ls-remote") && len(shown) == 0 {
+				t.Error("ls-remote ran before the source was shown")
+			}
+			return execx.Result{Code: 128, Stderr: "no network here"}, nil
+		}}
+		p.Show = func(line string) { shown = append(shown, line) }
+		_, err := Prepare(ctx, p)
+		const want = "catalog: https://github.com/owner/repo.git (no local path owner/repo.git)"
+		if len(shown) != 1 || shown[0] != want {
+			t.Errorf("shown %q, want %q (err %v)", shown, want, err)
+		}
+	})
+	for _, c := range []struct{ name, key, value, want string }{
+		{"renamed marketplace", "makeit.json", `{"schemaVersion": 1, "marketplace": "other", "bundle": "makeit-bundle@makeit"}`, ""},
+		{"another bundle", "makeit.json", `{"schemaVersion": 1, "marketplace": "makeit", "bundle": "other@makeit"}`, ""},
+		{"newer schema", "makeit.json", `{"schemaVersion": 2, "marketplace": "makeit", "bundle": "makeit-bundle@makeit"}`, "this catalog needs a newer makeit: run `makeit self update`"},
+		{"marketplace.json renamed", ".claude-plugin/marketplace.json", `{"name": "other", "owner": {"name": "t"}, "plugins": []}`, ""},
 	} {
 		t.Run(c.name+" is refused", func(t *testing.T) {
 			f := newFixture(t)
@@ -76,8 +108,8 @@ func TestPrepare(t *testing.T) {
 			f.push(t)
 			p := params(t.TempDir(), stateWith(nil))
 			p.Arg = f.url + "#v2.0.0"
-			if _, err := Prepare(ctx, p); err == nil {
-				t.Error("taken")
+			if _, err := Prepare(ctx, p); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("err %v, want %q", err, c.want)
 			}
 		})
 	}

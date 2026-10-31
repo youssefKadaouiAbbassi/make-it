@@ -3,6 +3,7 @@ package catsrc
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,8 @@ func TestParse(t *testing.T) {
 	}{
 		{"embedded", false, Spec{Kind: "embedded"}, nil},
 		{"owner/repo", false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git"}, nil},
+		// owner/repo.git that is no local directory is GitHub, with the guess kept for the plan line.
+		{"owner/repo.git", false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git", Guessed: "owner/repo.git"}, nil},
 		{"owner/repo#v1.0.0", false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git", Ref: "v1.0.0"}, nil},
 		{"owner/repo@" + sha, false, Spec{Kind: "git", Location: "https://github.com/owner/repo.git", Ref: sha, Commit: true}, nil},
 		{"https://h/x.git#main", true, Spec{Kind: "git", Location: "https://h/x.git", Ref: "main", AllowBranch: true}, nil},
@@ -45,6 +48,18 @@ func TestParse(t *testing.T) {
 			t.Errorf("%q: %v, want ErrCredentials", c.arg, err)
 		case c.err == errAny && err == nil:
 			t.Errorf("%q: parsed as %+v, want an error", c.arg, got)
+		}
+	}
+	// A local path git could only read through file://, which makeit's git refuses: say what is wrong
+	// with the path, not that a credential is missing.
+	file := filepath.Join(t.TempDir(), "x.git")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for arg, want := range map[string]string{"../no-such/cat.git": "no such directory: ../no-such/cat.git",
+		"host.example.com/repo.git": "no such directory: host.example.com/repo.git", file: "not a directory: " + file} {
+		if _, err := Parse(arg, false); err == nil || err.Error() != want {
+			t.Errorf("%q: %v, want %q", arg, err, want)
 		}
 	}
 	if _, err := Parse("https://u:t@h/x.git", false); err == nil || !strings.Contains(err.Error(), "credential helper") {
