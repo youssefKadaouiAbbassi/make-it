@@ -204,8 +204,31 @@ func TestUpdateCatalogUnreachable(t *testing.T) {
 	if code, _, errOut := run2(t, "update", "--yes"); code != 0 || !strings.Contains(errOut, "could not refresh the catalog") {
 		t.Errorf("plain: exit %d\n%s", code, errOut)
 	}
-	if code, _, _ := run2(t, "update", "--yes", "--catalog", "file:///no/such/cat.git"); code != 1 {
-		t.Errorf("explicit: exit %d, want 1", code)
+	if code, _, errOut := run2(t, "update", "--yes", "--catalog", "file:///no/such/cat.git"); code != 1 || !strings.Contains(errOut, credentialHint) {
+		t.Errorf("explicit: exit %d, want 1 with the credential hint\n%s", code, errOut)
+	}
+}
+
+const credentialHint = "a private repository needs a git credential helper or an SSH key"
+
+// A deleted ~/.makeit/catalog is fetched again from the recorded git source, not replaced by the
+// embedded catalog.
+func TestDeletedCatalogKeepsGitSource(t *testing.T) {
+	m := newCatMachine(t, map[string]string{"templates/extra.md": "extra\n"})
+	if code, _, errOut := run2(t, "setup", "--yes", "--catalog", m.url); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	if err := os.RemoveAll(filepath.Join(m.stack, "catalog")); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errOut := run2(t, "update", "--yes"); code != 0 {
+		t.Fatalf("update: exit %d\n%s", code, errOut)
+	}
+	if rec := m.catalogRecord(t); rec.Kind != "git" {
+		t.Errorf("the git source was forgotten: %+v", rec)
+	}
+	if _, err := os.Stat(filepath.Join(m.stack, "catalog", "templates", "extra.md")); err != nil {
+		t.Errorf("the git catalog was not written back: %v", err)
 	}
 }
 

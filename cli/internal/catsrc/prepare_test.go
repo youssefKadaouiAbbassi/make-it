@@ -99,14 +99,16 @@ func TestPrepare(t *testing.T) {
 		stack := t.TempDir()
 		synced(t, stack, "1.0.0")
 		gone := "file:///no/such/cat.git"
+		hint := "; a private repository needs a git credential helper or an SSH key"
 		got, err := Prepare(ctx, params(stack, stateWith(gitRecord(gone, "latest", "latest", "v1.0.0", strings.Repeat("a", 40)))))
-		if err != nil || len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "could not refresh the catalog") || got.Tree == nil {
+		if err != nil || len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "could not refresh the catalog") ||
+			!strings.Contains(got.Notices[0], hint) || got.Tree == nil {
 			t.Errorf("plain: %+v %v", got.Notices, err)
 		}
 		p := params(stack, stateWith(nil))
 		p.Arg = gone
-		if _, err := Prepare(ctx, p); err == nil {
-			t.Error("explicit: taken")
+		if _, err := Prepare(ctx, p); err == nil || !strings.Contains(err.Error(), "could not fetch "+gone+": ") || !strings.Contains(err.Error(), hint) {
+			t.Errorf("explicit: %v", err)
 		}
 	})
 	t.Run("deleted tag (Review Focus 3)", func(t *testing.T) {

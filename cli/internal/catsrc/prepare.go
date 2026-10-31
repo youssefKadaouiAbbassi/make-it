@@ -120,15 +120,19 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 		cur.Notices = append(cur.Notices, "--offline: the catalog stays where it is")
 		return cur, nil
 	}
+	unreached := func(err error) error {
+		return fmt.Errorf("could not fetch %s: %v; a private repository needs a git credential helper or an SSH key", spec.Location, err)
+	}
 	refs, err := LsRemote(ctx, p.Git, spec.Location)
 	if err != nil {
-		return fail(err)
+		return fail(unreached(err))
 	}
 	choice, notices, err := Choose(spec, refs, rec, explicit)
 	if err != nil {
 		return fail(err)
 	}
-	if !explicit && rec != nil && (choice.Hold || choice.Commit == rec.Resolved) {
+	// A missing or changed synced catalog is fetched again from the recorded commit.
+	if !explicit && rec != nil && (choice.Hold || choice.Commit == rec.Resolved) && intact(dir) {
 		cur, err := current(dir, rec)
 		if err != nil {
 			return Prepared{}, err
@@ -144,7 +148,9 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 		src = "refs/heads/" + choice.Requested
 	}
 	t, err := Fetch(ctx, p.Git, spec.Location, src, choice.Commit)
-	if err == nil {
+	if err != nil {
+		err = unreached(err)
+	} else {
 		err = Check(t, want)
 	}
 	if err != nil {
@@ -191,10 +197,20 @@ func wantRequires(dir string) (catalog.Requires, error) {
 	return catalog.LoadRequires(catalog.Embedded)
 }
 
+// intact reports whether dir holds the catalog its marker says was synced.
+func intact(dir string) bool {
+	mk := catalog.ReadMarker(dir)
+	t, err := catalog.DirTree(dir)
+	return mk.Digest != "" && err == nil && catalog.Digest(t.Manifest) == mk.Digest
+}
+
 // current is the catalog as it is: the synced tree of a recorded directory or git source, or the
-// embedded one.
+// embedded one. A recorded source whose synced copy is gone is an error, never the embedded catalog.
 func current(dir string, rec *state.Catalog) (Prepared, error) {
-	if rec != nil && rec.Kind != "embedded" && catalog.ReadMarker(dir).Digest != "" {
+	if rec != nil && rec.Kind != "embedded" {
+		if !intact(dir) {
+			return Prepared{}, fmt.Errorf("the synced copy of the catalog %s is missing or changed in %s", rec.Location, dir)
+		}
 		t, err := catalog.DirTree(dir)
 		if err != nil {
 			return Prepared{}, err
