@@ -9,7 +9,7 @@
 # origin/skipped is main with the test skipped.
 set -uo pipefail
 git config --global user.email t@example.com; git config --global user.name t; git config --global init.defaultBranch main
-/bin/rm -rf repo; git init -q repo && cp CONSTRAINTS.md floor-guard.mjs repo/ && cd repo
+/bin/rm -rf repo; git init -q repo && cp CONSTRAINTS.md floor-guard.mjs repo/ && cd repo || exit 1
 mkdir -p .github/workflows
 printf 'export const x = 1;\n' >src.ts; printf 'test("x", () => { expect(1).toBe(1); });\n' >src.test.ts
 printf '{ "compilerOptions": { "strict": true } }\n' >tsconfig.json
