@@ -92,3 +92,13 @@ func TestSyncTreeUpToDate(t *testing.T) {
 		t.Error("up to date with a changed tree")
 	}
 }
+
+// A path that climbs out of the catalog, or that Windows would read as one, is refused.
+func TestTreeOfRefusesUnsafePaths(t *testing.T) {
+	for _, p := range []string{"plugins/../../evil", "templates/../../../x", "plugins/./x", "plugins//x", "plugins/x/",
+		`plugins/a\..\..\x`, "plugins/c:x"} {
+		if _, err := TreeOf(map[string][]byte{p: []byte("x")}, nil); err == nil {
+			t.Errorf("%q was taken", p)
+		}
+	}
+}

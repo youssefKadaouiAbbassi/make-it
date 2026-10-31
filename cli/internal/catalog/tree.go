@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"makeit/internal/catalog/allowlist"
 	"makeit/internal/fsx"
@@ -31,13 +32,18 @@ func (t *Tree) ReadFile(p string) ([]byte, error) {
 }
 
 // TreeOf builds a tree from files, keeping only allow-listed paths; exec marks the files that get
-// mode 0755. Their total size is capped at MaxTree.
+// mode 0755. Their total size is capped at MaxTree. A path that is not clean and local is refused,
+// so a sync never writes outside the catalog.
 func TreeOf(files map[string][]byte, exec map[string]bool) (*Tree, error) {
 	t := &Tree{Manifest: Manifest{SchemaVersion: 1}, Files: map[string][]byte{}}
 	var total int64
 	for p, b := range files {
 		if !allowlist.Allowed(p) {
 			continue
+		}
+		// fs.ValidPath refuses "..", "." and empty segments; \ and : are separators or drives on Windows.
+		if !fs.ValidPath(p) || strings.ContainsAny(p, `\:`) {
+			return nil, fmt.Errorf("catalog path %q is not a plain relative path, so the catalog is refused", p)
 		}
 		if total += int64(len(b)); total > MaxTree {
 			return nil, fmt.Errorf("catalog is larger than %d bytes", MaxTree)

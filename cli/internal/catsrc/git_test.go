@@ -194,3 +194,38 @@ func TestFetchRunsNoHooks(t *testing.T) {
 }
 
 func hexOf(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }
+
+// treeObject writes a raw tree object, which git's own commands would never build with these names.
+func treeObject(t *testing.T, dir string, entries ...string) string {
+	t.Helper()
+	var buf []byte
+	for i := 0; i < len(entries); i += 3 {
+		id, err := hex.DecodeString(entries[i+2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf = append(append(buf, entries[i]+" "+entries[i+1]+"\x00"...), id...)
+	}
+	cmd := exec.Command("git", "hash-object", "--literally", "-t", "tree", "-w", "--stdin")
+	cmd.Dir, cmd.Stdin = dir, strings.NewReader(string(buf))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("hash-object: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// A tree entry named ".." would write outside ~/.makeit/catalog: the fetch refuses it.
+func TestFetchRefusesTraversal(t *testing.T) {
+	f := newFixture(t)
+	blob := sh(t, f.work, "hash-object", "-w", "makeit.json")
+	evil := treeObject(t, f.work, "100644", "evil", blob)
+	up := treeObject(t, f.work, "40000", "..", treeObject(t, f.work, "40000", "..", evil))
+	root := treeObject(t, f.work, "100644", "makeit.json", blob, "40000", "plugins", up)
+	commit := sh(t, f.work, "commit-tree", root, "-m", "evil")
+	sh(t, f.work, "update-ref", "refs/heads/evil", commit)
+	sh(t, f.work, "push", "-q", f.bare, "refs/heads/evil")
+	if tr, err := Fetch(context.Background(), local, f.url, "refs/heads/evil", commit); err == nil {
+		t.Errorf("taken: %v", tr.Manifest.Files)
+	}
+}
