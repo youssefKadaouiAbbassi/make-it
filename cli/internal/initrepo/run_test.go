@@ -316,3 +316,35 @@ func TestInitDoesNotFollowSymlinks(t *testing.T) {
 		t.Errorf("record names a linked path: %+v", r.Files)
 	}
 }
+
+// A merge step with nothing merged for its path refuses to write rather than empty the file.
+func TestMergeRunNeedsMergedBody(t *testing.T) {
+	dir := tree(t, map[string]string{".git/": "", "x.json": "{\"a\": 1}\n"})
+	e, _ := testEnv(t, dir)
+	r := &run{Env: e, prev: &state.Repo{}}
+	r.reset()
+	st := r.mergeStep(MergeSeed{Path: "x.json", Apply: func([]byte, map[string]bool) (Merged, error) { return Merged{}, nil }})
+	if _, err := st.Run(context.Background()); err == nil {
+		t.Error("Run wrote with nothing merged")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "x.json")); string(b) != "{\"a\": 1}\n" {
+		t.Errorf("x.json is now %q", b)
+	}
+}
+
+// A renovate.json with comments cannot be merged: it stays byte for byte, with a kept line.
+func TestInitKeepsUnparseableMerge(t *testing.T) {
+	const jsonc = "{\n  // ours\n  \"extends\": [\"config:recommended\"]\n}\n"
+	dir := tree(t, map[string]string{".git/": "", "go.mod": "module x\n", "renovate.json": jsonc})
+	e, _ := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "renovate.json")); string(b) != jsonc {
+		t.Errorf("renovate.json changed: %q", b)
+	}
+	if !slices.ContainsFunc(rep.Kept, func(k setup.Kept) bool { return k.Item == "renovate.json" && strings.HasPrefix(k.Reason, "not edited: ") }) {
+		t.Errorf("kept %v", rep.Kept)
+	}
+}

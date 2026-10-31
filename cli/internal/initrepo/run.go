@@ -362,7 +362,12 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 			return false, nil
 		},
 		Run: func(context.Context) (string, error) {
-			return "", writeFile(r.path(m.Path), r.pending[m.Path])
+			b, ok := r.pending[m.Path]
+			if !ok {
+				// Without a merged body the write would empty the user's file.
+				return "", fmt.Errorf("%s: nothing merged, not written", m.Path)
+			}
+			return "", writeFile(r.path(m.Path), b)
 		}}
 }
 
