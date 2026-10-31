@@ -43,11 +43,8 @@ func (e *env) stackSteps() []plan.Step {
 				}
 				up := catalog.UpToDateTree(dir, t)
 				e.catalogChanges = !up
-				if up {
-					// The same files from another source still record the switch.
-					e.st.Catalog = e.catalogRecord(dir)
-				}
-				return up, nil
+				// The same files from another source still run the step, so the switch is recorded.
+				return up && sameCatalog(e.st.Catalog, e.catalogRecord(dir)), nil
 			},
 			Run: func(context.Context) (string, error) {
 				t, err := e.catalogTree()
@@ -258,6 +255,18 @@ func (e *env) catalogTree() (*catalog.Tree, error) {
 		return e.CatalogTree, nil
 	}
 	return catalog.EmbeddedTree()
+}
+
+// sameCatalog reports whether two records name the same catalog source and commit.
+func sameCatalog(a, b state.Catalog) bool {
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	return a.Kind == b.Kind && a.Location == b.Location && deref(a.Requested) == deref(b.Requested) && a.Resolved == b.Resolved &&
+		a.RefKind == b.RefKind && a.Tag == b.Tag && a.AllowBranch == b.AllowBranch && a.MarketplaceName == b.MarketplaceName
 }
 
 // catalogRecord is what the state records for the catalog in dir. The embedded catalog's location

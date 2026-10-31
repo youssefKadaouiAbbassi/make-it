@@ -620,7 +620,10 @@ func TestUpdatePlanShowsPinMove(t *testing.T) {
 
 // Final review I3: right after setup, with nothing new, update has nothing to do: no consent, no
 // generation, no restart.
-func TestUpdateAfterSetupIsNoop(t *testing.T) {
+// converged is a machine right after setup whose plugin list reports every plugin installed, so
+// a plain update has nothing to do.
+func converged(t *testing.T) *fakeMachine {
+	t.Helper()
 	m := newMachine(t)
 	m.deps = []string{"makeit@makeit", "superpowers@makeit", "ponytail@makeit", "chrome-devtools-mcp@makeit",
 		"docs-mcp-server@makeit", "deja-vu@makeit", "security-audit@makeit",
@@ -641,6 +644,11 @@ func TestUpdateAfterSetupIsNoop(t *testing.T) {
 		return inner(ctx, c)
 	}
 	apply(t, m)
+	return m
+}
+
+func TestUpdateAfterSetupIsNoop(t *testing.T) {
+	m := converged(t)
 	rep, err := Update(context.Background(), m.env, plan.NeedConsent, nil, nil)
 	if errors.Is(err, ErrConsent) {
 		for _, o := range rep.Plan.Outcomes {
@@ -716,5 +724,28 @@ func TestReloadOnlyWhenSomethingMoved(t *testing.T) {
 	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(updated)
 	if _, err := step(t, e.pluginSteps(), "plugin.superpowers@makeit").Run(context.Background()); err != nil || !e.reload {
 		t.Errorf("owned plugin updated: %v, reload = %v", err, e.reload)
+	}
+}
+
+// Review Focus 2 on a machine with nothing else to do: the same files from a git source still
+// record the switch, so the next plain update follows it.
+func TestIdenticalSwitchOnConvergedMachine(t *testing.T) {
+	m := converged(t)
+	tr, err := catalog.EmbeddedTree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := "latest"
+	m.env.CatalogTree = tr
+	m.env.CatalogRecord = state.Catalog{Kind: "git", Location: "https://h/x.git", Requested: &req, Resolved: strings.Repeat("a", 40), RefKind: "latest", Tag: "v1.0.0"}
+	if _, err := Update(context.Background(), m.env, plan.Apply, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	st, _, err := state.LoadState(filepath.Join(m.env.Roots.Stack, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Catalog.Kind != "git" || st.Catalog.Tag != "v1.0.0" {
+		t.Errorf("the switch was not recorded: %+v", st.Catalog)
 	}
 }
