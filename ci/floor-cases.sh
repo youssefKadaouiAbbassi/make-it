@@ -17,7 +17,8 @@ printf '{\n  "name": "t",\n  "scripts": {\n    "check:full": "tsc && vitest run"
 printf 'name: ci\non: push\npermissions: {}\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n' >.github/workflows/ci.yml
 git add -A && git commit -qm base && git update-ref refs/remotes/origin/main HEAD
 git checkout -q -b guarded && mkdir ci && cp floor-guard.mjs ci/ && git add -A && git commit -qm guarded && git update-ref refs/remotes/origin/guarded HEAD
-git checkout -q main && git branch -q -D guarded
+git checkout -q main
+git remote add origin "$PWD"  # gate cases: the step fetches origin/<base>
 git checkout -q -b skipped && sed -i 's/^test(/test.skip(/' src.test.ts && git commit -qam skipped && git update-ref refs/remotes/origin/skipped HEAD
 git checkout -q main && git branch -q -D skipped
 fail=0
@@ -74,4 +75,16 @@ run_case reason-for-all 0 "$wf" "" $'Adds a step.\n\nfloor-guard: the release ne
 run_case reason-for-the-file 0 "$wf" "" "- floor-guard .github/workflows/ci.yml: the release needs it" ".github/workflows/ci.yml"
 run_case reason-for-another-file 1 "$wf" "" "floor-guard tsconfig.json: unrelated"
 run_case reason-does-not-excuse-a-suppression 1 "$wf; printf '// eslint-disable-next-line\\nexport const y = 2;\\n' >>src.ts" "" "floor-guard: the release needs the extra step"
+# The gate step itself (its run: block, read from gate.yml): it runs the base branch's guard, so a
+# PR that rewrites ci/floor-guard.mjs cannot pass itself; with no guard on the base it runs the PR's.
+gate_step=$(awk '/name: "floor-guard \(diff/{f=1} f&&/run: \|/{r=1;next} r&&/^$/{exit} r{sub(/^ +/,"");print}' ../.github/workflows/gate.yml)
+run_gate() { # name expected-exit base edit-command [PR body] [text the output must hold]
+  git checkout -q main; git checkout -q -B case
+  eval "$4"; git add -A; git commit -qm "$1" >/dev/null
+  BASE_REF="$3" RUNNER_TEMP=$(mktemp -d) PR_BODY="${5:-}" bash -e -c "$gate_step" >../out.txt 2>&1; rc=$?
+  if [ "$rc" = "$2" ] && { [ -z "${6:-}" ] || grep -qF -- "$6" ../out.txt; }; then echo "ok   $1 (exit $rc)"; else echo "FAIL $1: expected $2 got $rc"; cat ../out.txt; fail=1; fi
+  git checkout -q main; git branch -q -D case
+}
+run_gate gate-runs-base-guard 1 guarded "git reset -q --hard guarded && printf 'process.exit(0);\n' >ci/floor-guard.mjs" "" "[watched-file-changed] ci/floor-guard.mjs"
+run_gate gate-first-guard-runs-pr-copy 0 main "mkdir -p ci && cp floor-guard.mjs ci/floor-guard.mjs" "floor-guard: makeit init seeds the gate" "running the PR's copy"
 [ "$fail" = 0 ] && echo "FLOOR OK" || { echo "FLOOR FAILURES"; exit 1; }

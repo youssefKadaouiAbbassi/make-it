@@ -105,7 +105,13 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           git fetch --no-tags origin "$BASE_REF"
-          node ci/floor-guard.mjs --base "origin/$BASE_REF"
+          # The base branch's guard, never the PR's: a PR that edits the guard cannot pass itself.
+          if git show "origin/$BASE_REF:ci/floor-guard.mjs" > "$RUNNER_TEMP/floor-guard.mjs" 2>/dev/null; then
+            node "$RUNNER_TEMP/floor-guard.mjs" --base "origin/$BASE_REF"
+          else
+            echo "floor-guard: origin/$BASE_REF has no ci/floor-guard.mjs yet (the PR that adds it); running the PR's copy"
+            node ci/floor-guard.mjs --base "origin/$BASE_REF"
+          fi
 
   secrets:
     name: betterleaks
