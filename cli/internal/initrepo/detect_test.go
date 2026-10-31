@@ -139,6 +139,37 @@ func TestDetectVersions(t *testing.T) {
 	}
 }
 
+// requirements.txt feeds the docs (as docs.sh lists it) but does not make a python project.
+func TestDetectRequirements(t *testing.T) {
+	dir := tree(t, map[string]string{
+		"requirements.txt": "# pinned\nhttpx==0.28.1  # client\nRich>=14.0,<15\npydantic[email]~=2.12 ; python_version >= \"3.10\"\n" +
+			"-r dev.txt\n-e .\n--index-url https://pypi.org/simple\nfoo @ https://example.com/foo.whl\nhttps://example.com/bar.tar.gz\n./vendored\n\nplain\nsqlalchemy==2.0.44\n",
+		"services/api/requirements.txt": "anthropic==0.70.0\n",
+	})
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Types != nil {
+		t.Errorf("types %v", p.Types)
+	}
+	want := []Dep{
+		{Name: "httpx", Version: "0.28.1", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "plain", Version: "", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "pydantic", Version: "2.12", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "rich", Version: "14.0", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "sqlalchemy", Version: "2.0.44", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "anthropic", Version: "0.70.0", Ecosystem: "pypi", Manifest: "services/api/requirements.txt"},
+	}
+	if !slices.Equal(p.Deps, want) {
+		t.Errorf("deps\n got %v\nwant %v", p.Deps, want)
+	}
+	h, _ := ManifestHashes(dir)
+	if keys := slices.Sorted(maps.Keys(p.Manifests)); !slices.Equal(keys, []string{"requirements.txt", "services/api/requirements.txt"}) || !maps.Equal(h, p.Manifests) {
+		t.Errorf("read %v, on disk %v", p.Manifests, h)
+	}
+}
+
 // The docs record compares these: what Detect read, and what is on disk now.
 func TestManifestHashes(t *testing.T) {
 	dir := tree(t, map[string]string{"package.json": pkg, "package-lock.json": `{"packages": {}}`,

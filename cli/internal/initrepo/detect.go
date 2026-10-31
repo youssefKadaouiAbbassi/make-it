@@ -97,7 +97,7 @@ func siblingLock(m string) string {
 var pruned = map[string]bool{"node_modules": true, "vendor": true, ".git": true, "target": true, ".venv": true}
 
 // manifestNames are the files Detect reads dependencies from.
-var manifestNames = map[string]bool{"go.mod": true, "package.json": true, "pyproject.toml": true, "Cargo.toml": true}
+var manifestNames = map[string]bool{"go.mod": true, "package.json": true, "pyproject.toml": true, "Cargo.toml": true, "requirements.txt": true}
 
 var (
 	webDeps    = []string{"react", "vue", "svelte", "solid-js", "next", "nuxt", "@sveltejs/kit", "astro", "vite"}
@@ -134,7 +134,8 @@ func Detect(dir string) (Project, error) {
 	})
 	rootDeps := map[string]bool{}
 	for _, d := range p.Deps {
-		if !strings.Contains(d.Manifest, "/") {
+		// requirements.txt feeds the docs only; the types stay those of the other manifests.
+		if !strings.Contains(d.Manifest, "/") && d.Manifest != "requirements.txt" {
 			rootDeps[d.Name] = true
 		}
 	}
@@ -315,6 +316,8 @@ func readDeps(dir, manifest string, read map[string]string) ([]Dep, error) {
 		return npmDeps(b, lock, base, manifest), nil
 	case "pyproject.toml":
 		return withLock(pyDeps(b), lock, "pypi", manifest), nil
+	case "requirements.txt":
+		return withLock(reqDeps(b), nil, "pypi", manifest), nil
 	default:
 		return withLock(cargoDeps(b), lock, "cargo", manifest), nil
 	}
@@ -381,6 +384,7 @@ func npmDeps(b, lockJSON []byte, base, manifest string) []Dep {
 
 var (
 	pyReq    = regexp.MustCompile(`^\s*"([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*([^";]*)`)
+	reqLine  = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]*\])?\s*((?:[=<>~!].*)?)$`)
 	tomlKV   = regexp.MustCompile(`^\s*([A-Za-z0-9_-]+)\s*=\s*(.*)$`)
 	tomlVer  = regexp.MustCompile(`version\s*=\s*"([^"]*)"`)
 	quoted   = regexp.MustCompile(`^"([^"]*)"`)
@@ -415,6 +419,25 @@ func pyDeps(b []byte) map[string]string {
 		}
 		if strings.Contains(t, "]") && !strings.Contains(t, "[") {
 			inDeps = false
+		}
+	}
+	return out
+}
+
+// reqDeps reads requirement lines: "name==1.2.3" exact, other specifiers stripped. Comments,
+// environment markers, options (-r, -e, --index-url), URLs, direct references and paths are
+// skipped.
+func reqDeps(b []byte) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		t, _, _ := strings.Cut(line, "#")
+		t, _, _ = strings.Cut(t, ";")
+		t = strings.TrimSpace(t)
+		if t == "" || strings.HasPrefix(t, "-") || strings.Contains(t, "://") || strings.Contains(t, "@") {
+			continue
+		}
+		if m := reqLine.FindStringSubmatch(t); m != nil {
+			out[strings.ToLower(m[1])] = stripRange(m[2])
 		}
 	}
 	return out
