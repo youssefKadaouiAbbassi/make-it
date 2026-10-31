@@ -102,12 +102,14 @@ for (const f of deleted) if (isTest(f)) flag('test-deleted', f, 'file deleted');
 // scripts line changed (dependency bumps are Renovate's).
 // A watched change passes when the PR description gives a reason, read from PR_BODY as data: a line
 // "floor-guard: <reason>" covers every watched file, "floor-guard <path>: <reason>" one file. A
-// reason excuses only this rule; push events have no description and keep the finding.
+// reason excuses only this rule; push events have no description and keep the finding. HTML
+// comments (PR templates) are not shown on GitHub, and a <placeholder> or a reason with no letter
+// or digit is not a reason.
 const reasons = new Map();
 let reasonForAll = '';
-for (const line of (process.env.PR_BODY ?? '').split(/\r?\n/)) {
+for (const line of (process.env.PR_BODY ?? '').replace(/<!--[\s\S]*?(-->|$)/g, '').split(/\r?\n/)) {
   const m = line.match(/^\s*(?:[-*]\s+)?floor-guard(?:\s+(\S+))?:\s*(\S.*?)\s*$/);
-  if (!m) continue;
+  if (!m || /^<[^>]*>$/.test(m[2]) || !/[\p{L}\p{N}]/u.test(m[2])) continue;
   if (m[1]) reasons.set(m[1], m[2]);
   else reasonForAll = m[2];
 }

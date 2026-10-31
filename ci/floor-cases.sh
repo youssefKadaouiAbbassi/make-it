@@ -55,6 +55,12 @@ run_case guard-name-elsewhere-scanned 1 "mkdir -p lib && printf '// eslint-disab
 # watched file, "floor-guard <path>: <reason>" for one. A reason excuses nothing else.
 wf="printf '      - run: echo more\\n' >>.github/workflows/ci.yml"
 run_case reason-empty 1 "$wf" "" "floor-guard:   "
+run_case reason-placeholder 1 "$wf" "" "floor-guard: <reason>"
+run_case reason-placeholder-for-the-file 1 "$wf" "" "floor-guard .github/workflows/ci.yml: <why>"
+run_case reason-punctuation-only 1 "$wf" "" "floor-guard: ..."
+run_case reason-in-html-comment 1 "$wf" "" $'<!--\nfloor-guard: the release needs the extra step\n-->'
+run_case reason-in-unclosed-html-comment 1 "$wf" "" $'<!-- template\nfloor-guard: the release needs the extra step'
+run_case reason-after-html-comment 0 "$wf" "" $'<!-- say why -->\nfloor-guard: the release needs the extra step' "the release needs the extra step"
 run_case reason-for-all 0 "$wf" "" $'Adds a step.\n\nfloor-guard: the release needs the extra step' "the release needs the extra step"
 run_case reason-for-the-file 0 "$wf" "" "- floor-guard .github/workflows/ci.yml: the release needs it" ".github/workflows/ci.yml"
 run_case reason-for-another-file 1 "$wf" "" "floor-guard tsconfig.json: unrelated"
