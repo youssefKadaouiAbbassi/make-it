@@ -1,0 +1,139 @@
+package initrepo
+
+import (
+	"slices"
+	"strings"
+	"testing"
+)
+
+var checkScripts = [][2]string{
+	{"check:fast", "echo \"check:fast: wire the formatter, linter and type checker\" && exit 1"},
+	{"check:task", "echo \"check:task: wire check:fast and the related tests\" && exit 1"},
+	{"check:full", "echo \"check:full: wire the linter, type checker and tests\" && exit 1"},
+}
+
+// Review Focus 2: a 4-space CRLF package.json keeps its style; only the new scripts are added.
+func TestPackageScriptsKeepStyle(t *testing.T) {
+	in := strings.ReplaceAll(`{
+    "name": "app",
+    "scripts": {
+        "build": "tsc",
+        "check:full": "vitest run"
+    },
+    "dependencies": {
+        "zod": "^4.1.12"
+    }
+}
+`, "\n", "\r\n")
+	m, err := PackageScripts([]byte(in), checkScripts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.ReplaceAll(`{
+    "name": "app",
+    "scripts": {
+        "build": "tsc",
+        "check:full": "vitest run",
+        "check:fast": "echo \"check:fast: wire the formatter, linter and type checker\" && exit 1",
+        "check:task": "echo \"check:task: wire check:fast and the related tests\" && exit 1"
+    },
+    "dependencies": {
+        "zod": "^4.1.12"
+    }
+}
+`, "\n", "\r\n")
+	if string(m.Body) != want {
+		t.Errorf("body\n%q\nwant\n%q", m.Body, want)
+	}
+	if !m.Changed || !slices.Equal(m.Added, []string{"/scripts/check:fast", "/scripts/check:task"}) || !slices.Equal(m.Conflicts, []string{"/scripts/check:full"}) {
+		t.Errorf("added %v conflicts %v changed %v", m.Added, m.Conflicts, m.Changed)
+	}
+}
+
+func TestPackageScriptsStyles(t *testing.T) {
+	for _, c := range []struct{ name, in, want string }{
+		{"tab, no final newline", "{\n\t\"name\": \"a\"\n}", "{\n\t\"name\": \"a\",\n\t\"scripts\": {\n\t\t\"check:fast\": \"x\"\n\t}\n}"},
+		{"two spaces", "{\n  \"name\": \"a\",\n  \"scripts\": {}\n}\n", "{\n  \"name\": \"a\",\n  \"scripts\": {\n    \"check:fast\": \"x\"\n  }\n}\n"},
+	} {
+		m, err := PackageScripts([]byte(c.in), [][2]string{{"check:fast", "x"}})
+		if err != nil || string(m.Body) != c.want {
+			t.Errorf("%s: %q %v\nwant %q", c.name, m.Body, err, c.want)
+		}
+	}
+}
+
+func TestMergeJSONNoChange(t *testing.T) {
+	in := "{\n    \"a\": {\"b\": 1},\n    \"c\": [1,2]\n}"
+	m, err := MergeJSON([]byte(in), []byte(`{"a": {"b": 1}, "c": [1, 2]}`), nil)
+	if err != nil || m.Changed || string(m.Body) != in || len(m.Added)+len(m.Conflicts) != 0 {
+		t.Errorf("%+v %v", m, err)
+	}
+}
+
+func TestMergeJSONDeep(t *testing.T) {
+	theirs := `{"enabledPlugins": {"theirs@x": true}, "env": {"A": "1"}}`
+	ours := `{"enabledPlugins": {"makeit-ui@makeit": true}, "env": {"A": "2", "B": "3"}, "permissions": {"ask": ["Bash(git push:*)"]}}`
+	m, err := MergeJSON([]byte(theirs), []byte(ours), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n  \"enabledPlugins\": {\n    \"theirs@x\": true,\n    \"makeit-ui@makeit\": true\n  },\n  \"env\": {\n    \"A\": \"1\",\n    \"B\": \"3\"\n  },\n  \"permissions\": {\n    \"ask\": [\n      \"Bash(git push:*)\"\n    ]\n  }\n}"
+	if string(m.Body) != want {
+		t.Errorf("body\n%s", m.Body)
+	}
+	if !slices.Equal(m.Added, []string{"/enabledPlugins/makeit-ui@makeit", "/env/B", "/permissions"}) || !slices.Equal(m.Conflicts, []string{"/env/A"}) {
+		t.Errorf("added %v conflicts %v", m.Added, m.Conflicts)
+	}
+}
+
+func TestMergeRenovate(t *testing.T) {
+	theirs := `{"extends": ["config:recommended"], "packageRules": [{"description": "group eslint", "groupName": "theirs"}]}`
+	ours := `{"extends": ["config:best-practices"], "packageRules": [{"description": "group eslint", "groupName": "ours"}, {"description": "pin actions", "pinDigests": true}], "customManagers": [{"description": "catalog pins", "customType": "regex"}]}`
+	m, err := MergeJSON([]byte(theirs), []byte(ours), map[string]string{"/packageRules": "description", "/customManagers": "description"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"groupName": "theirs"`, `"description": "pin actions"`, `"description": "catalog pins"`, `"config:recommended"`} {
+		if !strings.Contains(string(m.Body), want) {
+			t.Errorf("body lacks %s:\n%s", want, m.Body)
+		}
+	}
+	if strings.Contains(string(m.Body), `"groupName": "ours"`) || strings.Contains(string(m.Body), "best-practices") {
+		t.Errorf("a value of theirs was replaced:\n%s", m.Body)
+	}
+	if !slices.Equal(m.Added, []string{"/packageRules/pin actions", "/customManagers"}) || !slices.Equal(m.Conflicts, []string{"/extends", "/packageRules/group eslint"}) {
+		t.Errorf("added %v conflicts %v", m.Added, m.Conflicts)
+	}
+}
+
+func TestMergeJSONRefusesJSON5(t *testing.T) {
+	if _, err := MergeJSON([]byte("{\n  // comment\n  \"a\": 1,\n}"), []byte(`{"b": 2}`), nil); err == nil || !strings.Contains(err.Error(), "not plain JSON") {
+		t.Errorf("err %v", err)
+	}
+	if _, err := MergeJSON([]byte(`[1]`), []byte(`{"b": 2}`), nil); err == nil {
+		t.Error("a JSON array was taken as an object")
+	}
+}
+
+func TestMergeLines(t *testing.T) {
+	lines := []string{".env", ".env.*", "!.env.example"}
+	m := MergeLines([]byte("node_modules\n.env\n"), lines)
+	if string(m.Body) != "node_modules\n.env\n.env.*\n!.env.example\n" || !slices.Equal(m.Added, []string{".env.*", "!.env.example"}) {
+		t.Errorf("%q %v", m.Body, m.Added)
+	}
+	m = MergeLines([]byte("dist"), lines)
+	if string(m.Body) != "dist\n.env\n.env.*\n!.env.example\n" {
+		t.Errorf("no final newline: %q", m.Body)
+	}
+	m = MergeLines([]byte("dist\r\n.env\r\n"), lines)
+	if string(m.Body) != "dist\r\n.env\r\n.env.*\r\n!.env.example\r\n" {
+		t.Errorf("crlf: %q", m.Body)
+	}
+	m = MergeLines([]byte("  .env  \n.env.*\n!.env.example\n"), lines)
+	if m.Changed {
+		t.Errorf("present lines added again: %q", m.Body)
+	}
+	if m = MergeLines(nil, lines); string(m.Body) != ".env\n.env.*\n!.env.example\n" || !m.Changed {
+		t.Errorf("new file: %q", m.Body)
+	}
+}
