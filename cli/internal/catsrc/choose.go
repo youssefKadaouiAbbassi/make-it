@@ -81,8 +81,12 @@ func Choose(s Spec, refs Refs, rec *state.Catalog, explicit bool) (Choice, []str
 		}
 		return cur, notices, nil
 	case "commit":
-		if top != "" && refs.Tags[top] != rec.Resolved {
-			return cur, []string{newer(top, rec.Resolved[:min(12, len(rec.Resolved))], accept)}, nil
+		// Only a pin at an older release tag is known to be behind: ls-remote holds no history, so
+		// an untagged commit may be ahead of the newest tag.
+		for name, at := range refs.Tags {
+			if n, err := claudecli.Compare(top, name); at == rec.Resolved && releaseTag.MatchString(name) && err == nil && n > 0 {
+				return cur, []string{newer(top, name, accept)}, nil
+			}
 		}
 		return cur, nil, nil
 	case "branch":
