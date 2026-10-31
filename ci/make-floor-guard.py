@@ -20,7 +20,7 @@ def rep(old, new):
 
 rep(
     "// Usage: node floor-guard.mjs [--base <ref>]   (default base: origin/main)",
-    "// Usage: node floor-guard.mjs [--base <ref>] [--watch <regex>]   (default base: origin/main)\n"
+    "// Usage: node floor-guard.mjs [--base <ref>] [--watch <regex>]   (default base: origin/$BASE_REF, else origin/main)\n"
     "// Stack copy (makeit v3.5): adds --watch, a default watch list of files whose change turns\n"
     "// the check red (checker configs, check tasks, workflows, CONSTRAINTS.md), and betterleaks:allow.\n"
     "// Upstream: addyosmani/agent-skills 0.6.12, references/floor-guard.md (MIT).",
@@ -28,7 +28,7 @@ rep(
 rep(
     "const base = (() => {\n  const i = process.argv.indexOf('--base');\n  return i > -1 ? process.argv[i + 1] : 'origin/main';\n})();",
     "const argAfter = (flag) => { const i = process.argv.indexOf(flag); return i > -1 ? process.argv[i + 1] : undefined; };\n"
-    "const base = argAfter('--base') ?? 'origin/main';\n"
+    "const base = argAfter('--base') ?? `origin/${process.env.BASE_REF || 'main'}`;\n"
     "// Files whose change is always a review item: checker configs, coverage and test-runner configs,\n"
     "// secret-scanner configs, workflows, the check tasks and CONSTRAINTS.md itself.\n"
     "const DEFAULT_WATCH = String.raw`(^|/)(tsconfig[^/]*\\.json|eslint\\.config\\.[cm]?[jt]s|\\.eslintrc[^/]*|biome\\.jsonc?|ruff\\.toml|pyproject\\.toml|mypy\\.ini|pyrightconfig\\.json|\\.golangci\\.ya?ml|clippy\\.toml|\\.coveragerc|vitest\\.config\\.[cm]?[jt]s|jest\\.config\\.[cm]?[jt]s|playwright\\.config\\.[cm]?[jt]s|pytest\\.ini|stryker\\.config\\.[^/]+|\\.gitleaks\\.toml|\\.betterleaks\\.toml|\\.semgrepignore|\\.grype\\.ya?ml|\\.grant\\.ya?ml|package\\.json|Makefile|Taskfile\\.ya?ml|mise\\.toml|CONSTRAINTS\\.md)$|^\\.github/workflows/|^\\.pre-commit-config\\.ya?ml$`;\n"
