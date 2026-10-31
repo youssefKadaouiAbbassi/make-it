@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"makeit/internal/catalog"
 	"makeit/internal/state"
@@ -103,7 +104,8 @@ func Prepare(ctx context.Context, p Params) (Prepared, error) {
 		}
 		return Prepared{Source: t, Tree: t, Record: state.Catalog{Kind: "directory", Location: spec.Location, Resolved: catalog.Digest(t.Manifest), MarketplaceName: want.Marketplace}}, nil
 	}
-	if !p.Prereq("git") || !p.Prereq("ca-certificates") {
+	// CA certificates are for https; an ssh or file source needs only git.
+	if !p.Prereq("git") || strings.HasPrefix(spec.Location, "https://") && !p.Prereq("ca-certificates") {
 		if p.Command == "setup" && explicit {
 			return Prepared{}, fmt.Errorf("%w: run `makeit setup --yes`, then `makeit update --catalog %s --yes`", ErrFresh, p.Arg)
 		}

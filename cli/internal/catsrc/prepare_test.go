@@ -63,6 +63,18 @@ func TestPrepare(t *testing.T) {
 			t.Errorf("err %v", err)
 		}
 	})
+	// CA certificates are for https: an ssh or file source does not need them.
+	for _, c := range []struct{ arg, want string }{
+		{"git@github.com:o/r.git", "network disabled"},
+		{"https://h/cat.git", "CA certificates"},
+	} {
+		p := params(t.TempDir(), stateWith(nil))
+		p.Arg, p.Offline = c.arg, true
+		p.Prereq = func(id string) bool { return id != "ca-certificates" }
+		if _, err := Prepare(ctx, p); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s without CA certificates: err %v, want %q", c.arg, err, c.want)
+		}
+	}
 	for _, c := range []struct{ name, key, value string }{
 		{"renamed marketplace", "makeit.json", `{"schemaVersion": 1, "marketplace": "other", "bundle": "makeit-bundle@makeit"}`},
 		{"another bundle", "makeit.json", `{"schemaVersion": 1, "marketplace": "makeit", "bundle": "other@makeit"}`},
