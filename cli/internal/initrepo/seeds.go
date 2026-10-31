@@ -175,16 +175,22 @@ func checkAPI(spec, branch string) string {
 		"; else echo \"check:api: " + spec + " is not on origin/" + branch + " yet, nothing to compare\"; fi"
 }
 
-// makeAPI is check:api as one Makefile recipe line: Go projects run oasdiff with go run, others in
-// Docker; Redocly runs in Docker, so no Node is needed.
+// makeAPI is check:api as one Makefile recipe line ($ doubled for make) with checkAPI's guards.
+// Docker comes first for every project, Go included, because Redocly lints in Docker (so no Node
+// is needed); oasdiff (go run for Go projects, Docker otherwise) runs only once the default
+// branch has the spec.
 func makeAPI(p Project, spec, branch string) string {
 	lint := "docker run --rm -e REDOCLY_TELEMETRY=off -v \"$$PWD\":/spec " + redoclyImage + " lint " + shq(spec)
 	base := shq("origin/" + branch + ":./" + spec)
-	if slices.Contains(p.Types, "go") {
-		return lint + " && go run " + oasdiffModule + " breaking --fail-on ERR " + base + " " + shq(spec)
-	}
-	return lint + " && G=$$(git rev-parse --path-format=absolute --git-common-dir) && docker run --rm -v \"$$PWD\":/repo:ro -v \"$$G\":\"$$G\":ro -w /repo " +
+	needs := "Redocly and oasdiff"
+	diff := "G=$$(git rev-parse --path-format=absolute --git-common-dir) && docker run --rm -v \"$$PWD\":/repo:ro -v \"$$G\":\"$$G\":ro -w /repo " +
 		"-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo " + oasdiffImage + " breaking --fail-on ERR " + base + " " + shq(spec)
+	if slices.Contains(p.Types, "go") {
+		needs, diff = "Redocly", "go run "+oasdiffModule+" breaking --fail-on ERR "+base+" "+shq(spec)
+	}
+	return "if ! docker info >/dev/null 2>&1; then echo \"check:api needs Docker for " + needs + "\" >&2; exit 1; " +
+		"elif git cat-file -e " + base + " 2>/dev/null; then " + lint + " && " + diff + "; " +
+		"else " + lint + " && echo \"check:api: " + spec + " is not on origin/" + branch + " yet, nothing to compare\"; fi"
 }
 
 var shellSafe = regexp.MustCompile(`^[A-Za-z0-9._/:@+-]+$`)

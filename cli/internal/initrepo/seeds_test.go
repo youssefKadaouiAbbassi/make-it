@@ -370,3 +370,38 @@ func TestCheckAPINeedsDocker(t *testing.T) {
 		}
 	}
 }
+
+// The Makefile check:api has checkAPI's guards: a missing Docker fails with one line, and a spec
+// the default branch does not have yet passes, so the PR adding the first spec can merge.
+func TestMakeAPIGuards(t *testing.T) {
+	for _, types := range [][]string{{"go"}, {"rust"}} {
+		// make turns $$ into $ before the shell sees the recipe.
+		script := strings.ReplaceAll(makeAPI(Project{Types: types}, "openapi.yaml", "main"), "$$", "$")
+		bin := t.TempDir()
+		write := func(name, body string) {
+			if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		sh := func() (string, error) {
+			cmd := exec.Command("/bin/sh", "-c", script)
+			cmd.Env = []string{"PATH=" + bin}
+			out, err := cmd.CombinedOutput()
+			return strings.TrimSpace(string(out)), err
+		}
+		write("go", "echo oasdiff \"$@\"\n")
+		write("git", `[ "$1" = cat-file ] && exit 1; echo /g`+"\n")
+		if out, err := sh(); err == nil || !strings.HasPrefix(out, "check:api needs Docker for Redocly") {
+			t.Errorf("%v no docker: err %v, output %q", types, err, out)
+		}
+		write("docker", "exit 0\n")
+		if out, err := sh(); err != nil || out != "check:api: openapi.yaml is not on origin/main yet, nothing to compare" {
+			t.Errorf("%v spec not on origin: err %v, output %q", types, err, out)
+		}
+		write("git", `[ "$1" = rev-parse ] && echo /g; exit 0`+"\n")
+		write("docker", `[ "$1" = run ] && case "$*" in *oasdiff*) echo oasdiff;; esac; exit 0`+"\n")
+		if out, err := sh(); err != nil || !strings.HasPrefix(out, "oasdiff") {
+			t.Errorf("%v spec on origin: err %v, output %q", types, err, out)
+		}
+	}
+}
