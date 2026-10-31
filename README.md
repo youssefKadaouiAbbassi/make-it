@@ -3,6 +3,8 @@
 makeit installs and maintains a Claude Code setup on your machine: Claude Code itself, a pinned set of
 plugins, settings and global files, and per project the files and checks that go with them.
 
+makeit is in beta (0.x): commands and files may still change.
+
 ## Install
 
 <!-- pending: the install command comes with the release (install script and signed binaries) -->
