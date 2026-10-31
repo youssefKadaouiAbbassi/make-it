@@ -118,7 +118,7 @@ Ask with AskUserQuestion before committing: name the branch and what the commit 
 On a no, leave everything uncommitted.
 
 End the commit message body with this line, so it is there for the PR description when the
-branch is pushed: the gate's floor-guard fails a PR that changes workflows, check tasks or hook
-and checker configs unless its description gives the reason.
+branch is pushed: the gate's floor-guard fails a PR that changes workflows, check tasks, hook
+and checker configs or floor-guard itself unless its description gives the reason.
 
     floor-guard: makeit init seeds the gate, the check tasks and the hook config

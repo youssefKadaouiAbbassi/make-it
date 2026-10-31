@@ -386,7 +386,7 @@ func (s *seeder) ci(gateRef string) error {
 	}
 	uses := m[1] + "/" + m[2] + "/.github/workflows/gate.yml@" + m[3] + " # " + m[4]
 	s.seeds = append(s.seeds, Seed{Path: path, Template: "ci/.github/workflows/gate-caller.yml", Class: "ci", Body: caller(tpl, uses, s.p.DefaultBranch, values)})
-	s.rep.Notices = append(s.rep.Notices, "the gate's floor-guard fails a PR that changes a workflow, a check task or a checker or hook config unless its description has a line floor-guard: <reason>; the PR with init's changes is one")
+	s.rep.Notices = append(s.rep.Notices, "the gate's floor-guard fails a PR that changes a workflow, a check task, a checker or hook config, or ci/floor-guard.mjs unless its description has a line floor-guard: <reason>; the PR with init's changes is one, as is one where makeit init --update rewrites the guard")
 	if err := s.copySeed("ci/floor-guard.mjs", "ci/floor-guard.mjs", "ci"); err != nil {
 		return err
 	}

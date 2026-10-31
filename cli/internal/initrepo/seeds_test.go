@@ -226,8 +226,11 @@ func TestSeedsCI(t *testing.T) {
 		if !strings.Contains(caller, "    types: [opened, synchronize, reopened, edited]\n") {
 			t.Errorf("%s: the caller does not re-run on an edited PR\n%s", c.name, caller)
 		}
-		if !slices.ContainsFunc(rep.Notices, func(n string) bool { return strings.Contains(n, "floor-guard: <reason>") }) {
-			t.Errorf("%s: no notice about the floor-guard reason: %q", c.name, rep.Notices)
+		// The guard watches itself too, so a PR where init --update rewrites it needs the line as well.
+		if !slices.ContainsFunc(rep.Notices, func(n string) bool {
+			return strings.Contains(n, "floor-guard: <reason>") && strings.Contains(n, "ci/floor-guard.mjs")
+		}) {
+			t.Errorf("%s: no notice about the floor-guard reason naming the guard: %q", c.name, rep.Notices)
 		}
 		guard, _ := catalog.Embedded.ReadFile("ci/floor-guard.mjs")
 		if seedBody(t, seeds, "ci/floor-guard.mjs") != string(guard) {
