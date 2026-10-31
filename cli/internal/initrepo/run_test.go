@@ -282,3 +282,37 @@ func TestLibsLeaveOutTheGoDirective(t *testing.T) {
 		t.Errorf("libs %v", got)
 	}
 }
+
+// A symlinked leaf or directory is never read or written through: a merge would pull the outside
+// file's content into the repository, and a linked directory would put writes outside it.
+func TestInitDoesNotFollowSymlinks(t *testing.T) {
+	outside := tree(t, map[string]string{"ignore": "secret\n", "conf/keep": "x\n"})
+	dir := tree(t, map[string]string{".git/": "", "package.json": `{"dependencies": {"react": "19.2.0"}}`})
+	for link, target := range map[string]string{".gitignore": "ignore", ".claude": "conf"} {
+		if err := os.Symlink(filepath.Join(outside, target), filepath.Join(dir, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e, _ := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if b, _ := os.ReadFile(filepath.Join(outside, "ignore")); string(b) != "secret\n" {
+		t.Errorf("the outside file changed: %q", b)
+	}
+	if st, err := os.Lstat(filepath.Join(dir, ".gitignore")); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Errorf(".gitignore is no longer the link: %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(outside, "conf")); len(entries) != 1 {
+		t.Errorf("written outside the project: %v", entries)
+	}
+	for _, p := range []string{".gitignore", ".claude/settings.json"} {
+		if !slices.Contains(rep.Kept, setup.Kept{Item: p, Reason: "a symlink: not followed"}) {
+			t.Errorf("no kept line for %s: %v", p, rep.Kept)
+		}
+	}
+	if r := loadRepo(t, dir); r.Files[".gitignore"] != nil || r.Files[".claude/settings.json"] != nil {
+		t.Errorf("record names a linked path: %+v", r.Files)
+	}
+}

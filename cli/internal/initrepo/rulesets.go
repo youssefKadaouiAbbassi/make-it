@@ -164,6 +164,9 @@ func (r *run) rulesetStep(repo, name string, body []byte, desired *jsonx.Object,
 // recordRuleset keeps what a ruleset step sent, in the record the record step wrote.
 func (r *run) recordRuleset(name string, rs *state.RepoRuleset) error {
 	path := filepath.Join(r.Dir, RecordName)
+	if r.linked(RecordName) {
+		return fmt.Errorf("%s is a symlink: the ruleset was sent but not recorded", RecordName)
+	}
 	rec, _, err := state.LoadRepo(path)
 	if err != nil {
 		return err
