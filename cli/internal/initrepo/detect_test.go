@@ -139,6 +139,37 @@ func TestDetectVersions(t *testing.T) {
 	}
 }
 
+// requirements.txt feeds the docs (as docs.sh lists it) but does not make a python project.
+func TestDetectRequirements(t *testing.T) {
+	dir := tree(t, map[string]string{
+		"requirements.txt": "# pinned\nhttpx==0.28.1  # client\nRich>=14.0,<15\npydantic[email]~=2.12 ; python_version >= \"3.10\"\n" +
+			"-r dev.txt\n-e .\n--index-url https://pypi.org/simple\nfoo @ https://example.com/foo.whl\nhttps://example.com/bar.tar.gz\n./vendored\n\nplain\nsqlalchemy==2.0.44\n",
+		"services/api/requirements.txt": "anthropic==0.70.0\n",
+	})
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Types != nil {
+		t.Errorf("types %v", p.Types)
+	}
+	want := []Dep{
+		{Name: "httpx", Version: "0.28.1", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "plain", Version: "", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "pydantic", Version: "2.12", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "rich", Version: "14.0", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "sqlalchemy", Version: "2.0.44", Ecosystem: "pypi", Manifest: "requirements.txt"},
+		{Name: "anthropic", Version: "0.70.0", Ecosystem: "pypi", Manifest: "services/api/requirements.txt"},
+	}
+	if !slices.Equal(p.Deps, want) {
+		t.Errorf("deps\n got %v\nwant %v", p.Deps, want)
+	}
+	h, _ := ManifestHashes(dir)
+	if keys := slices.Sorted(maps.Keys(p.Manifests)); !slices.Equal(keys, []string{"requirements.txt", "services/api/requirements.txt"}) || !maps.Equal(h, p.Manifests) {
+		t.Errorf("read %v, on disk %v", p.Manifests, h)
+	}
+}
+
 // The docs record compares these: what Detect read, and what is on disk now.
 func TestManifestHashes(t *testing.T) {
 	dir := tree(t, map[string]string{"package.json": pkg, "package-lock.json": `{"packages": {}}`,
@@ -190,5 +221,56 @@ func TestDetectRepoFacts(t *testing.T) {
 	}
 	if p, _ := Detect(tree(t, map[string]string{"package.json": "{}", "biome.jsonc": "{}", "eslint.config.mjs": ""})); p.Lint != "biome" || p.DefaultBranch != "main" || p.Lockfile {
 		t.Errorf("biome wins, main by default, no lockfile: %+v", p)
+	}
+}
+
+// A submodule and a linked worktree have a .git file: the remote and default branch come from the
+// git directory it names (and that directory's commondir), not from the superproject or nothing.
+func TestDetectGitFile(t *testing.T) {
+	remote := func(r string) string { return "[remote \"origin\"]\n\turl = git@github.com:o/" + r + ".git\n" }
+	super := tree(t, map[string]string{
+		".git/config":                               remote("super"),
+		".git/refs/remotes/origin/HEAD":             "ref: refs/remotes/origin/main\n",
+		".git/modules/sub/config":                   remote("sub"),
+		".git/modules/sub/refs/remotes/origin/HEAD": "ref: refs/remotes/origin/dev\n",
+		"sub/.git":   "gitdir: ../.git/modules/sub\n",
+		"sub/go.mod": "module sub\n",
+	})
+	if p, err := Detect(filepath.Join(super, "sub")); err != nil || p.GitHub.Repo != "sub" || p.DefaultBranch != "dev" {
+		t.Errorf("submodule: %+v %q %v", p.GitHub, p.DefaultBranch, err)
+	}
+	main := tree(t, map[string]string{
+		".git/config":                   remote("main"),
+		".git/refs/remotes/origin/HEAD": "ref: refs/remotes/origin/trunk\n",
+		".git/worktrees/wt/commondir":   "../..\n",
+		".git/worktrees/wt/HEAD":        "ref: refs/heads/feature\n",
+	})
+	wt := tree(t, map[string]string{".git": "gitdir: " + filepath.Join(main, ".git", "worktrees", "wt") + "\n", "go.mod": "module wt\n"})
+	if p, err := Detect(wt); err != nil || p.GitHub.Repo != "main" || p.DefaultBranch != "trunk" {
+		t.Errorf("linked worktree: %+v %q %v", p.GitHub, p.DefaultBranch, err)
+	}
+}
+
+// One unreadable directory (a database bind mount owned by another user) is skipped, not fatal.
+func TestDetectUnreadableDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 0000 directory")
+	}
+	dir := tree(t, map[string]string{"package.json": pkg, "pgdata/go.mod": "module hidden\n", "apps/api/go.mod": "module api\n"})
+	locked := filepath.Join(dir, "pgdata")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+	if !slices.Equal(p.Types, []string{"node"}) {
+		t.Errorf("types %v", p.Types)
+	}
+	h, err := ManifestHashes(dir)
+	if err != nil || !maps.Equal(h, p.Manifests) || len(h) != 2 {
+		t.Errorf("ManifestHashes %v %v; Detect read %v", h, err, p.Manifests)
 	}
 }

@@ -41,15 +41,20 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, format+"\n", a...)
 		}
 	}
+	if p.Bool["offline"] {
+		say("--offline: no docs sync")
+		return 0
+	}
 	roots, err := paths.Current()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return 1
 	}
 	if !p.Bool["dry-run"] {
-		lock, err := fsx.Acquire(filepath.Join(roots.Stack, "lock"), time.Now())
+		// Its own lock, not the stack run lock: a sync takes minutes and must not block setup or update.
+		lock, err := fsx.Acquire(filepath.Join(roots.Stack, "docs", "lock"), time.Now())
 		if err != nil {
-			say("a docs sync or another makeit run is in progress: %v", err)
+			say("another docs sync is in progress: %v", err)
 			return 0
 		}
 		defer lock.Release()
@@ -78,6 +83,9 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	rep := docs.Sync(ctx, libs, o)
 	for _, l := range rep.Lines() {
 		say("%s", l)
+	}
+	if rep.Failed() {
+		return 0
 	}
 	// The record holds what Detect read before the sync, so an edit made meanwhile syncs next time.
 	if err := docs.SaveRecord(roots.Stack, dir, docs.Record{Dir: dir, Manifests: proj.Manifests, SyncedAt: time.Now().UTC()}); err != nil {

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"makeit/internal/execx"
@@ -25,12 +27,21 @@ type Options struct {
 type Skip struct {
 	Lib    Lib
 	Reason string
+	// retry is false when the library has no docs URL to find (ErrUnresolvable): trying again
+	// cannot help.
+	retry bool
 }
 
 // Report is what one sync did.
 type Report struct {
 	Scraped, Refreshed, Current []Lib
 	Skipped                     []Skip
+}
+
+// Failed is true when a library was left out for a reason other than ErrUnresolvable (the list
+// failed, a scrape failed or timed out): the sync should run again, so its record is not saved.
+func (r Report) Failed() bool {
+	return slices.ContainsFunc(r.Skipped, func(s Skip) bool { return s.retry })
 }
 
 // stale is the age after which an indexed version is refreshed (ZERO-CONFIG.md section 2).
@@ -53,11 +64,16 @@ func Sync(ctx context.Context, libs []Lib, o Options) Report {
 	indexed, err := o.list(ctx)
 	if err != nil {
 		for _, l := range libs {
-			rep.Skipped = append(rep.Skipped, Skip{l, "could not list the docs index: " + err.Error()})
+			rep.Skipped = append(rep.Skipped, Skip{l, "could not list the docs index: " + err.Error(), true})
 		}
 		return rep
 	}
 	for _, l := range libs {
+		if strings.HasPrefix(l.Name, "-") || strings.HasPrefix(l.Version, "-") {
+			// It would reach docs-mcp-server's argv as an option.
+			rep.Skipped = append(rep.Skipped, Skip{l, "a name or version starting with - is refused", false})
+			continue
+		}
 		at, ok := indexed[l.Name+"@"+l.Version]
 		switch {
 		case ok && o.Now().Sub(at) <= stale:
@@ -66,7 +82,7 @@ func Sync(ctx context.Context, libs []Lib, o Options) Report {
 			if err := o.timed(ctx, func(ctx context.Context) error {
 				return o.server(ctx, "refresh", l.Name, "--version", l.Version)
 			}); err != nil {
-				rep.Skipped = append(rep.Skipped, Skip{l, o.reason(err)})
+				rep.Skipped = append(rep.Skipped, Skip{l, o.reason(err), !errors.Is(err, ErrUnresolvable)})
 			} else {
 				rep.Refreshed = append(rep.Refreshed, l)
 			}
@@ -79,7 +95,7 @@ func Sync(ctx context.Context, libs []Lib, o Options) Report {
 				args := append([]string{"scrape", l.Name, t.URL, "--version", l.Version}, t.Args...)
 				return o.server(ctx, args...)
 			}); err != nil {
-				rep.Skipped = append(rep.Skipped, Skip{l, o.reason(err)})
+				rep.Skipped = append(rep.Skipped, Skip{l, o.reason(err), !errors.Is(err, ErrUnresolvable)})
 			} else {
 				rep.Scraped = append(rep.Scraped, l)
 			}

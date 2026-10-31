@@ -92,8 +92,8 @@ func FileSha256(path string) (string, error) {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// Lock is held for the length of one modifying run.
-type Lock struct{ path string }
+// Lock is held for the length of one modifying run. line is the "pid ts" line it wrote.
+type Lock struct{ path, line string }
 
 // StaleAfter is how old a lock may be before it is taken over: no run takes this long.
 const StaleAfter = time.Hour
@@ -106,13 +106,14 @@ func Acquire(path string, now time.Time) (*Lock, error) {
 	for range 2 {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
-			_, werr := fmt.Fprintf(f, "%d %d\n", os.Getpid(), now.Unix())
+			line := fmt.Sprintf("%d %d\n", os.Getpid(), now.Unix())
+			_, werr := f.WriteString(line)
 			cerr := f.Close()
 			if werr != nil || cerr != nil {
 				_ = os.Remove(path)
 				return nil, errors.Join(werr, cerr)
 			}
-			return &Lock{path: path}, nil
+			return &Lock{path: path, line: line}, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, err
@@ -134,9 +135,13 @@ func Acquire(path string, now time.Time) (*Lock, error) {
 	return nil, fmt.Errorf("could not take the lock %s", path)
 }
 
-// Release removes the lock file.
+// Release removes the lock file while it still holds this lock's line: a run whose lock was
+// taken over after StaleAfter leaves the new owner's lock alone.
 func (l *Lock) Release() {
-	if l != nil {
+	if l == nil {
+		return
+	}
+	if b, err := os.ReadFile(l.path); err == nil && string(b) == l.line {
 		_ = os.Remove(l.path)
 	}
 }

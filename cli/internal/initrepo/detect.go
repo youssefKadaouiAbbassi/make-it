@@ -97,7 +97,7 @@ func siblingLock(m string) string {
 var pruned = map[string]bool{"node_modules": true, "vendor": true, ".git": true, "target": true, ".venv": true}
 
 // manifestNames are the files Detect reads dependencies from.
-var manifestNames = map[string]bool{"go.mod": true, "package.json": true, "pyproject.toml": true, "Cargo.toml": true}
+var manifestNames = map[string]bool{"go.mod": true, "package.json": true, "pyproject.toml": true, "Cargo.toml": true, "requirements.txt": true}
 
 var (
 	webDeps    = []string{"react", "vue", "svelte", "solid-js", "next", "nuxt", "@sveltejs/kit", "astro", "vite"}
@@ -134,7 +134,8 @@ func Detect(dir string) (Project, error) {
 	})
 	rootDeps := map[string]bool{}
 	for _, d := range p.Deps {
-		if !strings.Contains(d.Manifest, "/") {
+		// requirements.txt feeds the docs only; the types stay those of the other manifests.
+		if !strings.Contains(d.Manifest, "/") && d.Manifest != "requirements.txt" {
 			rootDeps[d.Name] = true
 		}
 	}
@@ -239,15 +240,36 @@ func anyFile(dir string, names []string) bool {
 	return slices.ContainsFunc(names, func(n string) bool { _, err := os.Stat(filepath.Join(dir, n)); return err == nil })
 }
 
-// findGitDir is the .git directory of dir or of the nearest parent that has one, or "".
+// findGitDir is the git directory holding config and refs for dir or the nearest parent with a
+// .git, or "". A .git file (a submodule, a linked worktree) names the git directory in its
+// "gitdir:" line, relative to the file's directory; a "commondir" there names the directory with
+// the shared config and refs, relative to the git directory, as git reads them.
 func findGitDir(dir string) string {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return ""
 	}
 	for d := abs; ; d = filepath.Dir(d) {
-		if st, err := os.Stat(filepath.Join(d, ".git")); err == nil && st.IsDir() {
-			return filepath.Join(d, ".git")
+		dotGit := filepath.Join(d, ".git")
+		if st, err := os.Stat(dotGit); err == nil && st.IsDir() {
+			return dotGit
+		} else if err == nil {
+			b, err := os.ReadFile(dotGit)
+			gd, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:")
+			if err != nil || !ok {
+				return ""
+			}
+			if gd = strings.TrimSpace(gd); !filepath.IsAbs(gd) {
+				gd = filepath.Join(d, gd)
+			}
+			if c, err := os.ReadFile(filepath.Join(gd, "commondir")); err == nil {
+				if cd := strings.TrimSpace(string(c)); filepath.IsAbs(cd) {
+					gd = cd
+				} else {
+					gd = filepath.Join(gd, cd)
+				}
+			}
+			return gd
 		}
 		if filepath.Dir(d) == d {
 			return ""
@@ -267,12 +289,16 @@ func defaultBranch(gitDir string) string {
 	return "main"
 }
 
-// findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories.
+// findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories
+// and any directory below dir it cannot read (a database bind mount owned by another user).
 func findManifests(dir string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			if path == dir || d == nil || !d.IsDir() {
+				return err
+			}
+			return filepath.SkipDir
 		}
 		rel, _ := filepath.Rel(dir, path)
 		rel = filepath.ToSlash(rel)
@@ -311,6 +337,8 @@ func readDeps(dir, manifest string, read map[string]string) ([]Dep, error) {
 		return npmDeps(b, lock, base, manifest), nil
 	case "pyproject.toml":
 		return withLock(pyDeps(b), lock, "pypi", manifest), nil
+	case "requirements.txt":
+		return withLock(reqDeps(b), nil, "pypi", manifest), nil
 	default:
 		return withLock(cargoDeps(b), lock, "cargo", manifest), nil
 	}
@@ -377,6 +405,7 @@ func npmDeps(b, lockJSON []byte, base, manifest string) []Dep {
 
 var (
 	pyReq    = regexp.MustCompile(`^\s*"([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*([^";]*)`)
+	reqLine  = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]*\])?\s*((?:[=<>~!].*)?)$`)
 	tomlKV   = regexp.MustCompile(`^\s*([A-Za-z0-9_-]+)\s*=\s*(.*)$`)
 	tomlVer  = regexp.MustCompile(`version\s*=\s*"([^"]*)"`)
 	quoted   = regexp.MustCompile(`^"([^"]*)"`)
@@ -411,6 +440,25 @@ func pyDeps(b []byte) map[string]string {
 		}
 		if strings.Contains(t, "]") && !strings.Contains(t, "[") {
 			inDeps = false
+		}
+	}
+	return out
+}
+
+// reqDeps reads requirement lines: "name==1.2.3" exact, other specifiers stripped. Comments,
+// environment markers, options (-r, -e, --index-url), URLs, direct references and paths are
+// skipped.
+func reqDeps(b []byte) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		t, _, _ := strings.Cut(line, "#")
+		t, _, _ = strings.Cut(t, ";")
+		t = strings.TrimSpace(t)
+		if t == "" || strings.HasPrefix(t, "-") || strings.Contains(t, "://") || strings.Contains(t, "@") {
+			continue
+		}
+		if m := reqLine.FindStringSubmatch(t); m != nil {
+			out[strings.ToLower(m[1])] = stripRange(m[2])
 		}
 	}
 	return out

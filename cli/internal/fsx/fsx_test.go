@@ -72,6 +72,10 @@ func TestLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stale lock not taken over: %v", err)
 	}
+	l.Release() // taken over: the new owner's lock stays
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("a released old lock removed the new owner's: %v", err)
+	}
 	stale.Release()
 	l.Release() // already gone: must not fail
 	if _, err := os.Stat(p); !os.IsNotExist(err) {
