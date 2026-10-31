@@ -46,7 +46,7 @@ func (e *env) settingsStep() plan.Step {
 				return "merge base recorded; nothing to change", nil
 			}
 			if e.claude == nil {
-				return "", errors.New("Claude Code is needed to validate settings.json and is not usable")
+				return "", errors.New("settings.json cannot be validated: Claude Code is not usable")
 			}
 			data, err := jsonx.Marshal(res.Settings)
 			if err != nil {
@@ -109,7 +109,7 @@ func (e *env) validate(ctx context.Context, data []byte, what string) error {
 		for _, p := range problems {
 			lines = append(lines, p.String())
 		}
-		return fmt.Errorf("Claude Code rejects %s: %s", what, strings.Join(lines, "; "))
+		return fmt.Errorf("%s: rejected by Claude Code: %s", what, strings.Join(lines, "; "))
 	}
 	return nil
 }

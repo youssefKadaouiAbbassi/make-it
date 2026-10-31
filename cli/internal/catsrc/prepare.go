@@ -13,7 +13,7 @@ import (
 
 var (
 	// ErrAdopted is --catalog on a machine where the user added the makeit marketplace.
-	ErrAdopted = errors.New("the makeit marketplace on this machine is yours: makeit does not change its source. Your marketplace and your plugins stay as they are; nothing was changed.")
+	ErrAdopted = errors.New("the makeit marketplace on this machine is yours: makeit does not change its source. Your marketplace and your plugins stay as they are; nothing was changed")
 	// ErrFresh is a git catalog on a machine that has neither git nor CA certificates yet.
 	ErrFresh = errors.New("this catalog needs git and CA certificates first")
 )
