@@ -33,7 +33,8 @@ const mergeBase = git(['merge-base', base, 'HEAD'])?.trim();
 if (!mergeBase) bail('no merge base against ' + base);
 
 // Unified diff plus untracked files (git diff alone cannot see new files).
-const tracked = git(['diff', '--unified=0', mergeBase, '--']);
+// --no-renames: a pure rename has no +/- lines, so a watched file moved away would pass unseen.
+const tracked = git(['diff', '--no-renames', '--unified=0', mergeBase, '--']);
 if (tracked === null) bail('could not diff against ' + mergeBase);
 const untrackedFiles = git(['ls-files', '--others', '--exclude-standard']);
 if (untrackedFiles === null) bail('could not list untracked files');

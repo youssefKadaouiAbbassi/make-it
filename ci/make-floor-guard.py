@@ -35,6 +35,11 @@ rep(
     "const watch = new RegExp(argAfter('--watch') ?? DEFAULT_WATCH);",
 )
 rep(
+    "const tracked = git(['diff', '--unified=0', mergeBase, '--']);",
+    "// --no-renames: a pure rename has no +/- lines, so a watched file moved away would pass unseen.\n"
+    "const tracked = git(['diff', '--no-renames', '--unified=0', mergeBase, '--']);",
+)
+rep(
     "const SUPPRESSIONS = /@ts-ignore|@ts-nocheck|eslint-disable|biome-ignore|# *noqa|# *type: *ignore|istanbul ignore|nosemgrep|gitleaks:allow|Stryker disable/;",
     "const SUPPRESSIONS = /@ts-ignore|@ts-nocheck|eslint-disable|biome-ignore|# *noqa|# *type: *ignore|istanbul ignore|nosemgrep|gitleaks:allow|betterleaks:allow|Stryker disable/;",
 )

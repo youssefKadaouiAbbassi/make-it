@@ -37,6 +37,7 @@ run_case new-suppression-betterleaks 1 "printf 'const k = \"x\"; // betterleaks:
 run_case delete-test 1 "git rm -q src.test.ts"
 run_case watched-tsconfig 1 "sed -i 's/\"strict\": true/\"strict\": false/' tsconfig.json"
 run_case watched-workflow 1 "printf '      - run: echo more\n' >>.github/workflows/ci.yml"
+run_case watched-workflow-renamed-away 1 "git mv .github/workflows/ci.yml ci.yml.off" "" "" "[watched-file-changed] .github/workflows/ci.yml"
 run_case watched-package-scripts 1 "sed -i 's/tsc \&\& vitest run/vitest run/' package.json"
 run_case package-dependency-bump-quiet 0 "sed -i 's/1.0.0/1.0.1/' package.json"
 run_case watched-new-config 1 "printf '[lint]\nselect = []\n' >ruff.toml"
