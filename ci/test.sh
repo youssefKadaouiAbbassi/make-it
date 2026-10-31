@@ -49,6 +49,35 @@ if grep -q -- '--prerelease' "$rel" || ! grep -q -- 'gh release create "$TAG" --
   echo "FAIL release.yml must draft a normal release for an existing tag (--draft --verify-tag, no --prerelease)"; fail=1
 else echo "ok release.yml drafts a normal release for the pushed tag"; fi
 
+# Public docs: relative links resolve, none points at the local-only INSTALL.md or cli/ design notes,
+# and no emoji.
+echo "== public docs"
+if python3 -I - .. <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1]).resolve()
+files = [root / f for f in ("README.md", "SECURITY.md", "CHANGELOG.md", "CONTRIBUTING.md") if (root / f).exists()]
+files += sorted((root / "docs").glob("*.md")) + sorted((root / ".github/ISSUE_TEMPLATE").glob("*.md"))
+emoji = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
+bad = []
+for f in files:
+    text = f.read_text(encoding="utf-8")
+    for target in re.findall(r'\]\(([^)\s]+)\)|src="([^"]+)"', text):
+        t = (target[0] or target[1]).split("#")[0]
+        if not t or re.match(r"[a-z]+:", t):
+            continue
+        dest = (f.parent / t).resolve()
+        rel = dest.relative_to(root).as_posix() if dest.is_relative_to(root) else str(dest)
+        if not dest.exists():
+            bad.append(f"{f.relative_to(root)}: broken link {t}")
+        elif rel == "INSTALL.md" or rel.startswith("cli/"):
+            bad.append(f"{f.relative_to(root)}: links {rel}, which is not public")
+    if emoji.search(text):
+        bad.append(f"{f.relative_to(root)}: emoji")
+print("\n".join(bad))
+sys.exit(1 if bad else 0)
+PY
+then echo "ok public docs: links resolve, none to INSTALL.md or cli/, no emoji"; else echo "FAIL public docs"; fail=1; fi
+
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
   zizmor --no-progress --min-severity low --persona auditor .github/workflows ../.github/workflows || fail=1

@@ -1,0 +1,151 @@
+# What makeit installs
+
+`makeit setup` puts five things on a machine: prerequisites, Claude Code, the plugin set, settings
+and global files. This page lists each part and why it is there. `makeit setup --dry-run` shows
+exactly what it would change on your machine.
+
+Anything already installed is kept as yours. setup adds only what is missing, and
+`makeit uninstall` never removes what was there before.
+
+## Prerequisites
+
+setup installs the required rows with your package manager (apt, dnf, apk or pacman on Linux,
+Homebrew on macOS, winget on Windows). The plan shows each install command, `sudo` included,
+before anything runs. It does not install the
+optional rows: a missing optional tool is a warning, and setup ends by listing the skipped ones
+with the command to install each by hand. `makeit doctor` shows the same.
+
+| tool | required | what it is for |
+|---|---|---|
+| CA certificates | yes (Linux only) | TLS for makeit, git and Claude Code's plugin installs |
+| git | yes | every repository, the HANDOFF hook, the commit hooks |
+| Node.js | yes | the two MCP servers start with `npx` (chrome-devtools-mcp, docs-mcp-server) |
+| jq | yes | the hooks read Claude Code's JSON with it |
+| gh | no | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
+| Chrome or Chromium | no | chrome-devtools-mcp drives an installed browser |
+| prek | no | runs the commit hooks in `.pre-commit-config.yaml` |
+| deja | no | the local search binary of the deja-vu plugin |
+| grype | no | the vulnerability scan, run locally (the CI checks run it too) |
+| typescript-language-server | no | the typescript-lsp plugin runs it for `.ts` and `.js` files |
+| pyright | no | the pyright-lsp plugin runs it for `.py` files |
+| rust-analyzer | no, checked only when `cargo` or `rustup` is on `PATH` | the rust-analyzer-lsp plugin runs it for `.rs` files |
+| gopls | no, checked only when `go` is on `PATH` | the gopls-lsp plugin runs it for `.go` files |
+
+## Claude Code
+
+setup installs Claude Code when it is missing or older than 2.1.287. `makeit doctor` warns when it
+is older than 2.1.310, the version this release was tested with.
+
+The route depends on the machine: Homebrew on macOS, winget on Windows, and on Linux Homebrew when
+present, otherwise Anthropic's signed apt, dnf or apk repository. setup checks the repository key's
+fingerprint before it adds it. When none of these works, it falls back to Anthropic's native
+installer. An existing Claude Code is kept, however it was installed.
+
+## The plugin set
+
+makeit carries a plugin set: a Claude Code plugin marketplace named `makeit` that lists each plugin
+at a pinned commit. setup copies it to `~/.makeit/catalog`, adds it as a marketplace, adds
+Anthropic's `claude-plugins-official` marketplace, and installs the `makeit-bundle` plugin. The
+bundle has no content of its own: installing it installs these plugins.
+
+| plugin | version | what it does |
+|---|---|---|
+| makeit | 0.1.0 | makeit's own plugin: the MCP servers, hooks and skills below |
+| superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review |
+| ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` |
+| chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) |
+| docs-mcp-server | 3.4.1 | the docs-search and docs-manage skills (the server itself runs from the makeit plugin) |
+| deja-vu | 0.23.1 | searches your past coding sessions on this machine; needs the `deja` binary |
+| security-audit | commit `c1c8a8c` | a full security audit of a codebase on request, beside Claude Code's `/security-review` |
+| typescript-lsp | from claude-plugins-official | TypeScript and JavaScript language server |
+| pyright-lsp | from claude-plugins-official | Python language server |
+| rust-analyzer-lsp | from claude-plugins-official | Rust language server |
+| gopls-lsp | from claude-plugins-official | Go language server |
+
+The four language server plugins come from `claude-plugins-official` and update with it. Each
+language server plugin needs its server program on `PATH` (the optional prerequisite rows above).
+
+One more bundle is enabled per project, not per machine:
+
+| plugin | version | what it does |
+|---|---|---|
+| makeit-ui | 0.1.0 | a bundle for projects with a web frontend: it installs impeccable |
+| impeccable | 4.8.0 | design skills for user interfaces |
+
+`makeit init` enables `makeit-ui` in a project's `.claude/settings.json` when it finds a web
+frontend. See [Projects](projects.md).
+
+### The makeit plugin
+
+MCP servers, each with its telemetry off:
+
+- `chrome-devtools`: chrome-devtools-mcp 1.12.0, with usage statistics and the CrUX lookup off.
+- `docs`: docs-mcp-server 3.4.1, read-only. It serves the docs index that `makeit init` and
+  `makeit docs sync` build from a project's dependencies, so Claude can search the docs of the
+  versions the project uses.
+
+Hooks:
+
+- HANDOFF: at session start, Claude reads the project's `HANDOFF.md`. Before the context is
+  compacted, it is told to rewrite it. When a turn ends after files changed and `HANDOFF.md` is
+  older than them, the turn is stopped once so Claude updates it.
+- Docs: at session start and after each shell command or file edit, it re-runs
+  `makeit docs sync` in the background when a dependency manifest or lockfile changed. At session start it also lists the project's direct
+  dependencies and tells Claude to search their docs.
+- Skills reminder: a one-line reminder next to each prompt to check the available skills.
+- Options: when a turn ends on a question in plain text, the turn is stopped once. A decision the
+  work waits on goes to Claude Code's question dialog; suggestions after finished work go to a
+  numbered list.
+- ntfy: posts a short line to an [ntfy](https://ntfy.sh) topic when Claude finishes or needs you.
+  It does nothing until you set `NTFY_TOPIC` (and optionally `NTFY_URL` and `NTFY_TOKEN`) in the
+  `env` block of your settings or in your shell. It sends only the repository name and the event.
+
+The hooks need `jq` and do nothing without it.
+
+Four more hooks ship in the plugin but are not turned on: `variant-ask.sh`, `order-note.sh` with
+`order-ask.sh`, and `check-task-stop.sh`, under `hooks/optional/`. Each file's header has the
+settings block to turn it on by hand.
+
+Skills:
+
+- `/makeit:init`: sets up a project. Only you can start it. See [Projects](projects.md).
+- `expand-contract`: Claude uses it before a database schema change that live code reads (rename,
+  drop, retype, split): additive changes first, destructive ones last and alone, backfills in
+  batches.
+
+## Settings
+
+setup merges these values into `~/.claude/settings.json`. A value you already have is kept, even
+when it differs; setup adds only the missing ones. `--dry-run` prints each path with its value.
+
+| setting | value | why |
+|---|---|---|
+| `permissions.defaultMode` | `bypassPermissions` | Claude runs tools without asking, except for the commands below |
+| `skipDangerousModePermissionPrompt` | `true` | skips Claude Code's one-time confirmation for that mode |
+| `permissions.ask` | a list of commands | these always ask first: merging pull requests, `DELETE` calls through `gh api`, pushing to `main` or `master`, force pushes, `git reset --hard`, publishing packages and releases (npm, cargo, uv, twine, gh, eas), `gh pr comment`, `rm -rf` on home, root or parent paths, and the DBHub write tools |
+| `model` | `claude-opus-5-5` | the default model |
+| `advisorModel` | `claude-fable-5-1` | the advisor model |
+| `cleanupPeriodDays` | `3650` | keeps session transcripts for ten years instead of deleting them |
+| `env.PONYTAIL_DEFAULT_MODE` | `full` | ponytail's level |
+| `env.CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`, `env.DOCS_MCP_TELEMETRY`, `env.REDOCLY_TELEMETRY`, `env.FASTLANE_OPT_OUT_USAGE`, `env.MAESTRO_CLI_NO_ANALYTICS` | off | telemetry off for tools the plugins and the CI checks run |
+| `extraKnownMarketplaces.claude-plugins-official` | GitHub `anthropics/claude-plugins-official`, `autoUpdate: true` | the marketplace of the four language server plugins |
+
+Read the ask list before you run setup: with `bypassPermissions`, everything not on it runs without
+a prompt.
+
+## Global files
+
+setup writes these to `~/.claude/` when they do not exist. An existing file is yours and is kept.
+
+- `CLAUDE.md`: global instructions for every session: do what was asked at the scope asked,
+  verify before saying "done", test edges and errors, keep commits small, write `HANDOFF.md`,
+  and how to end a reply.
+- `rules/github-actions.md`, `rules/go.md`, `rules/python.md`, `rules/rust.md`, `rules/shell.md`,
+  `rules/typescript.md`: the tools and conventions per language. Each one loads only when Claude
+  touches a matching file.
+
+## Where makeit keeps its own files
+
+makeit keeps its copy of the plugin set, its record of what it installed and the backups of every
+file it changed in `~/.makeit` (set `MAKEIT_DIR` to move it). Each run that changes something keeps
+a copy of each file before the change; the last five runs are kept.
