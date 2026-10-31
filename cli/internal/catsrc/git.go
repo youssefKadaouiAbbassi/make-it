@@ -25,7 +25,11 @@ const gitTimeout = 5 * time.Minute
 
 // repoEnv are inherited variables that would point git at another repository (a makeit run from a
 // git hook inherits GIT_DIR): the catalog's git never reads them.
-var repoEnv = []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}
+// The list is git's repository-local variables (git rev-parse --local-env-vars) but the -c ones,
+// which carry the user's own settings.
+var repoEnv = []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+	"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE",
+	"GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_CONFIG", "GIT_QUARANTINE_PATH"}
 
 func (g Git) git(ctx context.Context, dir string, args ...string) (execx.Result, error) {
 	argv := append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "submodule.recurse=false"}, args...)
