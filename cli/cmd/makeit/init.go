@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"makeit/internal/buildinfo"
@@ -99,8 +100,19 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	for _, n := range rep.Notices {
 		fmt.Fprintln(stderr, n)
 	}
-	for _, m := range rep.Manual {
-		fmt.Fprintf(stderr, "for /makeit:init to apply: %s\n", m)
+	// The record keeps the manual steps' hash, so new ones make the run change something: a re-run
+	// with nothing to do points at them instead of printing them again.
+	changed := slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.Status == plan.Done })
+	switch {
+	case len(rep.Manual) == 0:
+	case p.Bool["dry-run"] || changed:
+		for _, m := range rep.Manual {
+			fmt.Fprintf(stderr, "for /makeit:init to apply: %s\n", m)
+		}
+	case len(rep.Manual) == 1:
+		fmt.Fprintln(stderr, "1 manual step still open: makeit init --dry-run shows it")
+	default:
+		fmt.Fprintf(stderr, "%d manual steps still open: makeit init --dry-run shows them\n", len(rep.Manual))
 	}
 	return code
 }
