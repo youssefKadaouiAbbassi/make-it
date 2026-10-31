@@ -307,8 +307,8 @@ func TestSeedsCheckAPI(t *testing.T) {
 	body := string(merged(t, dir, merges, "package.json").Body)
 	for _, w := range []string{
 		`REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_NOTIFICATIONS=true npx --yes @redocly/cli@2.72.1 lint openapi.yaml`,
-		`tufin/oasdiff:v1.35.0@sha256:82b1840a77335562bb11ce95f77ad31745a0c6f3a770929333ed1c5ef466e400 breaking --fail-on ERR origin/trunk:openapi.yaml openapi.yaml`,
-		`git cat-file -e origin/trunk:openapi.yaml`,
+		`tufin/oasdiff:v1.35.0@sha256:82b1840a77335562bb11ce95f77ad31745a0c6f3a770929333ed1c5ef466e400 breaking --fail-on ERR origin/trunk:./openapi.yaml openapi.yaml`,
+		`git cat-file -e origin/trunk:./openapi.yaml`,
 	} {
 		if !strings.Contains(strings.ReplaceAll(body, `\"`, `"`), w) {
 			t.Errorf("check:api lacks %q\n%s", w, body)
@@ -320,6 +320,29 @@ func TestSeedsCheckAPI(t *testing.T) {
 	_, _, rep = seedsFor(t, tree(t, map[string]string{"go.mod": "module x\n", "openapi.yaml": ""}), "")
 	if !manualHas(rep, "check\\:api:") || !manualHas(rep, "go run github.com/oasdiff/oasdiff@v1.35.0 breaking --fail-on ERR") {
 		t.Errorf("Go check:api lines: %q", rep.Manual)
+	}
+}
+
+// In a monorepo subfolder GitHub and Renovate would never read a caller or a renovate.json: none
+// is seeded, and a notice says they belong at the repository root.
+func TestSeedsSubfolder(t *testing.T) {
+	for _, git := range map[string]string{"dir": ".git/", "file (worktree)": ".git"} {
+		top := tree(t, map[string]string{git: "", "pkg/a/package.json": `{"dependencies": {"react": "19.2.0"}}`, "pkg/a/package-lock.json": "{}"})
+		seeds, merges, rep := seedsFor(t, filepath.Join(top, "pkg", "a"), gateRef)
+		for _, p := range []string{".github/workflows/gate.yml", "ci/floor-guard.mjs", "ci/budget.json"} {
+			if seedBody(t, seeds, p) != "" {
+				t.Errorf("%s: %s seeded in a subfolder", git, p)
+			}
+		}
+		if hasMerge(merges, "renovate.json") {
+			t.Errorf("%s: renovate.json merged in a subfolder", git)
+		}
+		if !slices.ContainsFunc(rep.Notices, func(n string) bool { return strings.Contains(n, "belong at the repository root") }) {
+			t.Errorf("%s: notices %q", git, rep.Notices)
+		}
+	}
+	if _, merges, _ := seedsFor(t, tree(t, map[string]string{".git": "", "go.mod": "module x\n"}), gateRef); !hasMerge(merges, "renovate.json") {
+		t.Error("a .git file at the init dir is the top level: no renovate.json")
 	}
 }
 

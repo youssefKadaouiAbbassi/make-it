@@ -165,7 +165,8 @@ func (s *seeder) checks() {
 // default branch's copy of the spec. A spec the default branch does not have yet passes, and a
 // missing Docker fails with one line naming it.
 func checkAPI(spec, branch string) string {
-	base := shq("origin/" + branch + ":" + spec)
+	// git resolves "./" against the current directory, so a spec in a monorepo subfolder is found.
+	base := shq("origin/" + branch + ":./" + spec)
 	return "REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_NOTIFICATIONS=true npx --yes " + redoclyPin + " lint " + shq(spec) +
 		" && if ! docker info >/dev/null 2>&1; then echo \"check:api needs Docker for oasdiff\" >&2; exit 1; " +
 		"elif git cat-file -e " + base + " 2>/dev/null; then G=$(git rev-parse --path-format=absolute --git-common-dir) && " +
@@ -178,7 +179,7 @@ func checkAPI(spec, branch string) string {
 // Docker; Redocly runs in Docker, so no Node is needed.
 func makeAPI(p Project, spec, branch string) string {
 	lint := "docker run --rm -e REDOCLY_TELEMETRY=off -v \"$$PWD\":/spec " + redoclyImage + " lint " + shq(spec)
-	base := shq("origin/" + branch + ":" + spec)
+	base := shq("origin/" + branch + ":./" + spec)
 	if slices.Contains(p.Types, "go") {
 		return lint + " && go run " + oasdiffModule + " breaking --fail-on ERR " + base + " " + shq(spec)
 	}
@@ -301,6 +302,12 @@ func (s *seeder) ci(gateRef string) error {
 	if !s.theirs(".grype.yaml") {
 		if err := s.copySeed(".grype.yaml", "ci/.grype.yaml", "ci"); err != nil {
 			return err
+		}
+	}
+	if abs, err := filepath.Abs(s.p.Dir); err == nil {
+		if top := gitTop(abs); top != "" && top != abs {
+			s.rep.Notices = append(s.rep.Notices, "this is a subfolder of the git repository at "+top+": the gate caller, the Renovate config and floor-guard belong at the repository root, where GitHub and Renovate read them, so makeit added none here")
+			return nil
 		}
 	}
 	if i := slices.IndexFunc(renovateConfigs, s.theirs); i >= 0 {

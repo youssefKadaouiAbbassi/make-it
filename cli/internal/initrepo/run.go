@@ -468,13 +468,8 @@ func needsGitInit(dir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for d := abs; ; d = filepath.Dir(d) {
-		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
-			return false, nil
-		}
-		if filepath.Dir(d) == d {
-			break
-		}
+	if gitTop(abs) != "" {
+		return false, nil
 	}
 	entries, err := os.ReadDir(abs)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -484,6 +479,19 @@ func needsGitInit(dir string) (bool, error) {
 		return false, ErrNotRepo
 	}
 	return true, nil
+}
+
+// gitTop is the nearest directory from abs upward holding a .git (a directory, or a file in a
+// worktree or submodule), or "". It reads the file system only, so a dry run runs no git.
+func gitTop(abs string) string {
+	for d := abs; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
 }
 
 // detectOrEmpty is Detect, with a directory that does not exist yet giving an empty project.
