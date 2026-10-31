@@ -118,6 +118,21 @@ func TestSyncListFails(t *testing.T) {
 	}
 }
 
+// A name or version starting with "-" would reach docs-mcp-server's argv as an option.
+func TestSyncRefusesDashArgs(t *testing.T) {
+	s := &server{listJSON: `[{"name": "-x", "versions": [{"version": "1.0.0", "indexedAt": "2026-01-01T00:00:00.000Z"}]}]`}
+	libs := []Lib{{"-x", "1.0.0", "cargo"}, {"--store-path=/", "1.0.0", "cargo"}, {"serde", "--help", "cargo"}, {"serde", "1.0.200", "cargo"}}
+	rep := Sync(context.Background(), libs, opts(s))
+	if !slices.Equal(rep.Scraped, libs[3:]) || len(rep.Skipped) != 3 || rep.Failed() {
+		t.Fatalf("report %+v", rep)
+	}
+	for _, c := range s.calls {
+		if slices.ContainsFunc(c[3:], func(a string) bool { return strings.HasPrefix(a, "-x") || a == "--help" || strings.HasPrefix(a, "--store-path") }) {
+			t.Errorf("dash argument reached the server: %v", c)
+		}
+	}
+}
+
 // A sync is retried unless every library it left out had no docs URL to find.
 func TestReportFailed(t *testing.T) {
 	for _, c := range []struct {

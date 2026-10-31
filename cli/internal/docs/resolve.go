@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -44,7 +45,10 @@ var (
 	// Markdown and MDX at the tag, without archived versions of the docs (a docs-v3 folder, Docusaurus
 	// versioned_docs): zod 4 keeps its docs in .mdx and its Zod 3 docs in packages/docs-v3.
 	mdArgs = []string{"--include-pattern", "**/*.md", "--include-pattern", "**/*.mdx", "--exclude-pattern", "**/docs-v[0-9]*/**", "--exclude-pattern", "**/versioned_docs/**"}
-	ghRepo = regexp.MustCompile(`github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/#?].*)?$`)
+	// dnsHost is a dotted DNS name whose last label starts with a letter: no IP literal in any form
+	// (127.0.0.1, 0x7f.1, 2130706433, [::1]) and no single-label intranet name.
+	dnsHost = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z](?:[a-z0-9-]*[a-z0-9])?$`)
+	ghRepo  = regexp.MustCompile(`github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/#?].*)?$`)
 )
 
 // Resolve finds l's docs URL without an agent and without guessing.
@@ -86,7 +90,7 @@ func (r Resolver) Resolve(ctx context.Context, l Lib) (Target, error) {
 			return t, err
 		}
 		for k, v := range meta.Info.ProjectURLs {
-			if strings.EqualFold(k, "documentation") && v != "" {
+			if strings.EqualFold(k, "documentation") && safeURL(v) {
 				t.URL = v
 				return t, nil
 			}
@@ -117,11 +121,23 @@ func (r Resolver) github(ctx context.Context, t Target, repo, homepage string) (
 			}
 		}
 	}
-	if homepage != "" {
+	if safeURL(homepage) {
 		t.URL = homepage
 		return t, nil
 	}
 	return t, fmt.Errorf("%s %s: %w", t.Lib.Ecosystem, t.Lib.Name, ErrUnresolvable)
+}
+
+// safeURL accepts a URL from a package's registry metadata only when docs-mcp-server may fetch
+// it: https, no user info, and a DNS host name that is not localhost. file://, http:// and IP
+// literals (loopback, private, link-local) would let a package point the scraper at local data.
+func safeURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Opaque != "" {
+		return false
+	}
+	h := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	return dnsHost.MatchString(h) && !strings.HasSuffix("."+h, ".localhost")
 }
 
 // get fetches one registry page as JSON. A missing page is ErrUnresolvable.

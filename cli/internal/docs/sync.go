@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"makeit/internal/execx"
@@ -68,6 +69,11 @@ func Sync(ctx context.Context, libs []Lib, o Options) Report {
 		return rep
 	}
 	for _, l := range libs {
+		if strings.HasPrefix(l.Name, "-") || strings.HasPrefix(l.Version, "-") {
+			// It would reach docs-mcp-server's argv as an option.
+			rep.Skipped = append(rep.Skipped, Skip{l, "a name or version starting with - is refused", false})
+			continue
+		}
 		at, ok := indexed[l.Name+"@"+l.Version]
 		switch {
 		case ok && o.Now().Sub(at) <= stale:
