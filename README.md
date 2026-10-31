@@ -87,8 +87,10 @@ $ makeit init --dry-run
   will: Write .pre-commit-config.yaml
   will: Write .env.example
   will: Write .grype.yaml
+  will: Write .github/workflows/gate.yml
+  will: Write ci/floor-guard.mjs
   will: Record what init wrote in .makeit.json
-10 would-change
+12 would-change
 ```
 
 See [Projects](docs/projects.md) for what each file is and how re-runs behave.

@@ -7,5 +7,5 @@
   "marketplace": "makeit",
   "bundle": "makeit-bundle@makeit",
   "projectBundle": "makeit-ui@makeit",
-  "ci": { "gateRef": "" }
+  "ci": { "gateRef": "youssefKadaouiAbbassi/make-it@a8e40fc6f111de10b3b36df44f70ce7b0dc09fbb # v0.1.0" }
 }
