@@ -39,17 +39,22 @@ echo "== no personal strings"
 leaks=$(git -C .. ls-files -z -- . ':!HANDOFF.md' ':!docs/superpowers' ':!cli/research' | (cd .. && xargs -0 grep -lE '/home/[i]zno|-home-[i]zno|claude\.ai/code/[s]ession|red[t]eam/' 2>/dev/null))
 if [ -z "$leaks" ]; then echo "ok no personal strings in public files"; else echo "FAIL personal strings in: $(echo $leaks)"; fail=1; fi
 
+# The reusable gate callers name lives at the repository root, where GitHub runs workflows from.
+if cmp -s .github/workflows/gate.yml ../.github/workflows/gate.yml; then echo "ok root gate.yml matches ci/"; else echo "FAIL ../.github/workflows/gate.yml differs from ci/.github/workflows/gate.yml"; fail=1; fi
+
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
-  zizmor --no-progress --min-severity low --persona auditor .github/workflows || fail=1
+  zizmor --no-progress --min-severity low --persona auditor .github/workflows ../.github/workflows || fail=1
 else
-  docker run --rm -v "$here:/w" -w /w ghcr.io/zizmorcore/zizmor:1.31.1 --no-progress --min-severity low --persona auditor .github/workflows || fail=1
+  docker run --rm -v "$here/..:/w" -w /w ghcr.io/zizmorcore/zizmor:1.31.1 --no-progress --min-severity low --persona auditor ci/.github/workflows .github/workflows || fail=1
 fi
 
 echo "== actionlint"
-t=$(mktemp -d "${TMPDIR:-/tmp}/actionlint.XXXXXX"); cp -r .github "$t/"; git -C "$t" init -q
-docker run --rm -u "$(id -u):$(id -g)" -v "$t:/repo" -w /repo rhysd/actionlint:1.7.12 -color || fail=1
-/bin/rm -rf "$t"
+for d in . ..; do
+  t=$(mktemp -d "${TMPDIR:-/tmp}/actionlint.XXXXXX"); cp -r "$d/.github" "$t/"; git -C "$t" init -q
+  docker run --rm -u "$(id -u):$(id -g)" -v "$t:/repo" -w /repo rhysd/actionlint:1.7.12 -color || fail=1
+  /bin/rm -rf "$t"
+done
 
 echo "== json"
 for f in rulesets/*.json renovate.json budget.json release-please-config.json .release-please-manifest.json; do

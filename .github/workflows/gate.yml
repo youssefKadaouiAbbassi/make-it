@@ -1,0 +1,299 @@
+# The shared gate: one reusable workflow over pinned actions. Called from each repository by
+# gate-caller.yml. Every job declares least-privilege permissions; every action is pinned to a
+# commit sha with the version in a trailing comment (pinact and sha_pinning_required enforce it).
+# Stack-specific work runs through the repository's own named tasks (check:full, test:e2e,
+# check:mutation, check:api, check:drift), so the workflow itself stays generic.
+name: gate
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Command prefix that runs a named task, e.g. "npm run", "pnpm", "make", "uv run poe"
+        type: string
+        default: npm run
+      setup:
+        description: Shell to prepare the toolchain before tasks run (install deps). Empty for none.
+        type: string
+        default: npm ci
+      node-version:
+        type: string
+        default: "24"
+      egress-policy:
+        description: bullfrog policy, audit or block
+        type: string
+        default: audit
+      has-web-ui:
+        type: boolean
+        default: false
+      has-openapi:
+        type: boolean
+        default: false
+      has-migrations:
+        type: boolean
+        default: false
+      run-mutation:
+        type: boolean
+        default: false
+      budget-url:
+        description: URL the sitespeed.io budget runs against (a preview URL); empty skips it
+        type: string
+        default: ""
+      grype-fail-on:
+        type: string
+        default: high
+
+permissions: {}
+
+concurrency:
+  group: gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check:full
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: bullfrogsec/bullfrog@7dee337d4575320b6d8cbe9a56d48d2fb765963a # v0.11.1
+        with:
+          egress-policy: ${{ inputs.egress-policy }}
+          enable-sudo: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: setup
+        if: inputs.setup != ''
+        env:
+          SETUP: ${{ inputs.setup }}
+        run: eval "$SETUP"
+      - name: check:full
+        env:
+          RUNNER: ${{ inputs.runner }}
+        run: $RUNNER check:full
+      - name: check:mutation (diff)
+        if: inputs.run-mutation
+        env:
+          RUNNER: ${{ inputs.runner }}
+        run: $RUNNER check:mutation
+
+  floor-guard:
+    name: floor-guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: bullfrogsec/bullfrog@7dee337d4575320b6d8cbe9a56d48d2fb765963a # v0.11.1
+        with:
+          egress-policy: ${{ inputs.egress-policy }}
+          enable-sudo: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: "floor-guard (diff against the base branch; exit 1 = violation, 2 = could not run)"
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+          # Read by floor-guard as data ("floor-guard: <reason>" lines); never expanded into run:.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          # The base branch's guard, never the PR's: a PR that edits the guard cannot pass itself.
+          if git show "origin/$BASE_REF:ci/floor-guard.mjs" > "$RUNNER_TEMP/floor-guard.mjs" 2>/dev/null; then
+            node "$RUNNER_TEMP/floor-guard.mjs" --base "origin/$BASE_REF"
+          else
+            echo "floor-guard: origin/$BASE_REF has no ci/floor-guard.mjs yet (the PR that adds it); running the PR's copy"
+            node ci/floor-guard.mjs --base "origin/$BASE_REF"
+          fi
+
+  secrets:
+    name: betterleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: betterleaks detect
+        uses: docker://ghcr.io/betterleaks/betterleaks:v1.9.0@sha256:e3b95b0db6c2735db17165c009b0ad6d9cef34fb4578659232b98f69d7346cac
+        with:
+          args: detect --source . --redact --no-banner
+
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a44787fd93c91397419762a04abe2bafaae396304b
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: semgrep scan (rules you are allowed to use; metrics off)
+        run: semgrep scan --config p/default --metrics off --error --severity ERROR
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        with:
+          advanced-security: false # findings fail the job; the default needs a public repo or GHAS and passes with findings
+          min-severity: medium
+          persona: regular
+
+  pinact:
+    name: pinact check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          skip_push: "true"
+
+  vulnerabilities:
+    name: syft + grype
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: bullfrogsec/bullfrog@7dee337d4575320b6d8cbe9a56d48d2fb765963a # v0.11.1
+        with:
+          egress-policy: ${{ inputs.egress-policy }}
+          enable-sudo: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: sbom (syft)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+      - name: grype on the sbom
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          sbom: sbom.spdx.json
+          fail-build: true
+          severity-cutoff: ${{ inputs.grype-fail-on }}
+          output-format: table
+
+  web:
+    name: playwright + axe
+    if: inputs.has-web-ui
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: setup
+        if: inputs.setup != ''
+        env:
+          SETUP: ${{ inputs.setup }}
+        run: eval "$SETUP"
+      - run: npx playwright install --with-deps chromium
+      - name: test:e2e (Playwright Test with @axe-core/playwright; zero critical or serious)
+        env:
+          RUNNER: ${{ inputs.runner }}
+        run: $RUNNER test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+
+  budget:
+    name: sitespeed.io budget
+    if: inputs.budget-url != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: sitespeed.io against the budget file
+        env:
+          BUDGET_URL: ${{ inputs.budget-url }}
+        run: |
+          docker run --rm -v "$PWD:/sitespeed.io" sitespeedio/sitespeed.io:42.9.0 \
+            --budget.configPath ci/budget.json -n 3 --browsertime.iterations 3 "$BUDGET_URL"
+
+  migrations:
+    name: squawk + drift
+    if: inputs.has-migrations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: setup
+        if: inputs.setup != ''
+        env:
+          SETUP: ${{ inputs.setup }}
+        run: eval "$SETUP"
+      - name: squawk on new migrations
+        uses: sbdchd/squawk-action@f972c01c35289cf7611464dae9a214bb84cce5e4 # v2.2.0
+        with:
+          pattern: migrations/*.sql
+          version: 2.70.0
+      - name: "drift check (the framework's own: alembic check, drizzle-kit check, prisma migrate diff)"
+        env:
+          RUNNER: ${{ inputs.runner }}
+        run: $RUNNER check:drift
+
+  api:
+    name: openapi contracts
+    if: inputs.has-openapi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: setup
+        if: inputs.setup != ''
+        env:
+          SETUP: ${{ inputs.setup }}
+        run: eval "$SETUP"
+      - name: check:api (Redocly lint, schemathesis, oasdiff breaking against the base)
+        env:
+          RUNNER: ${{ inputs.runner }}
+        run: $RUNNER check:api
