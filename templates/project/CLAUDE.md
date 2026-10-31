@@ -14,8 +14,8 @@ a context reset and at the end of a session that changed files.
 
 | task | command |
 |---|---|
-| install | `<runner> install` |
-| run | `<runner> dev` (see `/run-skill-generator` output in `.claude/skills/run/`) |
+| install | `<install command>` |
+| run | `<run command>` (the run recipe: `.claude/skills/run-<project>/SKILL.md`) |
 | check:fast | `<runner> check:fast` (format, lint, types; under 10 s) |
 | check:task | `<runner> check:task` (fast plus the related tests; under 90 s) |
 | check:full | `<runner> check:full` (everything CI runs) |

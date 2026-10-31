@@ -45,6 +45,16 @@ func TestDocFiles(t *testing.T) {
 	if strings.Contains(claude, "chrome-devtools") || strings.Contains(claude, "## Mobile") {
 		t.Error("node got the web or mobile section")
 	}
+	// The commands table names no task the project does not have, and the run recipe where
+	// /makeit:init writes it (a skill named exactly run would replace the built-in one).
+	for _, bad := range []string{"npm run install", "npm run dev", "run-skill-generator", ".claude/skills/run/"} {
+		if strings.Contains(claude, bad) {
+			t.Errorf("CLAUDE.md says %q", bad)
+		}
+	}
+	if !strings.Contains(claude, ".claude/skills/run-<project>/SKILL.md") {
+		t.Error("CLAUDE.md does not point at the run recipe")
+	}
 
 	seeds, _ = DocFiles(Project{Types: []string{"node", "web", "model", "mobile"}}, catalog.Embedded, v)
 	if got := strings.Join(docPaths(seeds), " "); got != "CLAUDE.md CONSTRAINTS.md HANDOFF.md TYPED-DECISIONS.md" {
