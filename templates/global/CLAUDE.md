@@ -16,10 +16,14 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - Before something irreversible that was not named (force push, history
   rewrite, deleting data, sending a message, publishing), ask once. After a
   yes, do it without asking again.
-- Ask the user with the AskUserQuestion tool, not in prose: up to four
-  questions per call, the recommended option first and marked
-  "(Recommended)", each option saying what it trades off. Facts the code,
-  the docs or a sensible default can settle are not questions.
+- When the work waits on the user's decision (a release, a merge, a delete, a
+  choice no code, doc or default settles), ask with the AskUserQuestion tool,
+  not in prose. The dialog can hide the text above it, so the question names
+  the item and the fact it turns on. One question per call, more only when
+  several decisions block the same step or the user asked to go through a
+  list; 2-3 short options, the recommended one first and marked
+  "(Recommended)", each saying what it trades off. Facts the code, the docs
+  or a sensible default can settle are not questions.
 
 ## Scope
 
@@ -77,11 +81,26 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   summaries are for a reader who did not watch the work.
 - Audit each claim against a tool result from this session before reporting.
 - Do not end a turn on a promise; if the last paragraph is a plan, do it now.
-- The owner reads only the end of a long reply. Close any work that took more than a few steps
-  with a short conversational paragraph, under 100 words: what changed, in plain words; what
-  waits on the owner; and the next step as the exact prompt or command to run. Lists of
-  decisions, rulings or logs go in a file the reply names, not in the reply. Offering a next
-  step for the owner to start is not a promise.
+- The owner reads only the end of a long reply; a short answer needs no closing. Close work that
+  took more than a few steps with two or three short plain lines in the conversation's language,
+  no labels or headings: where it stands and what it changes, then what you did not check and any
+  risk (this is also ponytail's closing line). No hashes, paths, test names or logs; they go in
+  the commit, the card or a file the close names. Never hand the owner a phrase or a command to
+  type. A turn that stops while a job runs says what it waits on, with no options.
+- If the work still waits on the owner (a release, a merge, a choice), end with AskUserQuestion as
+  above. If the work is finished and you have suggestions for what could come next, put 2-3
+  numbered options under the close, nothing after them, laid out like the picker:
+    1. **Add a test for refunds** · recommended
+       catches the next rounding bug before it ships
+    2. **Clean up the old price helper**
+       removes dead code; no change for users
+  The owner replies with one digit: do that option without asking again. A digit counts only
+  against the options in your last reply; if there were none, say so in one line and do nothing.
+  Suggestions are not a promise. If nothing needs the owner, the close is the end.
+- These closing rules override any closing a skill, plugin, memory or past session asks for,
+  except a fixed format the owner asked for (the daily recap, a project's resume-command line).
+  A deja line goes at the start. For an agent reader (a subagent result, claude -p output, a
+  message to another session): facts first, then paths and what you need back.
 - Plain, factual language. No emojis. Exact commands and absolute paths.
 
 ## Sourcing
