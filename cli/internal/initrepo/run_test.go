@@ -3,6 +3,7 @@ package initrepo
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,12 +29,26 @@ var runNow = time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 type fakeRunner struct {
 	mu    sync.Mutex
 	calls []string
+	// gh answers gh calls: stdout and exit code for an argv and its stdin.
+	gh func(argv []string, stdin string) (string, int)
 }
 
 func (f *fakeRunner) run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, strings.Join(c.Argv, " "))
 	f.mu.Unlock()
+	if c.Argv[0] == "gh" {
+		if !slices.Contains(c.Env, "GH_TELEMETRY=false") {
+			return execx.Result{}, errors.New("gh run without GH_TELEMETRY=false")
+		}
+		stdin := ""
+		if c.Stdin != nil {
+			b, _ := io.ReadAll(c.Stdin)
+			stdin = string(b)
+		}
+		out, code := f.gh(c.Argv, stdin)
+		return execx.Result{Stdout: out, Code: code}, nil
+	}
 	switch {
 	case slices.Equal(c.Argv, []string{"git", "init", "-q"}):
 		return execx.Result{}, os.MkdirAll(filepath.Join(c.Dir, ".git"), 0o755)

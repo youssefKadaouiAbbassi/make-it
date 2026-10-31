@@ -173,6 +173,20 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 		steps = append(steps, r.seedStep(s))
 	}
 	steps = append(steps, r.docsStep(), r.recordStep())
+	if r.opts.Rulesets {
+		switch {
+		case r.p.GitHub.Owner == "":
+			return nil, SeedReport{}, errNoRemote
+		case !r.Present("gh"):
+			rep.Notices = append(rep.Notices, "--rulesets needs gh (the GitHub CLI), logged in with admin rights on the repository: install it, run gh auth login, then makeit init --rulesets again")
+		default:
+			rs, err := r.rulesetSteps(context.Background())
+			if err != nil {
+				return nil, SeedReport{}, err
+			}
+			steps = append(steps, rs...)
+		}
+	}
 	return steps, rep, nil
 }
 
@@ -279,7 +293,7 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 func (r *run) docsStep() plan.Step {
 	return plan.Step{ID: "docs", Title: fmt.Sprintf("Index the docs of %d libraries (docs-mcp-server)", len(r.p.Deps)),
 		Already: func(context.Context) (bool, error) {
-			if len(r.p.Manifests) == 0 {
+			if len(r.p.Deps) == 0 {
 				return true, nil
 			}
 			now, err := ManifestHashes(r.Dir)
