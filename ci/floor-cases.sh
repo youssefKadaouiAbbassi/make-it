@@ -3,7 +3,8 @@
 #   docker run --rm -u node -v "$PWD:/w" -w /w claude-eval:latest bash floor-cases.sh
 # Fresh repo with the project CONSTRAINTS.md template, a source file, a test file, a tsconfig,
 # a package.json with scripts and a workflow on main; one edit per case on a branch.
-# Loosening moves and watched-file changes exit 1; no-op, tightening and dependency bumps exit 0.
+# Loosening moves and watched-file changes exit 1; no-op, tightening, dependency bumps and the files
+# makeit init seeds (the guard itself, a CONSTRAINTS.md) exit 0.
 set -uo pipefail
 git config --global user.email t@example.com; git config --global user.name t; git config --global init.defaultBranch main
 /bin/rm -rf repo; git init -q repo && cp CONSTRAINTS.md floor-guard.mjs repo/ && cd repo
@@ -38,4 +39,7 @@ run_case package-dependency-bump-quiet 0 "sed -i 's/1.0.0/1.0.1/' package.json"
 run_case watched-new-config 1 "printf '[lint]\nselect = []\n' >ruff.toml"
 run_case custom-watch-only 1 "printf 'x\n' >>src.ts" "--watch '^src\\.ts\$'"
 run_case custom-watch-miss 0 "printf 'x\n' >>src.ts" "--watch '^docs/'"
+# What makeit init seeds: the guard's own source and a CONSTRAINTS.md name every marker they forbid.
+run_case seeded-guard-not-flagged 0 "mkdir -p ci && cp floor-guard.mjs ci/floor-guard.mjs"
+run_case seeded-constraints-not-flagged 0 "mkdir -p svc && cp CONSTRAINTS.md svc/CONSTRAINTS.md"
 [ "$fail" = 0 ] && echo "FLOOR OK" || { echo "FLOOR FAILURES"; exit 1; }

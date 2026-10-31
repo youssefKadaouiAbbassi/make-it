@@ -57,5 +57,26 @@ rep(
     "}",
 )
 
+rep(
+    (
+        'for (const { file, text } of added) {\n'
+        "  if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);\n"
+        "  if (STUBS.test(text)) flag('unfinished-work', file, text);\n"
+        "  if (SKIPS.test(text)) flag('test-made-easier', file, text);\n"
+    ),
+    (
+        'const isGuard = (f) => /(^|\\/)floor-guard\\.mjs$/.test(f);\n'
+        '\n'
+        'for (const { file, text } of added) {\n'
+        '  // Stack addition: a CONSTRAINTS.md names every marker it forbids (its rules get their own checks),\n'
+        "  // and the guard's source holds the patterns themselves, so neither is scanned for markers.\n"
+        '  if (!isConstraints(file) && !isGuard(file)) {\n'
+        "    if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);\n"
+        "    if (STUBS.test(text)) flag('unfinished-work', file, text);\n"
+        "    if (SKIPS.test(text)) flag('test-made-easier', file, text);\n"
+        '  }\n'
+    ),
+)
+
 open(out, "w", encoding="utf-8").write(text)
 print("floor-guard written:", out)

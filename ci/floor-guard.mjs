@@ -78,10 +78,16 @@ const STUBS = /throw new (Error|NotImplemented).*[Nn]ot implemented|catch\s*\(\w
 // 2. A test made easier (added skips).
 const SKIPS = /\.(skip|todo)\b|\bxit\(|\bxdescribe\(|@pytest\.mark\.skip|t\.Skip\(/;
 
+const isGuard = (f) => /(^|\/)floor-guard\.mjs$/.test(f);
+
 for (const { file, text } of added) {
-  if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);
-  if (STUBS.test(text)) flag('unfinished-work', file, text);
-  if (SKIPS.test(text)) flag('test-made-easier', file, text);
+  // Stack addition: a CONSTRAINTS.md names every marker it forbids (its rules get their own checks),
+  // and the guard's source holds the patterns themselves, so neither is scanned for markers.
+  if (!isConstraints(file) && !isGuard(file)) {
+    if (SUPPRESSIONS.test(text)) flag('silenced-checker', file, text);
+    if (STUBS.test(text)) flag('unfinished-work', file, text);
+    if (SKIPS.test(text)) flag('test-made-easier', file, text);
+  }
   if (isConstraints(file) && /^\| *(W|E)\d+ *\|/.test(text)) flag('new-exception', file, text);
 }
 
