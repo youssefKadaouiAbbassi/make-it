@@ -132,7 +132,7 @@ jobs:
         with:
           persist-credentials: false
       - name: semgrep scan (rules you are allowed to use; metrics off)
-        run: semgrep scan --config auto --metrics off --error --severity ERROR
+        run: semgrep scan --config p/default --metrics off --error --severity ERROR
 
   zizmor:
     name: zizmor
