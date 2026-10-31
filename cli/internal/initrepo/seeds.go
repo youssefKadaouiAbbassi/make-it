@@ -213,8 +213,21 @@ const (
 	rustHooks = "  - repo: local\n    hooks:\n      - id: cargo-fmt\n        name: cargo fmt\n        language: system\n        entry: cargo fmt --all\n        pass_filenames: false\n        types: [rust]\n" +
 		"      - id: cargo-clippy\n        name: cargo clippy\n        language: system\n        entry: cargo clippy --all-targets --all-features -- -D warnings\n        pass_filenames: false\n        types: [rust]\n"
 	prettierHook = "      - id: prettier\n        name: prettier\n        language: system\n        entry: npx --no -- prettier --write --ignore-unknown\n        types: [text]\n"
-	eslintHook   = "      - id: eslint\n        name: eslint\n        language: system\n        entry: npx --no -- eslint --max-warnings=0 --no-warn-ignored\n        types_or: [javascript, jsx, ts, tsx]\n"
 )
+
+// eslintHook runs eslint on the staged files. --no-warn-ignored (no warning for a file the
+// config ignores) exists only for a flat eslint.config.*: ESLint 8 with a legacy .eslintrc
+// rejects it, and the hook would fail every commit.
+func eslintHook(flat bool) string {
+	entry := "npx --no -- eslint --max-warnings=0"
+	if flat {
+		entry += " --no-warn-ignored"
+	}
+	return "      - id: eslint\n        name: eslint\n        language: system\n        entry: " + entry + "\n        types_or: [javascript, jsx, ts, tsx]\n"
+}
+
+// flatESLint is a flat config at the root, the form ESLint 9 reads by default.
+var flatESLint = []string{"eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", "eslint.config.mts", "eslint.config.cts"}
 
 // preCommit seeds .pre-commit-config.yaml for prek when the repository has no hook config: the
 // language's formatter and linter, then betterleaks. A config of theirs gets a Manual line.
@@ -236,9 +249,12 @@ func (s *seeder) preCommit() error {
 			if s.p.Prettier {
 				b.WriteString(prettierHook)
 			}
-			b.WriteString(eslintHook)
+			b.WriteString(eslintHook(slices.ContainsFunc(flatESLint, func(f string) bool {
+				_, err := os.Stat(filepath.Join(s.p.Dir, f))
+				return err == nil
+			})))
 		default:
-			s.manual(".pre-commit-config.yaml: once the project has a biome or an eslint config, run makeit init --update (it adds the matching hook while the file is unchanged), or add the block for it under repos: by hand.\nbiome:\n%s\neslint (with the prettier hook only when prettier is installed):\n  - repo: local\n    hooks:\n%s%s", biomeHooks, prettierHook, eslintHook)
+			s.manual(".pre-commit-config.yaml: once the project has a biome or an eslint config, run makeit init --update (it adds the matching hook while the file is unchanged), or add the block for it under repos: by hand.\nbiome:\n%s\neslint (with the prettier hook only when prettier is installed; without --no-warn-ignored for a legacy .eslintrc):\n  - repo: local\n    hooks:\n%s%s", biomeHooks, prettierHook, eslintHook(true))
 		}
 	}
 	if s.is("python") {

@@ -126,6 +126,9 @@ func TestSeedsPreCommit(t *testing.T) {
 			[]string{"entry: npx --no -- eslint --max-warnings=0 --no-warn-ignored", "entry: npx --no -- prettier --write --ignore-unknown"}, []string{"biome"}},
 		{"node eslint without prettier", map[string]string{"package.json": "{}", "eslint.config.js": ""},
 			[]string{"id: eslint"}, []string{"prettier"}},
+		// ESLint 8 with a legacy config rejects --no-warn-ignored ("Invalid option"), failing every commit.
+		{"node legacy eslintrc", map[string]string{"package.json": "{}", ".eslintrc.json": "{}"},
+			[]string{"entry: npx --no -- eslint --max-warnings=0\n"}, []string{"--no-warn-ignored"}},
 	} {
 		seeds, _, _ := seedsFor(t, tree(t, c.files), "")
 		body := seedBody(t, seeds, ".pre-commit-config.yaml")
@@ -148,7 +151,7 @@ func TestSeedsPreCommit(t *testing.T) {
 		t.Errorf("node with no lint config:\n%s", body)
 	}
 	// The manual line is exact text: both hook blocks, and the command that adds one later.
-	if !manualHas(rep, biomeHooks) || !manualHas(rep, eslintHook) || !manualHas(rep, "makeit init --update") {
+	if !manualHas(rep, biomeHooks) || !manualHas(rep, eslintHook(true)) || !manualHas(rep, "makeit init --update") {
 		t.Errorf("node with no lint config: manual %q", rep.Manual)
 	}
 	for _, existing := range []string{"prek.toml", ".pre-commit-config.yaml", ".pre-commit-config.yml"} {
