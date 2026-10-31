@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"makeit/internal/docs"
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
 )
@@ -100,7 +101,7 @@ func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 }
 
 // A sync that failed saves no record, so the next --if-changed trigger tries again.
-func TestDocsSyncFailureRetries(t *testing.T) {
+func TestDocsSyncFailureRetriesHourly(t *testing.T) {
 	m := newDocsMachine(t)
 	ok := docsRun
 	docsRun = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
@@ -112,11 +113,26 @@ func TestDocsSyncFailureRetries(t *testing.T) {
 	}
 	m.take()
 	docsRun = ok
+	// The hook starts a sync on every tool use: one that keeps failing must not rerun each time.
+	if code, _, _ := run2(t, "docs", "sync", "--if-changed", "--quiet", m.dir); code != 0 {
+		t.Fatal("exit")
+	}
+	if c := m.take(); len(c) != 0 {
+		t.Fatalf("a failed sync was retried at once: %q", c)
+	}
+	rec := docs.LoadRecord(m.stack, m.dir)
+	rec.SyncedAt = rec.SyncedAt.Add(-2 * time.Hour)
+	if err := docs.SaveRecord(m.stack, m.dir, rec); err != nil {
+		t.Fatal(err)
+	}
 	if code, _, _ := run2(t, "docs", "sync", "--if-changed", "--quiet", m.dir); code != 0 {
 		t.Fatal("exit")
 	}
 	if c := m.take(); len(c) != 2 {
-		t.Fatalf("the failed sync was not retried: %q", c)
+		t.Fatalf("the failed sync was not retried after an hour: %q", c)
+	}
+	if rec := docs.LoadRecord(m.stack, m.dir); rec.Failed || len(rec.Manifests) == 0 {
+		t.Errorf("record after a sync that worked: %+v", rec)
 	}
 }
 

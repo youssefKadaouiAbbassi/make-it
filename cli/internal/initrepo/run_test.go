@@ -345,16 +345,16 @@ func TestInitOffline(t *testing.T) {
 
 // The docs record is saved only when the sync had no failure but unresolvable libraries: a failed
 // list or scrape leaves it out, so the next run syncs again.
-func TestInitDocsRecordOnlyAfterSync(t *testing.T) {
+func TestInitDocsRecordMarksFailedSync(t *testing.T) {
 	registry := httptest.NewServer(http.NotFoundHandler())
 	defer registry.Close()
 	for _, c := range []struct {
-		name string
-		list execx.Result
-		save bool
+		name   string
+		list   execx.Result
+		failed bool
 	}{
-		{"list fails", execx.Result{Stderr: "npx: not found", Code: 127}, false},
-		{"only unresolvable", execx.Result{Stdout: "[]"}, true},
+		{"list fails", execx.Result{Stderr: "npx: not found", Code: 127}, true},
+		{"only unresolvable", execx.Result{Stdout: "[]"}, false},
 	} {
 		dir := nodeRepo(t)
 		e, _ := testEnv(t, dir)
@@ -364,13 +364,36 @@ func TestInitDocsRecordOnlyAfterSync(t *testing.T) {
 		if err != nil || rep.Plan.Failed() {
 			t.Fatalf("%s: %v %s", c.name, err, rep.Plan.Summary())
 		}
-		if saved := len(docs.LoadRecord(e.Stack, dir).Manifests) > 0; saved != c.save {
-			t.Errorf("%s: docs record saved %v, docs %q", c.name, saved, rep.Docs)
+		// The record is kept either way, so the hook can wait before retrying a failed sync.
+		if rec := docs.LoadRecord(e.Stack, dir); len(rec.Manifests) == 0 || rec.Failed != c.failed {
+			t.Errorf("%s: docs record %+v, docs %q", c.name, rec, rep.Docs)
 		}
-		if c.save && !strings.Contains(strings.Join(rep.Docs, "\n"), "no versioned docs URL") {
+		if !c.failed && !strings.Contains(strings.Join(rep.Docs, "\n"), "no versioned docs URL") {
 			t.Errorf("%s: docs %q", c.name, rep.Docs)
 		}
+		// init is run on purpose, so it syncs a failed index again at once.
+		again, err := Run(context.Background(), e, plan.DryRunOnly, nil, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := plan.Already
+		if c.failed {
+			want = plan.WouldChange
+		}
+		if got := stepStatus(again.Plan, "docs"); got != want {
+			t.Errorf("%s: second init's docs step %q, want %q", c.name, got, want)
+		}
 	}
+}
+
+// stepStatus is the status of the step with id in rep, or "".
+func stepStatus(rep plan.Report, id string) plan.Status {
+	for _, o := range rep.Outcomes {
+		if o.ID == id {
+			return o.Status
+		}
+	}
+	return ""
 }
 
 // A merge step with nothing merged for its path refuses to write rather than empty the file.

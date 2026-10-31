@@ -393,7 +393,7 @@ func (r *run) docsStep() plan.Step {
 				return false, err
 			}
 			rec := docs.LoadRecord(r.Stack, r.Dir)
-			return len(rec.Manifests) > 0 && reflect.DeepEqual(rec.Manifests, now), nil
+			return len(rec.Manifests) > 0 && !rec.Failed && reflect.DeepEqual(rec.Manifests, now), nil
 		},
 		Run: func(ctx context.Context) (string, error) {
 			p, err := Detect(r.Dir)
@@ -402,27 +402,11 @@ func (r *run) docsStep() plan.Step {
 			}
 			rep := docs.Sync(ctx, Libs(p), r.Docs)
 			r.docs = rep.Lines()
-			if syncFailed(rep) {
-				// No record: the next run syncs again instead of calling these manifests indexed.
-				return strings.Join(r.docs, "\n"), nil
-			}
-			if err := docs.SaveRecord(r.Stack, r.Dir, docs.Record{Dir: r.Dir, Manifests: p.Manifests, SyncedAt: r.Now().UTC()}); err != nil {
+			if err := docs.SaveRecord(r.Stack, r.Dir, docs.Record{Dir: r.Dir, Manifests: p.Manifests, SyncedAt: r.Now().UTC(), Failed: rep.Failed()}); err != nil {
 				return "", err
 			}
 			return strings.Join(r.docs, "\n"), nil
 		}}
-}
-
-// syncFailed is a sync that skipped a library for a reason other than having no versioned docs
-// URL, which a retry would not change.
-// shortcut: matches Skip.Reason text, since docs.Report has no failure query yet; use it once it has.
-func syncFailed(rep docs.Report) bool {
-	for _, s := range rep.Skipped {
-		if !strings.HasSuffix(s.Reason, docs.ErrUnresolvable.Error()) {
-			return true
-		}
-	}
-	return false
 }
 
 // recordStep writes .makeit.json when what the steps leave differs from the record on disk.

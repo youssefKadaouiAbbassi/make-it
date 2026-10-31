@@ -17,6 +17,8 @@ type Record struct {
 	Dir       string            `json:"dir"`
 	Manifests map[string]string `json:"manifests"`
 	SyncedAt  time.Time         `json:"syncedAt"`
+	// Failed marks a sync that left libraries out for a reason a retry can change (Report.Failed).
+	Failed bool `json:"failed,omitempty"`
 }
 
 func recordPath(stack, dir string) string {

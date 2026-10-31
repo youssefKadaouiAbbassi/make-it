@@ -26,6 +26,10 @@ var docsGit = catsrc.Git{Run: execx.Run, Protocols: "https"}
 
 // runDocs is `makeit docs sync [dir]` (cli/ZERO-CONFIG.md section 2). Every docs problem is a
 // line in the report and the exit code stays 0: the hooks run it and must never fail a session.
+// retryFailed is how long --if-changed waits before it retries a sync that failed: the hook
+// starts one on every tool use, and a library that keeps failing would rerun each time.
+const retryFailed = time.Hour
+
 func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	if len(p.Positionals) == 0 || p.Positionals[0] != "sync" || len(p.Positionals) > 2 {
 		fmt.Fprintf(stderr, "%s: usage: %s docs sync [dir]\n", prog, prog)
@@ -64,7 +68,8 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 		say("docs: %v", err)
 		return 0
 	}
-	if p.Bool["if-changed"] && sameManifests(docs.LoadRecord(roots.Stack, dir).Manifests, proj.Manifests) {
+	if rec := docs.LoadRecord(roots.Stack, dir); p.Bool["if-changed"] && sameManifests(rec.Manifests, proj.Manifests) &&
+		(!rec.Failed || time.Since(rec.SyncedAt) < retryFailed) {
 		return 0
 	}
 	libs := initrepo.Libs(proj)
@@ -84,11 +89,8 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	for _, l := range rep.Lines() {
 		say("%s", l)
 	}
-	if rep.Failed() {
-		return 0
-	}
 	// The record holds what Detect read before the sync, so an edit made meanwhile syncs next time.
-	if err := docs.SaveRecord(roots.Stack, dir, docs.Record{Dir: dir, Manifests: proj.Manifests, SyncedAt: time.Now().UTC()}); err != nil {
+	if err := docs.SaveRecord(roots.Stack, dir, docs.Record{Dir: dir, Manifests: proj.Manifests, SyncedAt: time.Now().UTC(), Failed: rep.Failed()}); err != nil {
 		say("docs: %v", err)
 	}
 	return 0
