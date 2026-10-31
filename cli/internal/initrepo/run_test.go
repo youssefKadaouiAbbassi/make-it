@@ -344,7 +344,9 @@ func TestInitKeepsUnparseableMerge(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "renovate.json")); string(b) != jsonc {
 		t.Errorf("renovate.json changed: %q", b)
 	}
-	if !slices.ContainsFunc(rep.Kept, func(k setup.Kept) bool { return k.Item == "renovate.json" && strings.HasPrefix(k.Reason, "not edited: ") }) {
+	if !slices.ContainsFunc(rep.Kept, func(k setup.Kept) bool {
+		return k.Item == "renovate.json" && strings.HasPrefix(k.Reason, "not edited: ")
+	}) {
 		t.Errorf("kept %v", rep.Kept)
 	}
 }
