@@ -100,7 +100,8 @@ func TestInitFresh(t *testing.T) {
 	if err != nil || rep.Plan.Failed() {
 		t.Fatalf("%v %s", err, rep.Plan.Summary())
 	}
-	want := []string{"doc:CLAUDE.md", "doc:CONSTRAINTS.md", "doc:HANDOFF.md", "merge:package.json", "merge:.gitignore", "docs", "record"}
+	want := []string{"doc:CLAUDE.md", "doc:CONSTRAINTS.md", "doc:HANDOFF.md", "merge:package.json", "merge:.gitignore", "merge:renovate.json",
+		"settings:.pre-commit-config.yaml", "settings:.env.example", "ci:.grype.yaml", "docs", "record"}
 	if !slices.Equal(ids(rep), want) {
 		t.Fatalf("steps %v", ids(rep))
 	}

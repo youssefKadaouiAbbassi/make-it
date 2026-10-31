@@ -43,6 +43,16 @@ type Project struct {
 	// Deps are the direct dependencies of every manifest to depth 3, sorted by manifest, then name.
 	Deps   []Dep
 	GitHub struct{ Owner, Repo string }
+	// DefaultBranch is origin's HEAD, or main when the clone does not record it.
+	DefaultBranch string
+	// Scripts are the root package.json's script names.
+	Scripts map[string]bool
+	// Lint is the root's linter setup: "biome" (a biome config, which wins), "eslint" (an eslint
+	// config) or "". Prettier is prettier among the root dependencies.
+	Lint     string
+	Prettier bool
+	// Lockfile is a committed package-lock.json, which npm ci needs.
+	Lockfile bool
 	// Manifests maps each manifest and lockfile Detect read (slash path) to the sha256 of the
 	// bytes it read, so a docs sync records what it actually indexed.
 	Manifests map[string]string
@@ -99,7 +109,7 @@ var (
 // Detect reads dir's manifests, lockfiles and layout. A directory with no manifest gives a
 // Project with no types.
 func Detect(dir string) (Project, error) {
-	p := Project{Dir: dir, Manifests: map[string]string{}}
+	p := Project{Dir: dir, Manifests: map[string]string{}, Scripts: map[string]bool{}}
 	manifests, err := findManifests(dir)
 	if err != nil {
 		return p, err
@@ -129,6 +139,13 @@ func Detect(dir string) (Project, error) {
 		}
 	}
 	has := func(f string) bool { _, err := os.Stat(filepath.Join(dir, f)); return err == nil }
+	var rootPkg struct {
+		PackageManager string            `json:"packageManager"`
+		Scripts        map[string]string `json:"scripts"`
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "package.json")); err == nil {
+		_ = json.Unmarshal(b, &rootPkg)
+	}
 	anyDep := func(names []string) bool {
 		return slices.ContainsFunc(names, func(n string) bool { return rootDeps[n] })
 	}
@@ -137,7 +154,14 @@ func Detect(dir string) (Project, error) {
 		p.Types = append(p.Types, "node")
 		switch {
 		case has("pnpm-lock.yaml"):
-			p.PM, p.Runner, p.Setup = "pnpm", "pnpm", "pnpm install --frozen-lockfile"
+			// The runner image has no pnpm; the version packageManager names wins.
+			v := pnpmPin
+			if pm, ver, ok := strings.Cut(rootPkg.PackageManager, "@"); ok && pm == "pnpm" {
+				v, _, _ = strings.Cut(ver, "+")
+			}
+			p.PM, p.Runner, p.Setup = "pnpm", "pnpm", "npm install -g pnpm@"+v+" && pnpm install --frozen-lockfile"
+		case has("yarn.lock") && has(".yarnrc.yml"):
+			p.PM, p.Runner, p.Setup = "yarn", "yarn", "yarn install --immutable"
 		case has("yarn.lock"):
 			p.PM, p.Runner, p.Setup = "yarn", "yarn", "yarn install --frozen-lockfile"
 		case has("bun.lock") || has("bun.lockb"):
@@ -146,13 +170,25 @@ func Detect(dir string) (Project, error) {
 			p.PM, p.Runner, p.Setup = "npm", "npm run", "npm ci"
 		}
 		p.NodeVersion = nodeVersion(dir)
+		p.Lockfile = has("package-lock.json")
+		for name := range rootPkg.Scripts {
+			p.Scripts[name] = true
+		}
+		switch {
+		case has("biome.json") || has("biome.jsonc"):
+			p.Lint = "biome"
+		case anyFile(dir, eslintConfigs):
+			p.Lint = "eslint"
+		}
+		p.Prettier = rootDeps["prettier"]
 	}
 	if root["pyproject.toml"] {
 		p.Types = append(p.Types, "python")
 		if p.PM == "" {
 			p.PM = "pip"
 			if has("uv.lock") {
-				p.PM, p.Runner, p.Setup = "uv", "uv run poe", "uv sync --frozen"
+				// The runner image has no uv; pipx puts it on PATH without sudo.
+				p.PM, p.Runner, p.Setup = "uv", "uv run poe", "pipx install uv=="+uvPin+" && uv sync --frozen"
 			}
 		}
 	}
@@ -183,8 +219,52 @@ func Detect(dir string) (Project, error) {
 	if has("android") || has("ios") || anyDep(mobileDeps) {
 		p.Types = append(p.Types, "mobile")
 	}
-	p.GitHub.Owner, p.GitHub.Repo = githubRemote(dir)
+	gitDir := findGitDir(dir)
+	p.GitHub.Owner, p.GitHub.Repo = githubRemote(gitDir)
+	p.DefaultBranch = defaultBranch(gitDir)
 	return p, nil
+}
+
+// pnpmPin and uvPin bootstrap the package managers the runner image lacks (npm view pnpm
+// version, PyPI uv, 2026-10-31).
+const (
+	pnpmPin = "12.16.1"
+	uvPin   = "0.13.6"
+)
+
+var eslintConfigs = []string{"eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", "eslint.config.mts", "eslint.config.cts",
+	".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml"}
+
+func anyFile(dir string, names []string) bool {
+	return slices.ContainsFunc(names, func(n string) bool { _, err := os.Stat(filepath.Join(dir, n)); return err == nil })
+}
+
+// findGitDir is the .git directory of dir or of the nearest parent that has one, or "".
+func findGitDir(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	for d := abs; ; d = filepath.Dir(d) {
+		if st, err := os.Stat(filepath.Join(d, ".git")); err == nil && st.IsDir() {
+			return filepath.Join(d, ".git")
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
+}
+
+// defaultBranch reads origin's HEAD as the clone recorded it; main when it did not.
+func defaultBranch(gitDir string) string {
+	if gitDir != "" {
+		if b, err := os.ReadFile(filepath.Join(gitDir, "refs", "remotes", "origin", "HEAD")); err == nil {
+			if ref, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: refs/remotes/origin/"); ok && ref != "" {
+				return ref
+			}
+		}
+	}
+	return "main"
 }
 
 // findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories.
@@ -448,9 +528,12 @@ func envHas(path, key string) bool {
 
 var githubURL = regexp.MustCompile(`github\.com[:/]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$`)
 
-// githubRemote reads origin's URL from .git/config.
-func githubRemote(dir string) (owner, repo string) {
-	b, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
+// githubRemote reads origin's URL from the git directory's config.
+func githubRemote(gitDir string) (owner, repo string) {
+	if gitDir == "" {
+		return "", ""
+	}
+	b, err := os.ReadFile(filepath.Join(gitDir, "config"))
 	if err != nil {
 		return "", ""
 	}

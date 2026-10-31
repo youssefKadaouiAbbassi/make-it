@@ -41,10 +41,12 @@ func TestDetect(t *testing.T) {
 		setup, spec string
 	}{
 		{"node-npm", map[string]string{"package.json": pkg}, []string{"node"}, "npm", "npm run", "npm ci", ""},
-		{"node-pnpm", map[string]string{"package.json": pkg, "pnpm-lock.yaml": ""}, []string{"node"}, "pnpm", "pnpm", "pnpm install --frozen-lockfile", ""},
+		{"node-pnpm", map[string]string{"package.json": pkg, "pnpm-lock.yaml": ""}, []string{"node"}, "pnpm", "pnpm", "npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile", ""},
+		{"node-pnpm-pinned", map[string]string{"package.json": `{"packageManager": "pnpm@9.15.0+sha512.abc"}`, "pnpm-lock.yaml": ""}, []string{"node"}, "pnpm", "pnpm", "npm install -g pnpm@9.15.0 && pnpm install --frozen-lockfile", ""},
 		{"yarn", map[string]string{"package.json": pkg, "yarn.lock": ""}, []string{"node"}, "yarn", "yarn", "yarn install --frozen-lockfile", ""},
+		{"yarn-berry", map[string]string{"package.json": pkg, "yarn.lock": "", ".yarnrc.yml": "nodeLinker: node-modules\n"}, []string{"node"}, "yarn", "yarn", "yarn install --immutable", ""},
 		{"bun", map[string]string{"package.json": pkg, "bun.lock": ""}, []string{"node"}, "bun", "bun", "bun install --frozen-lockfile", ""},
-		{"python-uv", map[string]string{"pyproject.toml": "[project]\nname = \"x\"\ndependencies = [\n  \"httpx>=0.28\",\n]\n", "uv.lock": ""}, []string{"python"}, "uv", "uv run poe", "uv sync --frozen", ""},
+		{"python-uv", map[string]string{"pyproject.toml": "[project]\nname = \"x\"\ndependencies = [\n  \"httpx>=0.28\",\n]\n", "uv.lock": ""}, []string{"python"}, "uv", "uv run poe", "pipx install uv==0.13.6 && uv sync --frozen", ""},
 		{"go", map[string]string{"go.mod": "module x\n\ngo 1.27.3\n"}, []string{"go"}, "go", "make", "", ""},
 		{"rust", map[string]string{"Cargo.toml": "[package]\nname = \"x\"\n"}, []string{"rust"}, "cargo", "make", "", ""},
 		{"web", map[string]string{"package.json": `{"dependencies": {"react": "19.2.0"}}`}, []string{"node", "web"}, "npm", "npm run", "npm ci", ""},
@@ -54,7 +56,7 @@ func TestDetect(t *testing.T) {
 		{"database-dep", map[string]string{"package.json": `{"dependencies": {"drizzle-orm": "1.0.0"}}`}, []string{"node", "database"}, "npm", "npm run", "npm ci", ""},
 		{"database-env", map[string]string{"go.mod": "module x\n", ".env.example": "DATABASE_URL=postgres://x\n"}, []string{"go", "database"}, "go", "make", "", ""},
 		{"model", map[string]string{"package.json": `{"dependencies": {"@anthropic-ai/sdk": "1.0.0"}}`}, []string{"node", "model"}, "npm", "npm run", "npm ci", ""},
-		{"model-py", map[string]string{"pyproject.toml": "[project]\ndependencies = [\"anthropic==0.70.0\"]\n", "uv.lock": ""}, []string{"python", "model"}, "uv", "uv run poe", "uv sync --frozen", ""},
+		{"model-py", map[string]string{"pyproject.toml": "[project]\ndependencies = [\"anthropic==0.70.0\"]\n", "uv.lock": ""}, []string{"python", "model"}, "uv", "uv run poe", "pipx install uv==0.13.6 && uv sync --frozen", ""},
 		{"mobile", map[string]string{"package.json": `{"dependencies": {"expo": "54.0.0"}}`}, []string{"node", "mobile"}, "npm", "npm run", "npm ci", ""},
 		{"mobile-dir", map[string]string{"go.mod": "module x\n", "android/": ""}, []string{"go", "mobile"}, "go", "make", "", ""},
 		{"empty", map[string]string{}, nil, "", "", "", ""},
@@ -158,5 +160,35 @@ func TestManifestHashes(t *testing.T) {
 	}
 	if after, _ := ManifestHashes(dir); maps.Equal(after, p.Manifests) {
 		t.Error("a lockfile change was not seen")
+	}
+}
+
+func TestDetectRepoFacts(t *testing.T) {
+	dir := tree(t, map[string]string{
+		".git/config":                   "[remote \"origin\"]\n\turl = git@github.com:o/r.git\n",
+		".git/refs/remotes/origin/HEAD": "ref: refs/remotes/origin/trunk\n",
+		"package.json":                  `{"scripts": {"test:e2e": "playwright test"}, "devDependencies": {"prettier": "3.6.2"}}`,
+		"eslint.config.js":              "export default [];\n",
+		"package-lock.json":             `{"packages": {}}`,
+	})
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.DefaultBranch != "trunk" || !p.Scripts["test:e2e"] || p.Lint != "eslint" || !p.Prettier || !p.Lockfile {
+		t.Errorf("%+v", p)
+	}
+	sub := filepath.Join(dir, "apps", "web")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "package.json"), []byte(`{"name": "web"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := Detect(sub); p.GitHub.Owner != "o" || p.DefaultBranch != "trunk" {
+		t.Errorf("a subfolder of the repository: %+v %q", p.GitHub, p.DefaultBranch)
+	}
+	if p, _ := Detect(tree(t, map[string]string{"package.json": "{}", "biome.jsonc": "{}", "eslint.config.mjs": ""})); p.Lint != "biome" || p.DefaultBranch != "main" || p.Lockfile {
+		t.Errorf("biome wins, main by default, no lockfile: %+v", p)
 	}
 }

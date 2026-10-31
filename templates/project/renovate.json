@@ -1,0 +1,64 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":enablePreCommit"
+  ],
+  "dependencyDashboard": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Container images pinned in workflows",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "image:\\s*(?<depName>[^:\\s]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?",
+        "docker://(?<depName>[^:\\s]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "npx-launched MCP servers pinned by version in .mcp.json files",
+      "managerFilePatterns": [
+        "/(^|/)\\.mcp\\.json$/"
+      ],
+      "matchStrings": [
+        "\"(?<depName>(?:@[a-z0-9-]+/)?[a-z0-9-]+)@(?<currentValue>[0-9][^\"]*)\""
+      ],
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Tools pinned in package.json scripts: npx packages",
+      "managerFilePatterns": [
+        "/(^|/)package\\.json$/"
+      ],
+      "matchStrings": [
+        "npx --yes (?<depName>(?:@[a-z0-9-]+/)?[a-z0-9.-]+)@(?<currentValue>[0-9][^\\s\"]*)"
+      ],
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Tools pinned in package.json scripts: images by tag and digest",
+      "managerFilePatterns": [
+        "/(^|/)package\\.json$/"
+      ],
+      "matchStrings": [
+        "(?<depName>[a-z0-9][a-z0-9./-]*):(?<currentValue>v?[0-9][^\\s@\"]*)@(?<currentDigest>sha256:[0-9a-f]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "GitHub Actions: pinned by sha, version in the comment",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true
+    }
+  ]
+}

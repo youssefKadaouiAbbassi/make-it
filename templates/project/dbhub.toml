@@ -1,0 +1,34 @@
+# DBHub (https://dbhub.ai/config/toml), run as @bytebase/dbhub@1.5.0 from .mcp.json.
+# No secret in this file: ${DBHUB_DSN} is read at startup from the environment
+# of the shell that starts `claude`, or from this project's .env (gitignored).
+# Use a least-privilege database user: the read tools are read-only through
+# DBHub's checks and a read-only transaction, not through the user's privileges.
+# Start `claude` from the project root: --config .dbhub.toml is relative to it.
+# DBHub exits at startup when the environment or .env sets READONLY or MAX_ROWS.
+#
+# Both sources point at the same database, so Claude gets three tools:
+#   execute_sql_read, search_objects_read  read-only
+#   execute_sql_write                      writes, behind the ask rule
+#                                          mcp__dbhub__execute_sql_write
+
+[[sources]]
+id = "read"
+dsn = "${DBHUB_DSN}"
+
+[[sources]]
+id = "write"
+dsn = "${DBHUB_DSN}"
+lazy = true
+
+[[tools]]
+name = "execute_sql"
+source = "read"
+readonly = true
+
+[[tools]]
+name = "search_objects"
+source = "read"
+
+[[tools]]
+name = "execute_sql"
+source = "write"

@@ -6,5 +6,6 @@
   },
   "marketplace": "makeit",
   "bundle": "makeit-bundle@makeit",
-  "projectBundle": "makeit-ui@makeit"
+  "projectBundle": "makeit-ui@makeit",
+  "ci": { "gateRef": "" }
 }

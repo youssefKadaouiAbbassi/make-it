@@ -161,7 +161,11 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	for _, s := range docsFiles {
 		steps = append(steps, r.seedStep(s))
 	}
-	seeds, merges, rep := Seeds(r.p, r.Catalog, r.Req)
+	ours := func(path string) bool { f := r.prev.Files[path]; return f != nil && !f.PreExisted }
+	seeds, merges, rep, err := Seeds(r.p, r.Catalog, r.Req, ours)
+	if err != nil {
+		return nil, SeedReport{}, err
+	}
 	for _, m := range merges {
 		steps = append(steps, r.mergeStep(m))
 	}
