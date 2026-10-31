@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Run the makeit eval cases in the eval image (redteam/eval's claude-eval:latest) with the
+# Run the makeit eval cases in an eval image with Claude Code (EVAL_IMAGE, default claude-eval:latest) with the
 # subscription token file. Nothing is installed on the host. Results land in
 # $EVAL_OUT/<tag>/ (default ~/.local/state/makeit/evals), never inside the plugin: Claude
 # Code copies the whole plugin folder on install, and the sandbox leaves unreadable directories.
-#   TOKEN_ENV=~/.config/claude-eval/token.env bash plugins/makeit/evals/run-local.sh [--runs 1] [--case name]
+#   TOKEN_ENV=<env file with your Claude token> EVAL_IMAGE=<image> bash plugins/makeit/evals/run-local.sh [--runs 1] [--case name]
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 stack=$(cd "$here/../../.." && pwd)
@@ -14,7 +14,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/stack-eval.XXXXXX"); cp -r "$stack" "$work/sta
 docker run --rm --name "stack-eval-$tag" -u node \
   --security-opt seccomp=unconfined --security-opt apparmor=rootlesskit --security-opt systempaths=unconfined \
   --env-file "$token_env" -e TMPDIR=/tmp -e STACK_TEMPLATES=/stack/templates/project \
-  -v "$work/stack:/stack" -v "$out/tmp:/tmp" -v "$out:/out" -w /stack/plugins/makeit claude-eval:latest \
+  -v "$work/stack:/stack" -v "$out/tmp:/tmp" -v "$out:/out" -w /stack/plugins/makeit "${EVAL_IMAGE:-claude-eval:latest}" \
   claude plugin eval /stack/plugins/makeit --eval-dir evals --ablation none --scaffold --keep-temp \
   --trust-plugin --no-publish --model "${MODEL:-claude-opus-5-5}" --mocks off --threshold 0 --judge-model "${JUDGE:-sonnet}" -j 1 \
   --output-dir /out/report --json /out/eval.json "$@" \

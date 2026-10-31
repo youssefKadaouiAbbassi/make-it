@@ -38,7 +38,7 @@ for k in Goal Done 'Next step' 'Open questions' 'Blocked on' 'Verify with'; do c
 if [ "${FLOOR:-0}" = 1 ]; then
   # Contract: our CONSTRAINTS.md as the base; a no-op edit exits 0, a loosened coverage row exits 1,
   # a removed floor bullet exits 1, a tightened row exits 0, a new exception row exits 1.
-  guard=${GUARD:-/tmp/claude-1000/-home-izno/69d7285c-501b-429e-8bf7-027759a65e0c/scratchpad/fg/floor-guard.mjs}
+  guard=${GUARD:-$here/../ci/floor-guard.mjs}
   [ -f "$guard" ] || { echo "FAIL floor-guard reference missing at $guard"; exit 1; }
   work=$(mktemp -d "${TMPDIR:-/tmp}/tpl-floor.XXXXXX")
   cp "$guard" "$work/floor-guard.mjs"; cp "$c" "$work/CONSTRAINTS.md"; cp "$here/floor-cases.sh" "$work/cases.sh"

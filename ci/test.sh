@@ -8,7 +8,8 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 fail=0
-ref=${GUARD_REF:-/tmp/claude-1000/-home-izno/69d7285c-501b-429e-8bf7-027759a65e0c/scratchpad/fg/floor-guard.mjs}
+# GUARD_REF: the upstream agent-skills floor-guard.mjs, to check make-floor-guard.py against it.
+ref=${GUARD_REF:-}
 cd "$here" || exit 1
 
 echo "== floor-guard contract"
@@ -16,7 +17,7 @@ if [ -f "$ref" ]; then
   docker run --rm -u node -v "$here:/w" -v "$(dirname "$ref"):/fg:ro" -w /w claude-eval:latest \
     python3 -I /w/make-floor-guard.py "/fg/$(basename "$ref")" /w/floor-guard.mjs >/dev/null || fail=1
 else
-  echo "reference not present; testing the committed floor-guard.mjs as is"
+  echo "GUARD_REF not set or missing; testing the committed floor-guard.mjs as is"
 fi
 cp ../templates/project/CONSTRAINTS.md . && docker run --rm -u node -v "$here:/w" -w /w claude-eval:latest bash floor-cases.sh | tail -1 || fail=1
 /bin/rm -rf repo out.txt CONSTRAINTS.md
@@ -31,6 +32,12 @@ if cmp -s "$t/home/.gitconfig" "$t/want"; then echo "ok floor-cases leaves ~/.gi
 
 # Adding the floor-guard reason to the PR description must re-run the gate.
 if grep -qF "types: [opened, synchronize, reopened, edited]" .github/workflows/gate-caller.yml; then echo "ok caller re-runs on an edited PR"; else echo "FAIL the caller does not re-run when the PR description is edited"; fail=1; fi
+
+# Nothing private in a public file: the working files (HANDOFF.md, docs/superpowers, cli/research)
+# stay local and are left out of the public copy.
+echo "== no personal strings"
+leaks=$(git -C .. ls-files -z -- . ':!HANDOFF.md' ':!docs/superpowers' ':!cli/research' | (cd .. && xargs -0 grep -lE '/home/[i]zno|-home-[i]zno|claude\.ai/code/[s]ession|red[t]eam/' 2>/dev/null))
+if [ -z "$leaks" ]; then echo "ok no personal strings in public files"; else echo "FAIL personal strings in: $(echo $leaks)"; fail=1; fi
 
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
