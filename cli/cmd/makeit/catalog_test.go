@@ -181,7 +181,7 @@ func TestUpdateCatalogNotices(t *testing.T) {
 		t.Fatalf("setup: exit %d\n%s", code, errOut)
 	}
 	m.release(t, "v1.1.0", map[string]string{"templates/extra.md": "1.1\n"}, false)
-	if code, _, errOut := run2(t, "update", "--yes"); code != 0 || !strings.Contains(errOut, "catalog v1.1.0 is newer than v1.0.0") {
+	if code, _, errOut := run2(t, "update", "--yes"); code != 0 || !strings.Contains(errOut, "plugin set v1.1.0 is newer than v1.0.0") {
 		t.Errorf("newer: exit %d\n%s", code, errOut)
 	}
 	_, out, _ := run2(t, "update", "--yes", "--json")
@@ -189,7 +189,7 @@ func TestUpdateCatalogNotices(t *testing.T) {
 		t.Errorf("JSON notice: %s", out)
 	}
 	m.release(t, "v1.0.0", map[string]string{"templates/extra.md": "moved\n"}, true)
-	if code, _, errOut := run2(t, "update", "--yes"); code != 0 || !strings.Contains(errOut, "catalog tag v1.0.0 now points to") {
+	if code, _, errOut := run2(t, "update", "--yes"); code != 0 || !strings.Contains(errOut, "plugin set tag v1.0.0 now points to") {
 		t.Errorf("moved: exit %d\n%s", code, errOut)
 	}
 }
@@ -202,7 +202,7 @@ func TestUpdateCatalogUnreachable(t *testing.T) {
 	if err := os.RemoveAll(m.bare); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, errOut := run2(t, "update", "--yes"); code != 0 || !strings.Contains(errOut, "could not refresh the catalog") {
+	if code, _, errOut := run2(t, "update", "--yes"); code != 0 || !strings.Contains(errOut, "could not refresh the plugin set") {
 		t.Errorf("plain: exit %d\n%s", code, errOut)
 	}
 	if code, _, errOut := run2(t, "update", "--yes", "--catalog", "file:///no/such/cat.git"); code != 1 || !strings.Contains(errOut, credentialHint) {
@@ -217,7 +217,7 @@ func TestCatalogGuessedGitHubShown(t *testing.T) {
 	if code, _, errOut := run2(t, "setup", "--yes", "--catalog", m.url); code != 0 {
 		t.Fatalf("setup: exit %d\n%s", code, errOut)
 	}
-	const line = "catalog: https://github.com/owner/repo.git (no local path owner/repo.git)"
+	const line = "plugin set: https://github.com/owner/repo.git (no local path owner/repo.git)"
 	code, _, errOut := run2(t, "update", "--yes", "--catalog", "owner/repo.git")
 	if i, j := strings.Index(errOut, line), strings.Index(errOut, "could not fetch"); code != 1 || i < 0 || j < 0 || i > j {
 		t.Errorf("--yes: exit %d, want the source line before the fetch error\n%s", code, errOut)
@@ -279,7 +279,7 @@ func TestCatalogDryRunWritesNothing(t *testing.T) {
 	}
 	before := hashes(t, m.stack)
 	code, _, errOut := run2(t, "update", "--dry-run", "--catalog", m.url)
-	if code != 0 || !strings.Contains(errOut, "will: Write the catalog to") {
+	if code != 0 || !strings.Contains(errOut, "will: Write the plugin set to") {
 		t.Errorf("exit %d\n%s", code, errOut)
 	}
 	if after := hashes(t, m.stack); !slices.Equal(before, after) {

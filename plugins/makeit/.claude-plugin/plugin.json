@@ -2,9 +2,9 @@
   "name": "makeit",
   "version": "0.1.0",
   "author": {
-    "name": "makeit owners"
+    "name": "Youssef Kadaoui Abbassi"
   },
-  "description": "Our own plugin. Today: the two user-wide MCP servers with telemetry off (.mcp.json). Later bricks add hooks/ (ntfy, HANDOFF, the optional variant ask hook), skills/ (expand/contract) and evals/.",
+  "description": "makeit's own plugin: hooks (handoff, docs index, reply checks, notifications), the /makeit:init and expand-contract skills, and two MCP servers with telemetry off (chrome-devtools, docs-mcp-server read-only).",
   "license": "MIT",
   "mcpServers": "./.mcp.json"
 }

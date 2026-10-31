@@ -1,56 +1,170 @@
-# makeit
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img alt="makeit" src="docs/assets/logo-light.svg" width="300">
+  </picture>
+</p>
 
-makeit installs and maintains a Claude Code setup on your machine: Claude Code itself, a pinned set of
-plugins, settings and global files, and per project the files and checks that go with them.
+<p align="center">One command to set up Claude Code the same way on every machine and every project.</p>
 
-makeit is in beta (0.x): commands and files may still change.
+<p align="center">
+  <a href="https://github.com/youssefKadaouiAbbassi/make-it/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/youssefKadaouiAbbassi/make-it?color=555"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/youssefKadaouiAbbassi/make-it?color=555"></a>
+  <a href="https://github.com/youssefKadaouiAbbassi/make-it/actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/youssefKadaouiAbbassi/make-it/ci.yml?branch=main&label=ci"></a>
+  <img alt="status: beta" src="https://img.shields.io/badge/status-beta-6e7681">
+</p>
 
-## Install
+```console
+$ makeit setup
+  will: Install git
+  will: Install node
+  will: Install Claude Code
+  will: Write the plugin set to /home/dev/.makeit/catalog
+  will: Install makeit-bundle@makeit
+  will: Merge makeit's settings into /home/dev/.claude/settings.json
+  will: Write /home/dev/.claude/CLAUDE.md
+? Apply this plan? [Y/n]
+ok Install git
+ok Install node
+ok Install Claude Code
+ok Install makeit-bundle@makeit
+ok Merge makeit's settings into /home/dev/.claude/settings.json
+17 done
+```
 
-Linux and macOS:
+<p align="center"><sub>makeit setup on a fresh Ubuntu 24.04: the plan, one question, the result. Lines cut from the real output; nothing retyped.</sub></p>
 
-    curl -fsSL https://github.com/youssefKadaouiAbbassi/make-it/releases/download/v0.1.0/install.sh | sh
+> makeit is in beta (0.x): commands and files may still change between versions.
+
+## Highlights
+
+- Installs Claude Code, a tested set of plugins, settings and global rules in one step.
+- Sets up any project for Claude: CLAUDE.md, check commands, git hooks and CI, with `/makeit:init`
+  inside Claude Code.
+- Every change is shown as a plan first; `--dry-run` writes nothing.
+- Never overwrites your edits: a file you changed is kept and reported.
+- Signed releases; makeit updates itself and rolls back.
+- `makeit uninstall` removes what makeit added and you did not change.
+- Builds for Linux, macOS and Windows (tested on Linux).
+
+## Installation
+
+macOS and Linux:
+
+```sh
+curl -fsSL https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.sh | sh
+```
 
 Windows (PowerShell):
 
-    irm https://github.com/youssefKadaouiAbbassi/make-it/releases/download/v0.1.0/install.ps1 | iex
+```powershell
+irm https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.ps1 | iex
+```
 
-The script checks the binary's sha256 against the release's `checksums.txt`. With
-[minisign](https://jedisct1.github.io/minisign/) installed it first verifies the owner's signature on
-that list, and stops if it does not verify; without minisign it says the signature was not checked.
-Then it runs `makeit self install`, which puts makeit in `~/.local/bin`. Then run `makeit setup`.
+Then run `makeit setup`. The installer checks the release's checksums, and its signature too when
+[minisign](https://jedisct1.github.io/minisign/) is installed; see [Security](#security).
 
-The release key (also in [minisign.pub](minisign.pub)), to check a download yourself with
-`minisign -V -P <key> -m checksums.txt`:
+## Set up a project
 
-    RWSX6Cc3XFkIxiPHeM4IZ4jBFnOnfiMOROpHoZkjxB3p39XW6qrkkp79
+Inside Claude Code, in your project:
+
+```
+/makeit:init
+```
+
+makeit writes the project files, then Claude fills in the project's facts, wires the check tasks to
+your real linter and tests, runs them, and asks before the first commit. The same files without
+Claude: `makeit init`. A dry run on a new Node project:
+
+```console
+$ makeit init --dry-run
+  will: Write CLAUDE.md
+  will: Write CONSTRAINTS.md
+  will: Write HANDOFF.md
+  will: Add makeit's entries to package.json
+  will: Add makeit's entries to .gitignore
+  will: Add makeit's entries to renovate.json
+  will: Write .pre-commit-config.yaml
+  will: Write .env.example
+  will: Write .grype.yaml
+  will: Record what init wrote in .makeit.json
+10 would-change
+```
+
+See [Projects](docs/projects.md) for what each file is and how re-runs behave.
+
+## Keep it current
+
+`makeit update` brings the plugin set, plugins, settings and global files to what your makeit
+carries. `makeit self update` installs the newest signed makeit, and `makeit self rollback` goes back
+one version.
+
+## Check your machine
+
+`makeit doctor` changes nothing; it checks this machine and prints a fix for each problem:
+
+```console
+$ makeit doctor
+ok git found
+ok node found
+!! pyright is missing: the pyright-lsp plugin runs it for .py files
+   fix: npm install -g pyright
+ok Claude Code 2.1.316
+ok settings.json has every makeit value
+ok makeit-bundle@makeit 0.1.0
+0 errors, 7 warnings
+```
 
 ## Commands
 
-| command | what it changes |
+| Command | What it changes |
 |---|---|
-| `makeit setup` | installs the missing prerequisites, Claude Code, the plugin catalog, settings and global files |
-| `makeit doctor` | nothing: checks this machine against what the stack expects and prints a fix per problem |
-| `makeit init [dir]` | writes a project's CLAUDE.md, CONSTRAINTS.md, check tasks, hook config, CI caller and docs index |
-| `makeit update` | brings the catalog, plugins, settings and global files to what this makeit carries |
-| `makeit uninstall` | removes what makeit put on this machine and nobody changed since |
-| `makeit self update` | replaces the makeit binary with the newest signed release (`makeit self rollback` undoes it) |
+| `makeit setup` | installs the missing prerequisites, Claude Code, the plugin set, settings and global files |
+| `makeit init [dir]` | writes a project's CLAUDE.md, CONSTRAINTS.md, check tasks, hook config and CI caller |
+| `makeit doctor` | nothing; it reports each problem with a fix |
+| `makeit update` | brings the plugin set, plugins, settings and global files to what this makeit carries |
+| `makeit self update` | replaces makeit with the newest signed release (`makeit self rollback` undoes it) |
+| `makeit uninstall` | removes what makeit added and you did not change since |
 
-Every command that changes something prints its plan first and asks once. `--dry-run` prints the plan
-and writes nothing; `--yes` applies it without asking; `--json` prints one report on stdout.
-`makeit help <command>` lists a command's flags.
+Every command that changes something prints its plan first and asks once. `--dry-run` prints the
+plan and writes nothing, `--yes` applies it without asking, and `--json` prints one report.
+All commands and flags: [docs/commands.md](docs/commands.md).
 
-## What it installs
+## What's included
 
-The prerequisites (git, Node.js, jq, CA certificates, and optional tools such as gh and the language
-servers), Claude Code, the `makeit` plugin marketplace with its bundle, and the settings and global
-files the plugins rely on. [INSTALL.md](INSTALL.md) lists each part and why it is there.
+| Part | What it does |
+|---|---|
+| makeit plugin | session hooks (handoff, docs, reply checks), the `/makeit:init` skill |
+| superpowers | planning, test-driven development and review skills |
+| ponytail | keeps changes small |
+| chrome-devtools-mcp, docs-mcp-server | a browser to check web work, and search over your dependencies' docs |
+| deja-vu, security-audit | memory across sessions, and security review |
+| four LSP plugins | code intelligence for TypeScript, Python, Rust and Go |
 
-## Remove it
+Each part, why it is there, and the optional tools: [docs/included.md](docs/included.md).
 
-`makeit uninstall` removes the catalog, plugins, settings values and files makeit added. A file or
-setting you changed after makeit wrote it is kept and listed. `makeit uninstall --dry-run` shows
-what would go.
+## Security
+
+Releases are signed with the maintainer's [minisign](https://jedisct1.github.io/minisign/) key.
+Published releases cannot be changed, and only the maintainer can create version tags. The release
+key, also in [minisign.pub](minisign.pub):
+
+```
+RWSX6Cc3XFkIxiPHeM4IZ4jBFnOnfiMOROpHoZkjxB3p39XW6qrkkp79
+```
+
+To verify a download yourself: `minisign -V -P <key> -m checksums.txt`. To report a vulnerability,
+see [SECURITY.md](SECURITY.md).
+
+## Documentation
+
+[Getting started](docs/getting-started.md) ·
+[Commands](docs/commands.md) ·
+[What's included](docs/included.md) ·
+[Projects and /makeit:init](docs/projects.md) ·
+[FAQ](docs/faq.md) ·
+[Changelog](CHANGELOG.md) ·
+[Contributing](CONTRIBUTING.md)
 
 ## License
 
@@ -61,7 +175,9 @@ MIT, see [LICENSE](LICENSE).
 - `ci/floor-guard.mjs`, `ci/make-floor-guard.py`, `templates/project/CONSTRAINTS.md` and
   `plugins/makeit/skills/expand-contract` derive from
   [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills), MIT
-  ([plugins/makeit/LICENSES](plugins/makeit/LICENSES/agent-skills-MIT.txt),
-  [templates/LICENSES](templates/LICENSES/agent-skills-MIT.txt)).
-- The other plugins in the catalog are installed from their own repositories, under their own
-  licenses; makeit does not copy them.
+  ([notice](plugins/makeit/LICENSES/agent-skills-MIT.txt)).
+- The logo is drawn from [Inter](https://github.com/rsms/inter) and
+  [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), both under the SIL Open Font License
+  ([notices](docs/assets/LICENSES)).
+- The other plugins are installed from their own repositories, under their own licenses; makeit
+  does not copy them.

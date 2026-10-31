@@ -24,7 +24,7 @@ func (e *env) settingsStep() plan.Step {
 	if res, _, err := e.mergeSettings(path); err == nil {
 		detail = diff(res.Changes)
 	}
-	return plan.Step{ID: "settings", Title: "Merge the stack's settings into " + path, Detail: detail,
+	return plan.Step{ID: "settings", Title: "Merge makeit's settings into " + path, Detail: detail,
 		Already: func(context.Context) (bool, error) {
 			res, _, err := e.mergeSettings(path)
 			e.keepHeld(res.Changes)
@@ -80,11 +80,11 @@ func (e *env) settingsStep() plan.Step {
 func (e *env) mergeSettings(path string) (settings.Result, []byte, error) {
 	raw, err := e.Catalog.ReadFile("settings.baseline.json")
 	if err != nil {
-		return settings.Result{}, nil, fmt.Errorf("the catalog's settings.baseline.json: %w", err)
+		return settings.Result{}, nil, fmt.Errorf("the plugin set's settings.baseline.json: %w", err)
 	}
 	baseline, err := jsonx.DecodeObject(raw)
 	if err != nil {
-		return settings.Result{}, nil, fmt.Errorf("the catalog's settings.baseline.json: %w", err)
+		return settings.Result{}, nil, fmt.Errorf("the plugin set's settings.baseline.json: %w", err)
 	}
 	old, found, err := fsx.ReadOptional(path)
 	if err != nil {

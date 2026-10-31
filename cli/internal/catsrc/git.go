@@ -127,13 +127,13 @@ func Fetch(ctx context.Context, g Git, url, src, commit string) (*catalog.Tree, 
 		mode, typ, obj := f[0], f[1], f[2]
 		switch {
 		case mode == "120000":
-			return nil, fmt.Errorf("catalog %s has a symlink: %s", url, path)
+			return nil, fmt.Errorf("plugin set %s has a symlink: %s", url, path)
 		case typ != "blob":
-			return nil, fmt.Errorf("catalog %s has a submodule: %s", url, path)
+			return nil, fmt.Errorf("plugin set %s has a submodule: %s", url, path)
 		}
 		size, _ := strconv.ParseInt(f[3], 10, 64)
 		if total += size; total > catalog.MaxTree {
-			return nil, fmt.Errorf("catalog is larger than %d bytes", catalog.MaxTree)
+			return nil, fmt.Errorf("plugin set is larger than %d bytes", catalog.MaxTree)
 		}
 		blob, err := g.git(ctx, tmp, "cat-file", "blob", obj)
 		if err != nil {

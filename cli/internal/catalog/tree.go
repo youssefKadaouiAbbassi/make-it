@@ -26,7 +26,7 @@ type Tree struct {
 func (t *Tree) ReadFile(p string) ([]byte, error) {
 	b, ok := t.Files[p]
 	if !ok {
-		return nil, fmt.Errorf("catalog has no %s: %w", p, fs.ErrNotExist)
+		return nil, fmt.Errorf("plugin set has no %s: %w", p, fs.ErrNotExist)
 	}
 	return b, nil
 }
@@ -43,10 +43,10 @@ func TreeOf(files map[string][]byte, exec map[string]bool) (*Tree, error) {
 		}
 		// fs.ValidPath refuses "..", "." and empty segments; \ and : are separators or drives on Windows.
 		if !fs.ValidPath(p) || strings.ContainsAny(p, `\:`) {
-			return nil, fmt.Errorf("catalog path %q is not a plain relative path, so the catalog is refused", p)
+			return nil, fmt.Errorf("plugin set path %q is not a plain relative path, so the plugin set is refused", p)
 		}
 		if total += int64(len(b)); total > MaxTree {
-			return nil, fmt.Errorf("catalog is larger than %d bytes", MaxTree)
+			return nil, fmt.Errorf("plugin set is larger than %d bytes", MaxTree)
 		}
 		mode := "0644"
 		if exec[p] {
@@ -97,17 +97,17 @@ func DirTree(dir string) (*Tree, error) {
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("catalog %s has a symlink: %s", dir, rel)
+			return fmt.Errorf("plugin set %s has a symlink: %s", dir, rel)
 		}
 		info, err := d.Info()
 		if err != nil {
 			return err
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("catalog %s has a file that is not a regular file: %s", dir, rel)
+			return fmt.Errorf("plugin set %s has a file that is not a regular file: %s", dir, rel)
 		}
 		if total += info.Size(); total > MaxTree {
-			return fmt.Errorf("catalog is larger than %d bytes", MaxTree)
+			return fmt.Errorf("plugin set is larger than %d bytes", MaxTree)
 		}
 		b, err := os.ReadFile(p)
 		if err != nil {

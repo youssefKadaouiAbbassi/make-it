@@ -54,7 +54,7 @@ func (e *env) claudeStep() plan.Step {
 			}
 			_, v, ok := e.findClaude(ctx)
 			if !ok {
-				return "", errors.New("after the install, Claude Code is still missing or below the floor; open a new terminal and run makeit doctor")
+				return "", errors.New("after the install, Claude Code is still missing or below the minimum version; open a new terminal and run makeit doctor")
 			}
 			e.st.Prereqs = initMap(e.st.Prereqs)
 			e.st.Prereqs["claude-code"] = &state.Prereq{InstalledBy: "makeit", Route: route}

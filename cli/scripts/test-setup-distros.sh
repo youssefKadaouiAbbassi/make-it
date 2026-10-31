@@ -164,13 +164,13 @@ test -f "$HOME/.makeit/catalog/templates/catalog-chain.md"
 echo "catalog follows the newest tag: ok"
 m update --catalog "$URL#v1.0.0" --yes > /tmp/catchain-3.log 2>&1 || { cat /tmp/catchain-3.log; exit 1; }
 m update --yes > /tmp/catchain-4.log 2>&1 || { cat /tmp/catchain-4.log; exit 1; }
-grep -q "catalog v1.1.0 is newer than v1.0.0" /tmp/catchain-4.log
+grep -q "plugin set v1.1.0 is newer than v1.0.0" /tmp/catchain-4.log
 echo "a pinned catalog stays, with the newer-tag line: ok"
 before=$(grep -o "\"resolved\": \"[0-9a-f]*\"" "$st")
 g tag -f -a v1.0.0 -m moved >/dev/null
 g push -q -f /tmp/catchain-srv/cat.git v1.0.0
 m update --yes > /tmp/catchain-5.log 2>&1 || { cat /tmp/catchain-5.log; exit 1; }
-grep -q "catalog tag v1.0.0 now points to" /tmp/catchain-5.log
+grep -q "plugin set tag v1.0.0 now points to" /tmp/catchain-5.log
 [ "$(grep -o "\"resolved\": \"[0-9a-f]*\"" "$st")" = "$before" ]
 echo "a moved tag is refused: ok"
 m update --catalog embedded --yes > /tmp/catchain-6.log 2>&1 || { cat /tmp/catchain-6.log; exit 1; }

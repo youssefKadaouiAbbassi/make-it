@@ -90,7 +90,7 @@ func TestPrepare(t *testing.T) {
 		}}
 		p.Show = func(line string) { shown = append(shown, line) }
 		_, err := Prepare(ctx, p)
-		const want = "catalog: https://github.com/owner/repo.git (no local path owner/repo.git)"
+		const want = "plugin set: https://github.com/owner/repo.git (no local path owner/repo.git)"
 		if len(shown) != 1 || shown[0] != want {
 			t.Errorf("shown %q, want %q (err %v)", shown, want, err)
 		}
@@ -98,7 +98,7 @@ func TestPrepare(t *testing.T) {
 	for _, c := range []struct{ name, key, value, want string }{
 		{"renamed marketplace", "makeit.json", `{"schemaVersion": 1, "marketplace": "other", "bundle": "makeit-bundle@makeit"}`, ""},
 		{"another bundle", "makeit.json", `{"schemaVersion": 1, "marketplace": "makeit", "bundle": "other@makeit"}`, ""},
-		{"newer schema", "makeit.json", `{"schemaVersion": 2, "marketplace": "makeit", "bundle": "makeit-bundle@makeit"}`, "this catalog needs a newer makeit: run `makeit self update`"},
+		{"newer schema", "makeit.json", `{"schemaVersion": 2, "marketplace": "makeit", "bundle": "makeit-bundle@makeit"}`, "this plugin set needs a newer makeit: run `makeit self update`"},
 		{"marketplace.json renamed", ".claude-plugin/marketplace.json", `{"name": "other", "owner": {"name": "t"}, "plugins": []}`, ""},
 	} {
 		t.Run(c.name+" is refused", func(t *testing.T) {
@@ -133,7 +133,7 @@ func TestPrepare(t *testing.T) {
 		gone := "file:///no/such/cat.git"
 		hint := "; a private repository needs a git credential helper or an SSH key"
 		got, err := Prepare(ctx, params(stack, stateWith(gitRecord(gone, "latest", "latest", "v1.0.0", strings.Repeat("a", 40)))))
-		if err != nil || len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "could not refresh the catalog") ||
+		if err != nil || len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "could not refresh the plugin set") ||
 			!strings.Contains(got.Notices[0], hint) || got.Tree == nil {
 			t.Errorf("plain: %+v %v", got.Notices, err)
 		}

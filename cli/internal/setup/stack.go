@@ -21,7 +21,7 @@ const officialMarketplace = "claude-plugins-official"
 func (e *env) stackSteps() []plan.Step {
 	dir := filepath.Join(e.Roots.Stack, "catalog")
 	return []plan.Step{
-		{ID: "catalog", Title: "Write the catalog to " + dir,
+		{ID: "catalog", Title: "Write the plugin set to " + dir,
 			Already: func(ctx context.Context) (bool, error) {
 				// Only a marketplace the user added makes the catalog theirs; one makeit added keeps
 				// its catalog in sync, and a deleted catalog is written again.

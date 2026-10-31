@@ -109,7 +109,7 @@ func (r *report) build(m Machine) {
 	if len(digest) > 12 {
 		digest = digest[:12]
 	}
-	r.add("makeit.build", "makeit", Info, fmt.Sprintf("makeit %s (%s), catalog sha256:%s", m.Version, m.Target, digest), "")
+	r.add("makeit.build", "makeit", Info, fmt.Sprintf("makeit %s (%s), plugin set sha256:%s", m.Version, m.Target, digest), "")
 }
 
 // self reports how this makeit updates itself, and a rollback's skip (cli/SELF-UPDATE.md).
@@ -146,12 +146,12 @@ func (r *report) catalogSource(m Machine) {
 		at = strings.TrimPrefix(c.Resolved, "sha256:")
 		at = at[:min(12, len(at))]
 	}
-	msg := fmt.Sprintf("catalog %s %s at %s", c.Kind, c.Location, at)
+	msg := fmt.Sprintf("plugin set %s %s at %s", c.Kind, c.Location, at)
 	if c.Requested != nil && *c.Requested != "" {
 		msg += " (" + *c.Requested + ")"
 	}
 	if c.Kind == "git" && !prereqPresent(m, "git") {
-		r.add("catalog.source", "catalog", Error, fmt.Sprintf("the catalog %s needs git: install git", c.Location), "")
+		r.add("catalog.source", "catalog", Error, fmt.Sprintf("the plugin set %s needs git: install git", c.Location), "")
 		return
 	}
 	if mk := catalog.ReadMarker(m.CatalogDir); mk.Digest != "" {
@@ -240,7 +240,7 @@ func (r *report) claude(ctx context.Context, m Machine, req catalog.Requires, re
 
 func (r *report) version(ctx context.Context, m Machine, req catalog.Requires, reqErr error) (unusable string) {
 	const id, g = "claude.version", "claude"
-	const badCatalog = "the catalog's version floor cannot be read"
+	const badCatalog = "the plugin set's minimum Claude Code version cannot be read"
 	if reqErr != nil {
 		r.add(id, g, Error, badCatalog+": "+reqErr.Error(), "")
 		return badCatalog
@@ -254,12 +254,12 @@ func (r *report) version(ctx context.Context, m Machine, req catalog.Requires, r
 	fix := claudecli.UpgradeCommand(m.Installs[0].Source, m.Platform.PM, m.BrewCask)
 	belowHard, err := claudecli.Compare(v, hard)
 	if err != nil {
-		r.add(id, g, Error, fmt.Sprintf("the catalog's floor %q: %v", hard, err), "")
+		r.add(id, g, Error, fmt.Sprintf("the plugin set's minimum Claude Code version %q: %v", hard, err), "")
 		return badCatalog
 	}
 	belowSoft, err := claudecli.Compare(v, soft)
 	if err != nil {
-		r.add(id, g, Error, fmt.Sprintf("the catalog's tested version %q: %v", soft, err), "")
+		r.add(id, g, Error, fmt.Sprintf("the plugin set's tested version %q: %v", soft, err), "")
 		return badCatalog
 	}
 	switch {
@@ -267,7 +267,7 @@ func (r *report) version(ctx context.Context, m Machine, req catalog.Requires, r
 		r.add(id, g, Error, fmt.Sprintf("Claude Code %s is below %s, the lowest makeit works with", v, hard), fix)
 		return fmt.Sprintf("Claude Code %s is below %s", v, hard)
 	case belowSoft < 0:
-		r.add(id, g, Warn, fmt.Sprintf("Claude Code %s is older than %s, the version this catalog was tested with", v, soft), fix)
+		r.add(id, g, Warn, fmt.Sprintf("Claude Code %s is older than %s, the version this plugin set was tested with", v, soft), fix)
 	default:
 		r.add(id, g, OK, "Claude Code "+v, "")
 	}
@@ -283,7 +283,7 @@ func (r *report) global(m Machine) {
 		id := "global." + rel
 		want, err := m.Catalog.ReadFile(src)
 		if err != nil {
-			r.add(id, g, Error, "the catalog's "+src+": "+err.Error(), "")
+			r.add(id, g, Error, "the plugin set's "+src+": "+err.Error(), "")
 			continue
 		}
 		path := filepath.Join(m.ClaudeDir, filepath.FromSlash(rel))
@@ -294,9 +294,9 @@ func (r *report) global(m Machine) {
 		case !found:
 			r.add(id, g, Warn, path+" is missing", "makeit setup")
 		case string(have) == string(want):
-			r.add(id, g, OK, path+" is the stack's", "")
+			r.add(id, g, OK, path+" is makeit's", "")
 		default:
-			r.add(id, g, Info, path+" is yours (adopted): it differs from the stack's and setup leaves it alone", "")
+			r.add(id, g, Info, path+" is yours (adopted): it differs from makeit's and setup leaves it alone", "")
 		}
 	}
 }

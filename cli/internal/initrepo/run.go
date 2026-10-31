@@ -143,9 +143,9 @@ func (r *run) newerNotice() []string {
 	case 0:
 		return nil
 	case 1:
-		return []string{"1 file makeit wrote has a newer version in the catalog (" + r.newer[0] + "): makeit init --update rewrites it"}
+		return []string{"1 file makeit wrote has a newer version in the plugin set (" + r.newer[0] + "): makeit init --update rewrites it"}
 	}
-	return []string{fmt.Sprintf("%d files makeit wrote have a newer version in the catalog (%s): makeit init --update rewrites them", len(r.newer), strings.Join(r.newer, ", "))}
+	return []string{fmt.Sprintf("%d files makeit wrote have a newer version in the plugin set (%s): makeit init --update rewrites them", len(r.newer), strings.Join(r.newer, ", "))}
 }
 
 func (r *run) keep(item, reason string) {
@@ -320,7 +320,7 @@ func (r *run) seedStep(s Seed) plan.Step {
 // mergeStep adds what the stack needs to a file without removing or changing what is there.
 func (r *run) mergeStep(m MergeSeed) plan.Step {
 	prev := r.prev.Files[m.Path]
-	return plan.Step{ID: "merge:" + m.Path, Title: "Add the stack's entries to " + m.Path,
+	return plan.Step{ID: "merge:" + m.Path, Title: "Add makeit's entries to " + m.Path,
 		Already: func(context.Context) (bool, error) {
 			if r.linked(m.Path) {
 				if prev != nil {
@@ -358,7 +358,7 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 				return true, nil
 			}
 			for _, c := range res.Conflicts {
-				r.keep(m.Path+" "+c, "yours: kept, differs from the stack's")
+				r.keep(m.Path+" "+c, "yours: kept, differs from makeit's")
 			}
 			rec := &state.RepoFile{Class: "merge", Template: m.Template, WrittenSha256: fsx.Sha256(res.Body), PreExisted: exists}
 			if prev != nil {

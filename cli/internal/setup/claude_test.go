@@ -50,7 +50,7 @@ func TestClaudeBelowFloor(t *testing.T) {
 	f.answers[nativeClaude+" --version"] = version("2.1.200")
 	s := e.claudeStep()
 	if ok, _ := s.Already(context.Background()); ok {
-		t.Fatal("a claude below the floor counts as installed")
+		t.Fatal("a claude below the minimum version counts as installed")
 	}
 	f.answers["sh -c "+e.shell("claude update")] = func(execx.Cmd) execx.Result {
 		f.answers[nativeClaude+" --version"] = version("2.1.311")
@@ -164,7 +164,7 @@ func TestClaudeRepoApkHash(t *testing.T) {
 	}
 }
 
-// A claude from the apt repository below the floor is upgraded without a second prompt: under
+// A claude from the apt repository below the minimum version is upgraded without a second prompt: under
 // --yes no one can answer apt's "Do you want to continue?".
 func TestClaudeBelowFloorFromRepository(t *testing.T) {
 	found := []claudecli.Install{{Path: "/usr/bin/claude", Source: "path", OnPath: true}}

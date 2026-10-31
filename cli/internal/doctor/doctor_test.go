@@ -183,7 +183,7 @@ func TestClaudeVersion(t *testing.T) {
 		{"exactly the tested version", text("2.1.310 (Claude Code)\n"), OK},
 		{"below the tested version", text("2.1.300 (Claude Code)\n"), Warn},
 		{"exactly the floor", text("2.1.287 (Claude Code)\n"), Warn},
-		{"below the floor", text("2.1.200 (Claude Code)\n"), Error},
+		{"below the minimum version", text("2.1.200 (Claude Code)\n"), Error},
 		{"--version fails", func(execx.Cmd) execx.Result { return execx.Result{Code: 1, Stderr: "boom"} }, Error},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -289,8 +289,8 @@ func TestCatalogSourceCheck(t *testing.T) {
 		msg    string
 	}{
 		{"embedded", state.Catalog{Kind: "embedded"}, true, false, "", ""},
-		{"git", git, true, false, Info, "catalog git https://h/cat.git at v1.0.0 (latest)"},
-		{"git without git", git, false, false, Error, "the catalog https://h/cat.git needs git: install git"},
+		{"git", git, true, false, Info, "plugin set git https://h/cat.git at v1.0.0 (latest)"},
+		{"git without git", git, false, false, Error, "the plugin set https://h/cat.git needs git: install git"},
 		{"changed since the sync", git, true, true, Warn, "changed since makeit wrote it"},
 	}
 	for _, c := range cases {

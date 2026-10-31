@@ -31,6 +31,6 @@ Rules:
 - Backfill in batches, off the hot path. One `UPDATE` over millions of rows locks the table; chunk and throttle it.
 - Build large indexes without blocking writes (Postgres `CREATE INDEX CONCURRENTLY`).
 - Decouple from code by feature flag when the cutover is risky.
-- Before the PR: run `squawk` on the new migration files and the framework's drift check (`alembic check`, `drizzle-kit check`, `prisma migrate diff --exit-code`); the gate's `migrations` job runs the same two.
+- Before the PR: run `squawk` on the new migration files and the framework's drift check (`alembic check`, `drizzle-kit check`, `prisma migrate diff --exit-code`); the CI checks' `migrations` job runs the same two.
 
 Source: this text is adapted from agent-skills (addyosmani/agent-skills 0.6.12, `skills/deprecation-and-migration/SKILL.md`, "Database Schema Migrations (Expand/Contract)"), MIT; the notice is in `LICENSES/agent-skills-MIT.txt` at the plugin root.

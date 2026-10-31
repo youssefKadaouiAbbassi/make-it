@@ -195,7 +195,7 @@ if [ -f "$sk" ]; then
   expect "init skill: --rulesets only on request" "--rulesets" "$body"
   expect "init skill: the init call stands alone (the exact allowed-tools rule)" "as a command on its own" "$body"
   expect "init skill: Coverage and Mutation rows are never deleted" "Never delete the Coverage or Mutation row" "$body"
-  expect "init skill: the commit carries the floor-guard reason line" "floor-guard: makeit init seeds the gate, the check tasks and the hook config" "$body"
+  expect "init skill: the commit carries the floor-guard reason line" "floor-guard: makeit init adds the CI checks, the check tasks and the hook config" "$body"
   expect "init skill: a repository with no commit yet gets its first commit on the default branch" "no commit yet" "$body"
   wire=$(grep -n 'Wire the check' "$sk" | head -1 | cut -d: -f1)
   full=$(grep -n 'Run check:full' "$sk" | head -1 | cut -d: -f1)
