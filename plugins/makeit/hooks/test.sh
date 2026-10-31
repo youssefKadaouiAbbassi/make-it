@@ -155,5 +155,13 @@ expect_empty "check-task passing task: silent" "$(cpay)"
 printf '{"name":"t"}\n' >"$cts/package.json"
 expect_empty "check-task no task defined: silent" "$(cpay)"
 
+# --- options.sh: its own cases, under both locales (· and é are multibyte) ----------------------
+for loc in C C.UTF-8; do
+  if LC_ALL=$loc bash "$here/options_test.sh" >"$tmp/options-$loc.out" 2>&1; then
+    ok "options_test.sh under LC_ALL=$loc ($(grep -c '^ok' "$tmp/options-$loc.out") cases)"
+  else
+    bad "options_test.sh under LC_ALL=$loc: $(grep '^FAIL' "$tmp/options-$loc.out" | head -3)"
+  fi
+done
 
 [ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }

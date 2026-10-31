@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# options_test.sh [HOOK]: edge cases for options.sh with synthetic transcripts. Prints one line per
+# case, exits 1 if any case fails. HOOK defaults to options.sh beside this file (pass a mutated
+# copy to check that the tests catch a broken hook). hooks/test.sh runs it under LC_ALL=C and C.UTF-8.
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+hook=${1:-$here/options.sh}
+work=$(mktemp -d "${TMPDIR:-/tmp}/options-test.XXXXXX")
+trap '/bin/rm -rf "$work"' EXIT
+fail=0
+# transcript KIND ENTRYPOINT -> path of a one-prompt transcript (KIND "none" = no origin, as in -p)
+transcript() {
+  local f="$work/$1-$2.jsonl"
+  if [ "$1" = none ]; then
+    printf '{"type":"user","promptId":"p1","entrypoint":"%s","message":{"content":"x"}}\n' "$2" >"$f"
+  else
+    printf '{"type":"user","promptId":"p1","entrypoint":"%s","origin":{"kind":"%s"},"message":{"content":"x"}}\n' "$2" "$1" >"$f"
+  fi
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"y"}]}}\n' >>"$f"
+  printf '%s' "$f"
+}
+# check NAME WANT(fire|quiet) TRANSCRIPT ACTIVE MESSAGE
+check() {
+  local out code payload
+  payload=$(jq -n --arg t "$3" --argjson a "$4" --arg m "$5" \
+    '{hook_event_name: "Stop", stop_hook_active: $a, prompt_id: "p1", transcript_path: $t, last_assistant_message: $m}')
+  set +e
+  out=$(bash "$hook" <<<"$payload")
+  code=$?
+  set -e
+  local got=quiet
+  if jq -e '(.decision == "block") or ((.hookSpecificOutput.additionalContext // "") | length > 0)' <<<"$out" >/dev/null 2>&1; then got=fire; fi
+  if [ "$got" = "$2" ] && [ "$code" = 0 ]; then
+    echo "ok    $1"
+  else
+    echo "FAIL  $1 (want $2, got $got, exit $code)"
+    fail=1
+  fi
+}
+human=$(transcript human cli)
+# A prose handback fires; anything that is not one stays quiet.
+check "owner turn ends with a question" fire "$human" false $'Fixed on dev.\n\nShould I release it to prod now?'
+check "owner turn ends with a statement" quiet "$human" false $'Fixed on dev, not on prod.\nA real outage was only simulated.'
+check "loop guard: second stop passes" quiet "$human" true $'Should I release it to prod now?'
+check "claude -p turn (sdk-cli, no origin)" quiet "$(transcript none sdk-cli)" false $'Should I release it?'
+check "message from another session (peer)" quiet "$(transcript peer cli)" false $'Should I release it?'
+check "background task notice (owner reads it)" fire "$(transcript task-notification cli)" false $'Done.\nTell me when the DNS is switched.'
+check "prompt line not on disk yet: fail open" quiet "$work/missing.jsonl" false $'Should I?'
+check "resume command after the question" fire "$human" false $'Should I release it?\n\n`cd /x && claude --resume abc`'
+check "question only inside a code block" quiet "$human" false $'Ran it.\n\n```\nread -p "Continue?"\n```'
+check "quoted draft for someone else" quiet "$human" false $'Draft for a colleague:\n\n> On accepte ou on contre-propose ?'
+check "say a quoted phrase" fire "$human" false $'To ship it, say "release dev to master".'
+check "Next: line with a prompt to type" fire "$human" false $'**Done:** fixed.\n**Next:** `finish the 2272 items`'
+check "waiting on you: nothing" quiet "$human" false $'**Done:** fixed.\n**Waiting on you:** nothing.'
+check "waiting on you: something" fire "$human" false $'Still waiting on you: the GitHub token approval.'
+check "word boundary: sender \`UNICE\`" quiet "$human" false $'Keys go to OpenTofu (sender `UNICE`) and deploy.'
+check "offer with if you'd rather" fire "$human" false $'If you\'d rather keep 1.12.0, say so.'
+check "French question at the end" fire "$human" false $'C\'est en place sur dev.\nTu en penses quoi ?'
+check "empty message" quiet "$human" false ''
+check "handback above ponytail's not-checked line" fire "$human" false $'Upload a file on dev-admin. Tell me when it\'s done.\n\nI didn\'t watch the deploy finish.'
+check "question above ponytail's not-checked line" fire "$human" false $'Should I release it now?\n\nI did not test a real outage.'
+check "question three paragraphs up is not the end" quiet "$human" false $'Should I keep it?\n\nKept it.\n\nNothing else changed.'
+check "then tell me" fire "$human" false $'Open the page and upload an image, then tell me.'
+check "tell me a quoted word" fire "$human" false $'Then tell me "done".'
+# New cases: the wanted ending passes, everything near it that is not that ending still fires.
+close=$'The SLD fix is on dev, not on prod.\nA real SLD outage was only simulated in tests.'
+check "close then numbered options, first (Recommended)" quiet "$human" false "$close"$'\n\n1. Release to prod now (Recommended): prod stops losing products.\n2. Wait one night: prod keeps the bug a night longer.'
+check "question line, then the options" quiet "$human" false "$close"$'\n\nRelease it to prod?\n\n1. Release now (Recommended): the fix reaches prod.\n2. Wait one night: I watch dev first.'
+check "options with an indented trade-off line each" quiet "$human" false "$close"$'\n\n1. Release now (Recommended)\n   Prod stops losing products.\n2. Wait one night\n   Prod keeps the bug.'
+check "bold numbers" quiet "$human" false "$close"$'\n\n**1.** Release now (Recommended): prod is fixed.\n**2.** Wait: dev gets watched.'
+check "lead-in says reply 1 or 2, then the options" quiet "$human" false $'Reply 1 or 2.\n1. Release now (Recommended): prod is fixed.\n2. Wait: dev gets watched.'
+check "options, then ponytail's not-checked line" quiet "$human" false "$close"$'\n\n1. Release now (Recommended): prod is fixed.\n2. Wait: dev gets watched.\n\nNot checked: a real outage.'
+check "options, then the resume command" quiet "$human" false "$close"$'\n\n1. Release now (Recommended): prod is fixed.\n2. Wait: dev gets watched.\n\n`cd /x && claude --resume abc`'
+check "options, then one redundant line" quiet "$human" false "$close"$'\n\n1. Release now (Recommended): prod is fixed.\n2. Wait: dev gets watched.\n\nTell me which one.'
+check "recommendation on option 2" quiet "$human" false "$close"$'\n\n1. Wait one night: dev gets watched.\n2. Release now (Recommended): prod is fixed.'
+check "a wait on the user: one Done option" quiet "$human" false $'The TXT record has to be added by hand in the OVH panel.\n\n1. Done (Recommended): I check the record and finish the setup.'
+check "(Recommended) in prose, no numbers" fire "$human" false "$close"$'\nRelease now (Recommended), or wait a night.'
+check "numbered menu without a recommendation, then Which option?" fire "$human" false $'Implementation complete.\n\n1. Merge back to main locally\n2. Push and create a Pull Request\n3. Keep the branch as-is\n\nWhich option?'
+check "numbered findings, no question" quiet "$human" false $'Three things are left on dev:\n1. the cost alert\n2. the secrets\n3. the idle memory'
+check "options three lines up, then a new question" fire "$human" false $'1. Release now (Recommended): prod is fixed.\n2. Wait: dev gets watched.\n\nShould I also delete s3test?\nIt holds 2 GiB.\nNothing else changed.'
+check "options only inside a code block" fire "$human" false $'Which one?\n\n```\n1. Release now (Recommended)\n2. Wait\n```'
+# The picker-like layout and its marker words, in English and French; other languages pass by layout.
+check "· recommended" quiet "$human" false "$close"$'\n\nRelease it?\n\n1. **Release now** · recommended\n   prod is fixed\n2. **Wait one night**\n   dev gets watched'
+check "· Recommended, capitalised" quiet "$human" false "$close"$'\n\nRelease it?\n\n1. Release now · Recommended\n2. Wait one night'
+check "(Recommandé)" quiet "$human" false $'C\'est sur dev.\n\nOn publie ?\n\n1. Publier maintenant (Recommandé) : la prod est corrigée.\n2. Attendre une nuit.'
+check "· recommandé" quiet "$human" false $'C\'est sur dev.\n\nOn publie ?\n\n1. **Publier maintenant** · recommandé\n   la prod est corrigée\n2. **Attendre une nuit**\n   la dev est surveillée'
+check "· RECOMMANDÉ, capitalised" quiet "$human" false $'C\'est sur dev.\n\nOn publie ?\n\n1. Publier maintenant · RECOMMANDÉ\n2. Attendre une nuit'
+check "Spanish · recomendado passes by layout" quiet "$human" false $'Está en dev.\n\n¿Lo publico?\n\n1. **Publicar ahora** · recomendado\n   prod queda corregido\n2. **Esperar una noche**'
+check "· recommended in a - list under a question" fire "$human" false $'Which one?\n\n- **Release now** · recommended\n- **Wait one night**'
+check "· recommended in prose, no numbers" fire "$human" false "$close"$'\nRelease now · recommended, or wait a night.'
+check "(Recommandé) in prose, no numbers" fire "$human" false $'C\'est sur dev.\nPublier maintenant (Recommandé), ou attendre.'
+# The rule's own example (templates/global/CLAUDE.md), dedented as a reply would print it, passes.
+rule=$here/../../../templates/global/CLAUDE.md
+if [ -f "$rule" ]; then
+  example=$(awk '/laid out like the picker:/ { f = 1; next } f && /replies with one digit/ { exit } f' "$rule" | sed -E 's/^    //')
+  if [ -n "$example" ]; then
+    check "the CLAUDE.md template's example" quiet "$human" false "$close"$'\n\nWant one of these?\n\n'"$example"
+  else
+    echo "FAIL  the CLAUDE.md template's example was not found"
+    fail=1
+  fi
+fi
+# The block reason, word for word: it acts on the model, so a change to it is a change to the hook.
+want='Your reply ends on a question or a request in prose. Without repeating your reply: only if the work cannot go on until the user answers or acts (a release, a merge, a choice, a step only they can do), ask with AskUserQuestion, the question naming the item and the fact it turns on. If the work is finished and you are suggesting next steps, end on 2-3 numbered options under your close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), nothing after them. If you were only answering a question, end on the answer; if nothing needs the user, end on one plain line.'
+payload=$(jq -n --arg t "$human" '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: "Should I release it?"}')
+if [ "$(bash "$hook" <<<"$payload" | jq -r '.reason' 2>/dev/null)" = "$want" ]; then
+  echo "ok    block reason, word for word"
+else
+  echo "FAIL  block reason differs"
+  fail=1
+fi
+out=$(bash "$hook" <<<'not json') && code=0 || code=$?
+if [ -z "$out" ] && [ "$code" = 0 ]; then echo "ok    invalid JSON input: silent, exit 0"; else
+  echo "FAIL  invalid JSON input (out=$out exit=$code)"
+  fail=1
+fi
+exit "$fail"
