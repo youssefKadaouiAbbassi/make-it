@@ -37,7 +37,7 @@ who=$({ grep -F -m 20 "\"promptId\":\"$pid\"" "$tp" |
 case "$who" in "human cli" | "task-notification cli") ;; *) exit 0 ;; esac
 msg=$(jq -r '.last_assistant_message // empty' <<<"$input") || exit 0
 [ -n "$msg" ] || exit 0
-# What the owner reads, outside fenced code. Skipped: a resume command (claude --resume) and
+# What the user reads, outside fenced code. Skipped: a resume command (claude --resume) and
 # quoted lines (a draft for someone else, "> ...").
 clean=$(printf '%s\n' "$msg" | awk '/^[[:space:]]*```/ { f = !f; next } !f && !/claude --resume/ && !/^[[:space:]]*>/') || exit 0
 # The wanted ending: the reply's last run of numbered lines ("1. ", "2) ", "**1.** "; indented
@@ -61,7 +61,7 @@ opts=$(printf '%s\n' "$clean" | awk '
 # The last two paragraphs (the last one is often ponytail's not-checked line, with the handback
 # just above it).
 tail=$(printf '%s\n' "$clean" | awk 'BEGIN { RS = "" } { a = b; b = $0 } END { if (a != "") print a "\n"; print b }') || exit 0
-# A paragraph of those two whose last line ends in "?" asks the owner something.
+# A paragraph of those two whose last line ends in "?" asks the user something.
 asks=$(printf '%s\n' "$tail" | awk 'BEGIN { RS = "" } { sub(/\n+$/, ""); n = split($0, l, "\n"); print l[n] }' |
   sed -E 's/[][[:space:]*_`"»”)]+$//' | grep -c '?$') || true
 hand=$(IFS='|' && printf '%s' "${pats[*]}")

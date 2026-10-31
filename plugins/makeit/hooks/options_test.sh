@@ -39,12 +39,12 @@ check() {
 }
 human=$(transcript human cli)
 # A prose handback fires; anything that is not one stays quiet.
-check "owner turn ends with a question" fire "$human" false $'Fixed on dev.\n\nShould I release it to prod now?'
-check "owner turn ends with a statement" quiet "$human" false $'Fixed on dev, not on prod.\nA real outage was only simulated.'
+check "user turn ends with a question" fire "$human" false $'Fixed on dev.\n\nShould I release it to prod now?'
+check "user turn ends with a statement" quiet "$human" false $'Fixed on dev, not on prod.\nA real outage was only simulated.'
 check "loop guard: second stop passes" quiet "$human" true $'Should I release it to prod now?'
 check "claude -p turn (sdk-cli, no origin)" quiet "$(transcript none sdk-cli)" false $'Should I release it?'
 check "message from another session (peer)" quiet "$(transcript peer cli)" false $'Should I release it?'
-check "background task notice (owner reads it)" fire "$(transcript task-notification cli)" false $'Done.\nTell me when the DNS is switched.'
+check "background task notice (the user reads it)" fire "$(transcript task-notification cli)" false $'Done.\nTell me when the DNS is switched.'
 check "prompt line not on disk yet: fail open" quiet "$work/missing.jsonl" false $'Should I?'
 check "resume command after the question" fire "$human" false $'Should I release it?\n\n`cd /x && claude --resume abc`'
 check "question only inside a code block" quiet "$human" false $'Ran it.\n\n```\nread -p "Continue?"\n```'
