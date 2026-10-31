@@ -60,6 +60,21 @@ func TestInitJSON(t *testing.T) {
 	}
 }
 
+func TestInitOffline(t *testing.T) {
+	m := newDocsMachine(t)
+	dir := initRepo(t)
+	code, out, errOut := run2(t, "init", "--json", "--yes", "--offline", dir)
+	if code != 0 || !strings.Contains(out, "--offline: docs not synced") {
+		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
+	}
+	if c := m.take(); len(c) != 0 {
+		t.Errorf("--offline ran the docs server: %q", c)
+	}
+	if code, out, _ := run2(t, "init", "--json", "--yes", "--offline", "--rulesets", dir); code != 1 || !strings.Contains(out, "--rulesets needs the network; drop --offline") {
+		t.Errorf("--offline --rulesets: exit %d %s", code, out)
+	}
+}
+
 func TestInitConsentAndUsage(t *testing.T) {
 	newDocsMachine(t)
 	dir := initRepo(t)

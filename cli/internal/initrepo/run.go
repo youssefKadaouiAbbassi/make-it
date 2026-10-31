@@ -35,8 +35,9 @@ type Env struct {
 	CatalogKind, CatalogResolved string
 }
 
-// Options are init's flags.
-type Options struct{ Update, Rulesets bool }
+// Options are init's flags. Offline skips the docs sync and refuses Rulesets: both need the
+// network.
+type Options struct{ Update, Rulesets, Offline bool }
 
 // Report is what an init run did, or would do.
 type Report struct {
@@ -71,6 +72,9 @@ type run struct {
 // Run plans init and, as mode allows, applies it. confirm is asked once, with the plan, in
 // Prompt mode. A plan with nothing to do applies nothing.
 func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), o Options) (Report, error) {
+	if o.Offline && o.Rulesets {
+		return Report{}, errors.New("--rulesets needs the network; drop --offline")
+	}
 	if !e.Present("git") {
 		return Report{}, errors.New("makeit init needs git: install it (makeit setup does), then run init again")
 	}
@@ -227,7 +231,12 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	for _, s := range seeds {
 		steps = append(steps, r.seedStep(s))
 	}
-	steps = append(steps, r.docsStep(), r.recordStep())
+	if r.opts.Offline {
+		rep.Notices = append(rep.Notices, "--offline: docs not synced")
+	} else {
+		steps = append(steps, r.docsStep())
+	}
+	steps = append(steps, r.recordStep())
 	if r.opts.Rulesets {
 		switch {
 		case r.p.GitHub.Owner == "":

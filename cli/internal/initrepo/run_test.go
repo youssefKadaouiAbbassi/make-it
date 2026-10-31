@@ -317,6 +317,30 @@ func TestInitDoesNotFollowSymlinks(t *testing.T) {
 	}
 }
 
+// --offline syncs no docs and runs no gh: the docs step is left out with a notice, and --rulesets
+// is refused.
+func TestInitOffline(t *testing.T) {
+	dir := nodeRepo(t)
+	e, f := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Offline: true})
+	if err != nil || rep.Plan.Failed() {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if slices.Contains(ids(rep), "docs") || !slices.Contains(rep.Notices, "--offline: docs not synced") {
+		t.Errorf("steps %v notices %q", ids(rep), rep.Notices)
+	}
+	if c := f.take(); len(c) != 0 {
+		t.Errorf("offline ran %v", c)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "CLAUDE.md")); err != nil {
+		t.Errorf("files not written: %v", err)
+	}
+	_, err = Run(context.Background(), e, plan.Apply, nil, Options{Offline: true, Rulesets: true})
+	if err == nil || err.Error() != "--rulesets needs the network; drop --offline" {
+		t.Errorf("--offline --rulesets: %v", err)
+	}
+}
+
 // A merge step with nothing merged for its path refuses to write rather than empty the file.
 func TestMergeRunNeedsMergedBody(t *testing.T) {
 	dir := tree(t, map[string]string{".git/": "", "x.json": "{\"a\": 1}\n"})

@@ -57,7 +57,7 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 		shown = true
 		return u.Confirm("Apply this plan?", true)
 	}
-	rep, err := initrepo.Run(ctx, e, mode, confirm, initrepo.Options{Update: p.Bool["update"], Rulesets: p.Bool["rulesets"]})
+	rep, err := initrepo.Run(ctx, e, mode, confirm, initrepo.Options{Update: p.Bool["update"], Rulesets: p.Bool["rulesets"], Offline: p.Bool["offline"]})
 	if ctx.Err() != nil {
 		fmt.Fprintf(stderr, "%s: init interrupted\n", prog)
 		return 1
