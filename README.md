@@ -1,8 +1,8 @@
+<!-- The #gh-*-mode-only fragments follow GitHub's theme setting; <picture> follows the OS and showed
+     the white logo on GitHub's light page. -->
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-    <img alt="makeit" src="docs/assets/logo-light.svg" width="300">
-  </picture>
+  <img alt="makeit" src="docs/assets/logo-light.svg#gh-light-mode-only" width="300">
+  <img alt="makeit" src="docs/assets/logo-dark.svg#gh-dark-mode-only" width="300">
 </p>
 
 <p align="center">A tested Claude Code setup for serious coding.</p>
