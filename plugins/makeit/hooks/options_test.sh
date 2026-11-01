@@ -100,13 +100,17 @@ if [ -f "$rule" ]; then
     fail=1
   fi
 fi
-# The block reason, word for word: it acts on the model, so a change to it is a change to the hook.
-want='Your reply ends on a question or a request in prose. Without repeating your reply: only if the work cannot go on until the user answers or acts (a release, a merge, a choice, a step only they can do), ask with AskUserQuestion, the question naming the item and the fact it turns on. If the work is finished and you are suggesting next steps, end on 2-3 numbered options under your close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), nothing after them. If you were only answering a question, end on the answer; if nothing needs the user, end on one plain line.'
+# The context text, word for word: it acts on the model, so a change to it is a change to the hook.
+# It goes out as Stop additionalContext (non-error feedback), never as decision:block, which Claude
+# Code shows as "Stop hook error".
+want='This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a release, a merge, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.'
 payload=$(jq -n --arg t "$human" '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: "Should I release it?"}')
-if [ "$(bash "$hook" <<<"$payload" | jq -r '.reason' 2>/dev/null)" = "$want" ]; then
-  echo "ok    block reason, word for word"
+got=$(bash "$hook" <<<"$payload")
+if [ "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$got" 2>/dev/null)" = "$want" ] &&
+  [ "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$got")" = Stop ] && [ "$(jq -r '.decision // "none"' <<<"$got")" = none ]; then
+  echo "ok    Stop additionalContext, word for word, no decision"
 else
-  echo "FAIL  block reason differs"
+  echo "FAIL  Stop output differs: $got"
   fail=1
 fi
 out=$(bash "$hook" <<<'not json') && code=0 || code=$?

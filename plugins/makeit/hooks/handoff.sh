@@ -2,8 +2,8 @@
 # handoff.sh: HANDOFF.md across sessions.
 #   SessionStart (startup|resume|clear|compact): print HANDOFF.md into context.
 #   PreCompact: tell the agent to rewrite HANDOFF.md before the context is summarised.
-#   Stop: if files changed in this session after HANDOFF.md was last written, block once with a
-#         reason, so the agent rewrites it before ending the turn; stop_hook_active guards
+#   Stop: if files changed in this session after HANDOFF.md was last written, say so once as Stop
+#         additionalContext, so the agent rewrites it before ending the turn; stop_hook_active guards
 #         against a loop. "This session" = modified after the session's start marker, which
 #         SessionStart writes; edits from other sessions or copies do not count.
 # Exits 0 on every path it does not understand. Needs jq and git; without them it does nothing.
@@ -48,7 +48,7 @@ case "$event" in
       if [ "$cwd/$path" -nt "$f" ] && [ "$cwd/$path" -nt "$mark" ]; then stale=1; break; fi
     done < <(git -C "$cwd" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/^.* -> //')
     [ "$stale" = 1 ] || exit 0
-    printf '{"decision":"block","reason":"Files changed this session and HANDOFF.md is older than them. Rewrite HANDOFF.md (under 30 lines: goal, branch and commit, done, next step, open questions, blocked on, verify with, do not touch), then stop."}\n'
+    jq -cn --arg c 'Files changed this session after HANDOFF.md was last written. The project'\''s rule: HANDOFF.md is rewritten before the turn ends, under 30 lines (goal, branch and commit, done, next step, open questions, blocked on, verify with, do not touch).' '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $c}}'
     ;;
 esac
 exit 0
