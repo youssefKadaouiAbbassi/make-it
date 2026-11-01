@@ -467,6 +467,19 @@ func TestBundleDepsInstallsMissing(t *testing.T) {
 	}
 }
 
+// An install cut short leaves the bundle listed without some of its dependencies; setup must
+// install them rather than call the bundle done (seen on a real machine, 2026-11-01).
+func TestSetupInstallsMissingBundleDeps(t *testing.T) {
+	e, _ := pluginEnv(t, `["superpowers","newdep"]`, `[`+bundleEntry+`,`+spEntry+`,{"name":"newdep","source":"./plugins/newdep"}]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
+	e.command = "setup"
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt("")}
+	s := step(t, e.setupRunSteps(), "bundle.deps")
+	if done, err := s.Already(context.Background()); done || err != nil {
+		t.Errorf("already = %v, %v; want the missing newdep installed", done, err)
+	}
+}
+
 func TestDropUndeclaredOwned(t *testing.T) {
 	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
 		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"old@makeit","enabled":true},{"id":"kept@makeit","enabled":true}]`)

@@ -158,6 +158,9 @@ func (e *env) marketplaceListed(ctx context.Context, name string) (bool, error) 
 		if e.st.Marketplaces[name] == nil {
 			e.st.Marketplaces[name] = &state.Marketplace{AddedBy: "user"}
 		}
+		if e.st.Marketplaces[name].AddedBy == "user" {
+			e.keep("marketplace "+name, "yours: makeit leaves it and its plugins as they are; to use makeit's plugin set instead, run claude plugin marketplace remove "+name+", then makeit setup")
+		}
 	}
 	return true, nil
 }

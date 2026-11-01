@@ -74,6 +74,11 @@ func TestMarketplaceAdopted(t *testing.T) {
 	if m := e.st.Marketplaces["makeit"]; m == nil || m.AddedBy != "user" {
 		t.Errorf("state %+v, want adopted as the user's", m)
 	}
+	// The plan shows these steps as already done, so a kept line says why, and how to hand over.
+	if i := slices.IndexFunc(e.kept, func(k Kept) bool { return k.Item == "marketplace makeit" }); i < 0 ||
+		!strings.Contains(e.kept[i].Reason, "claude plugin marketplace remove makeit") {
+		t.Errorf("kept %+v, want the adopted marketplace named with the command that hands it to makeit", e.kept)
+	}
 	for _, c := range f.argvs() {
 		if strings.Contains(c, "marketplace add") {
 			t.Errorf("adopted marketplace was added again: %v", f.argvs())

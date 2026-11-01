@@ -17,6 +17,7 @@ import (
 	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
+	"makeit/internal/pluginrule"
 	"makeit/internal/state"
 )
 
@@ -51,6 +52,14 @@ func newMachine(t *testing.T) *fakeMachine {
 			return []claudecli.Install{{Path: "/usr/bin/claude", Source: "path", OnPath: true}}
 		},
 		Yes: true,
+	}
+	// Installing the bundle brings in what it declares, as Claude Code does.
+	req, err := catalog.LoadRequires(catalog.Embedded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.deps, err = pluginrule.BundleIDs(catalog.Embedded, req); err != nil {
+		t.Fatal(err)
 	}
 	return m
 }

@@ -9,6 +9,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/fsx"
 	"makeit/internal/plan"
+	"makeit/internal/pluginrule"
 	"makeit/internal/state"
 )
 
@@ -63,9 +64,16 @@ type phase struct {
 // Prompt mode. A plan with nothing to do applies nothing and makes no generation.
 func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), argv []string) (Report, error) {
 	rep, _, err := execute(ctx, e, "setup", mode, confirm, argv, func(en *env) []phase {
-		return []phase{{steps: en.setupSteps(en.globalSteps())}}
+		return []phase{{steps: en.setupRunSteps()}}
 	})
 	return rep, err
+}
+
+// setupRunSteps are setup's steps, ending with the bundle's missing dependencies: an install cut
+// short leaves the bundle listed without all of them, and the bundle step only sees the bundle.
+func (e *env) setupRunSteps() []plan.Step {
+	declared, derr := pluginrule.BundleIDs(e.Catalog, e.req)
+	return append(e.setupSteps(e.globalSteps()), e.bundleDepsStep(declared, derr))
 }
 
 // setupSteps are setup's steps in order, with global the global-file steps of the command.
