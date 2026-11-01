@@ -49,29 +49,31 @@ at a pinned commit. setup copies it to `~/.makeit/catalog`, adds it as a marketp
 Anthropic's `claude-plugins-official` marketplace, and installs the `makeit-bundle` plugin. The
 bundle has no content of its own: installing it installs these plugins.
 
-| plugin | version | what it does |
-|---|---|---|
-| makeit | 0.1.0 | makeit's own plugin: the MCP servers, hooks and skills below |
-| superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review |
-| ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` |
-| chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) |
-| docs-mcp-server | 3.4.1 | the docs-search and docs-manage skills (the server itself runs from the makeit plugin) |
-| deja-vu | 0.23.1 | searches your past coding sessions on this machine; needs the `deja` binary |
-| security-audit | commit `c1c8a8c` | a full security audit of a codebase on request, beside Claude Code's `/security-review` |
-| typescript-lsp | from claude-plugins-official | TypeScript and JavaScript language server |
-| pyright-lsp | from claude-plugins-official | Python language server |
-| rust-analyzer-lsp | from claude-plugins-official | Rust language server |
-| gopls-lsp | from claude-plugins-official | Go language server |
+| plugin | version | what it does | tested |
+|---|---|---|---|
+| makeit | 0.1.0 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
+| superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review | yes: on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost; a tie on a second hard test |
+| ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` | yes: the cheapest and fastest option on the UI tasks, chosen over Caveman |
+| chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) | yes: compared with other browser tools; the only one with traces, Lighthouse and device emulation |
+| docs-mcp-server | 3.4.1 | the docs-search and docs-manage skills (the server itself runs from the makeit plugin) | yes: agents never searched docs on their own (0 calls in 6 runs), so makeit indexes your dependencies and reminds them |
+| deja-vu | 0.23.1 | searches your past coding sessions on this machine; needs the `deja` binary | yes: recalled an earlier decision every time, never without it |
+| security-audit | commit `c1c8a8c` | a full security audit of a codebase on request, beside Claude Code's `/security-review` | not yet |
+| typescript-lsp | from claude-plugins-official | TypeScript and JavaScript language server | not yet |
+| pyright-lsp | from claude-plugins-official | Python language server | not yet |
+| rust-analyzer-lsp | from claude-plugins-official | Rust language server | not yet |
+| gopls-lsp | from claude-plugins-official | Go language server | not yet |
+
+Parts that were tested and lost were left out, among them Caveman, Laya and hallmark.
 
 The four language server plugins come from `claude-plugins-official` and update with it. Each
 language server plugin needs its server program on `PATH` (the optional prerequisite rows above).
 
 One more bundle is enabled per project, not per machine:
 
-| plugin | version | what it does |
-|---|---|---|
-| makeit-ui | 0.1.0 | a bundle for projects with a web frontend: it installs impeccable |
-| impeccable | 4.8.0 | design skills for user interfaces |
+| plugin | version | what it does | tested |
+|---|---|---|---|
+| makeit-ui | 0.1.0 | a bundle for projects with a web frontend: it installs impeccable | |
+| impeccable | 4.8.0 | design skills for user interfaces | yes: won every blind comparison against seven other design skills |
 
 `makeit init` enables `makeit-ui` in a project's `.claude/settings.json` when it finds a web
 frontend. See [Projects](projects.md).

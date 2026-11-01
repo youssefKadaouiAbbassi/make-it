@@ -5,7 +5,11 @@
   </picture>
 </p>
 
-<p align="center">One command to set up Claude Code the same way on every machine and every project.</p>
+<p align="center">A tested Claude Code setup for serious coding.</p>
+
+The core plugins in makeit were each tested against Claude Code without them and against their
+alternatives; the ones that lost were dropped. One command installs it, on every machine and every
+project. [What was tested](docs/included.md#the-plugin-set).
 
 <p align="center">
   <a href="https://github.com/youssefKadaouiAbbassi/make-it/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/youssefKadaouiAbbassi/make-it?color=555"></a>
@@ -38,7 +42,7 @@ ok Merge makeit's settings into /home/dev/.claude/settings.json
 
 ## Highlights
 
-- Installs Claude Code, a tested set of plugins, settings and global rules in one step.
+- A tested set of plugins, settings and global rules for Claude Code, installed in one step.
 - Sets up any project for Claude: CLAUDE.md, check commands, git hooks and CI, with `/makeit:init`
   inside Claude Code.
 - Every change is shown as a plan first; `--dry-run` writes nothing.
