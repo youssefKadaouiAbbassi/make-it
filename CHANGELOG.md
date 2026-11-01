@@ -3,6 +3,18 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.1.1
+
+Fixes:
+
+- The reply-ending and HANDOFF Stop hooks send their note as feedback, so Claude Code shows
+  "Stop hook feedback" instead of "Stop hook error"; Claude still rewrites its ending.
+- `makeit setup` installs plugins the bundle declares but lacks, for example after an install that
+  was cut short. Before, it saw the bundle and called it done.
+- `makeit setup` says when a marketplace named `makeit` is yours and names the command that hands it
+  over; the FAQ explains the switch.
+- The README logo follows GitHub's light or dark theme instead of the operating system's.
+
 ## 0.1.0
 
 First public release.
