@@ -109,6 +109,20 @@ and moves to each newer one on `update`. makeit remembers the source for later r
 token: a private repository needs a git credential helper or an SSH key, and a URL with a password
 or token in it is refused.
 
+## I already added a marketplace named makeit
+
+makeit never changes a marketplace it did not add. If you added one named `makeit` yourself, for
+example from a clone of this repository, `makeit setup` keeps it and its plugins, and its plan
+says so in a `kept:` line. To use makeit's own plugin set instead, remove yours first, then run
+setup:
+
+```console
+$ claude plugin marketplace remove makeit
+$ makeit setup
+```
+
+Removing a marketplace uninstalls the plugins that came from it; setup installs makeit's versions.
+
 ## Why does makeit ask before every change?
 
 Every command that changes something prints its plan first and asks once. Without a terminal it
