@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"makeit/internal/buildinfo"
 	"makeit/internal/cli"
 	"makeit/internal/execx"
+	"makeit/internal/fsx"
 	"makeit/internal/minisign/minisigntest"
 	"makeit/internal/paths"
 	"makeit/internal/selfupdate"
@@ -269,4 +271,85 @@ func TestSelfRollbackDryRun(t *testing.T) {
 	if code != 0 || !strings.Contains(errOut, "would roll makeit back from 1.2.0 to 1.1.0") || content(t, e.Exe) != "makeit 1.2.0" {
 		t.Errorf("exit %d, stderr %q, binary %q", code, errOut, content(t, e.Exe))
 	}
+}
+
+// Answering No to rollback leaves everything as it is, makeit itself included, even when the update
+// being undone also installed the running makeit.
+func TestRollbackDeclinedKeepsBinary(t *testing.T) {
+	exe, file := rollbackAnswered(t, "n")
+	if content(t, exe) != "makeit 1.2.0" {
+		t.Errorf("makeit was rolled back to %q although the answer was No", content(t, exe))
+	}
+	if content(t, file) != "after the update" {
+		t.Errorf("a file was rolled back although the answer was No")
+	}
+}
+
+func TestRollbackAcceptedMovesBinary(t *testing.T) {
+	exe, file := rollbackAnswered(t, "y")
+	if content(t, exe) != "makeit 1.1.0" || content(t, file) != "before the update" {
+		t.Errorf("after Yes: makeit %q, file %q; want both rolled back", content(t, exe), content(t, file))
+	}
+}
+
+// rollbackAnswered sets up an update that wrote a file and installed makeit 1.2.0 over 1.1.0, then
+// runs rollback at a (plain) terminal answering a; it returns makeit's path and the file.
+func rollbackAnswered(t *testing.T, a string) (string, string) {
+	t.Helper()
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	st, _, _ := state.LoadState(filepath.Join(m.stack, "state.json"))
+	g, err := state.NewGeneration(m.stack, st.Generation, "update", []string{"update"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(m.home, "touched.txt")
+	write(t, file, "after the update")
+	rel, err := g.PreImage([]byte("before the update"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pre, post := fsx.Sha256([]byte("before the update")), fsx.Sha256([]byte("after the update"))
+	if err := g.Record(state.Op{ID: "global.touched", Kind: "write", Path: file, PreSha256: &pre, PostSha256: &post, PreImage: rel}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Save(); err != nil {
+		t.Fatal(err)
+	}
+	// The update ran as makeit 1.2.0 (a development build never updates itself).
+	mf := filepath.Join(g.Dir, "manifest.json")
+	b, _ := os.ReadFile(mf)
+	write(t, mf, strings.Replace(string(b), `"cliVersion": "`+buildinfo.Version+`"`, `"cliVersion": "1.2.0"`, 1))
+	roots := paths.Roots{Home: m.home, Claude: filepath.Join(m.home, ".claude"), Stack: m.stack}
+	exe := filepath.Join(m.home, ".local", "bin", "makeit")
+	write(t, exe, "makeit 1.2.0")
+	write(t, filepath.Join(m.stack, "self", "makeit-1.1.0"), "makeit 1.1.0")
+	e := selfupdate.Env{Roots: roots, Exe: exe, Version: "1.2.0", Target: buildinfo.Target(), Repo: "o/makeit", Keys: []string{"ABC"},
+		Run: byContent, Getenv: func(string) string { return "" }, Now: time.Now}
+	prev := "1.1.0"
+	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: roots.Portable(exe), Version: "1.2.0", Target: e.Target,
+		Previous: &prev, InstalledAt: g.Manifest.StartedAt.Add(-time.Minute)})
+	useSelfEnv(t, e)
+	if gens, _ := state.LoadGenerations(m.stack); len(gens) == 0 || !binaryMovedIn(e, gens[0].Manifest) {
+		rec, gerr := e.Gate()
+		t.Fatalf("precondition: the update did not move makeit in (receipt %+v, %v; generations %d)", rec, gerr, len(gens))
+	}
+	savedTTY, savedStdin := isTTY, os.Stdin
+	t.Cleanup(func() { isTTY, os.Stdin = savedTTY, savedStdin })
+	isTTY = func(io.Writer) bool { return true }
+	t.Setenv("CI", "1")
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.WriteString(a + "\n")
+	_ = w.Close()
+	os.Stdin = r
+	code, _, errOut := call(t, noGather(t), "rollback")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, errOut)
+	}
+	return exe, file
 }

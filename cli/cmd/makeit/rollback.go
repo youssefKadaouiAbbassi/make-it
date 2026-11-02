@@ -42,7 +42,8 @@ func runRollback(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) in
 			run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
 				return setup.Rollback(ctx, e, mode, confirm, []string{"rollback"})
 			}})
-		if code != 0 || p.Bool["dry-run"] || !binaryMovedIn(se, g.Manifest) {
+		// Declined or stopped, the run is not marked rolled back: makeit itself stays too.
+		if code != 0 || p.Bool["dry-run"] || !rolledBack(se.Roots.Stack, g.Manifest.Generation) || !binaryMovedIn(se, g.Manifest) {
 			return code
 		}
 	}
@@ -51,6 +52,20 @@ func runRollback(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) in
 
 // binaryMovedIn reports whether the update in m installed the makeit running now: its swap is
 // recorded just before the run started, and the version it brought is the one that ran.
+// rolledBack reports whether generation n is now marked undone.
+func rolledBack(stack string, n int) bool {
+	gens, err := state.LoadGenerations(stack)
+	if err != nil {
+		return false
+	}
+	for _, g := range gens {
+		if g.Manifest.Generation == n {
+			return g.Manifest.RolledBack
+		}
+	}
+	return false
+}
+
 // binaryIsLast reports that the last change was makeit itself, replaced after the newest run that
 // wrote files (an update with nothing else to do writes no generation). After a rollback of the
 // binary its receipt skips the version it left, so a second rollback goes on to the files.
