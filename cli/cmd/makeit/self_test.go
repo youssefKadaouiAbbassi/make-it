@@ -353,3 +353,21 @@ func rollbackAnswered(t *testing.T, a string) (string, string) {
 	}
 	return exe, file
 }
+
+// When the makeit before this one is older than 0.2.0, it is never brought back, so the binary is
+// not the last thing to undo and rollback goes on to the runs that wrote files.
+func TestBinaryIsLastNotBelowFloor(t *testing.T) {
+	e, _ := selfMachine(t, true)
+	write(t, e.Exe, "makeit 0.2.0")
+	e.Version = "0.2.0"
+	for _, tc := range []struct {
+		prev string
+		want bool
+	}{{"0.1.1", false}, {"0.2.0", true}} {
+		prev := tc.prev
+		saveReceipt(t, e, state.Receipt{Method: "script", BinPath: e.Roots.Portable(e.Exe), Version: "0.2.0", Target: e.Target, Previous: &prev, InstalledAt: time.Now().UTC()})
+		if got := binaryIsLast(e, nil); got != tc.want {
+			t.Errorf("previous %s: binaryIsLast %v, want %v", tc.prev, got, tc.want)
+		}
+	}
+}

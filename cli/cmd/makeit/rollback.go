@@ -74,6 +74,10 @@ func binaryIsLast(e selfupdate.Env, g *state.Generation) bool {
 	if err != nil || rec.Previous == nil || rec.InstalledAt.IsZero() || rec.Skipped == *rec.Previous {
 		return false
 	}
+	// A makeit older than the floor is never brought back, so it cannot be the change to undo.
+	if n, cerr := claudecli.Compare(*rec.Previous, rollbackFloor); cerr != nil || n < 0 {
+		return false
+	}
 	return g == nil || rec.InstalledAt.After(g.Manifest.StartedAt.Add(time.Minute))
 }
 
