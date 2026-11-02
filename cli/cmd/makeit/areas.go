@@ -86,7 +86,7 @@ func printNotesLive(u *ui.UI, rep setup.Report) {
 		for i, s := range rep.Skipped {
 			ids[i] = s.ID
 		}
-		u.Row(ui.GWarn, "Optional", strings.Join(ids, ", "), "not installed; makeit doctor shows how")
+		u.Row(ui.GWarn, "Optional", strings.Join(ids, ", "), "see makeit doctor")
 	}
 	for _, k := range rep.Kept {
 		u.Row(ui.GWarn, "Kept", k.Item, k.Reason)

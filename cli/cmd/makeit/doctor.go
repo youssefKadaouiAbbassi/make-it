@@ -14,16 +14,21 @@ func plural(n int, one, many string) string {
 	return fmt.Sprintf("%d %s", n, many)
 }
 
+// passed counts the checks at OK, for doctor and the home card alike.
+func passed(checks []doctor.Check) int {
+	n := 0
+	for _, c := range checks {
+		if c.Level == doctor.OK {
+			n++
+		}
+	}
+	return n
+}
+
 // printDoctorLive is doctor at a terminal: the passing checks counted, every problem spelled out
 // with its fix, one summary line. --verbose and plain mode list every check instead.
 func printDoctorLive(u *ui.UI, checks []doctor.Check) {
-	passed := 0
-	for _, c := range checks {
-		if c.Level == doctor.OK {
-			passed++
-		}
-	}
-	u.Row(ui.GDone, plural(passed, "check passed", "checks passed"), "", "")
+	u.Row(ui.GDone, plural(passed(checks), "check passed", "checks passed"), "", "")
 	errs, warns := doctor.Count(checks)
 	for _, c := range checks {
 		switch c.Level {

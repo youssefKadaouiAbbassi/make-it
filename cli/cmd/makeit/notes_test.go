@@ -20,7 +20,7 @@ func TestNotesLive(t *testing.T) {
 		Kept:    []setup.Kept{{Item: "~/.claude/CLAUDE.md", Reason: "you changed it"}},
 	})
 	s := out.String()
-	for _, want := range []string{"! Optional", "gh, pyright", "makeit doctor shows how", "! Kept", "~/.claude/CLAUDE.md"} {
+	for _, want := range []string{"! Optional", "gh, pyright", "see makeit doctor", "! Kept", "~/.claude/CLAUDE.md"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("no %q in:\n%s", want, s)
 		}

@@ -40,3 +40,11 @@ func TestDoctorLiveErrors(t *testing.T) {
 		t.Errorf("output:\n%s", s)
 	}
 }
+
+// Home and doctor count the same thing: checks at OK, not info or skipped lines.
+func TestPassedCountsOKOnly(t *testing.T) {
+	checks := []doctor.Check{{Level: doctor.OK}, {Level: doctor.OK}, {Level: doctor.Info}, {Level: doctor.Skipped}, {Level: doctor.Warn}}
+	if n := passed(checks); n != 2 {
+		t.Errorf("passed = %d, want 2", n)
+	}
+}

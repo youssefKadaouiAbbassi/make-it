@@ -76,7 +76,7 @@ func runHome(ctx context.Context, stdout, stderr io.Writer, gather func(context.
 	case !setUp:
 		u.KV("status", u.Dot(false)+" not set up "+u.Faint("· makeit setup sets this machine up"), false)
 	case errs == 0:
-		u.KV("status", u.Dot(true)+" ready "+u.Faint(fmt.Sprintf("· %d checks passed", len(checks)-warns)), false)
+		u.KV("status", u.Dot(true)+" ready "+u.Faint(fmt.Sprintf("· %d checks passed", passed(checks))), false)
 	default:
 		u.KV("status", u.Dot(false)+fmt.Sprintf(" %d problems", errs), false)
 	}
