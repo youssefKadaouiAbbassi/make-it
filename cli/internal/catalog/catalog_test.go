@@ -128,3 +128,34 @@ func embeddedTree(t *testing.T) *Tree {
 
 // upToDate is the old UpToDate(dir) against the embedded catalog.
 func upToDate(t *testing.T, dir string) (bool, error) { return UpToDateTree(dir, embeddedTree(t)), nil }
+
+// claude plugin update clones a "github" source over SSH (no fallback to HTTPS), which fails on a
+// machine with no GitHub host key; a "url" source with an https URL updates anywhere.
+func TestNoGitHubSources(t *testing.T) {
+	t.Parallel()
+	tree, err := EmbeddedTree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := tree.ReadFile(".claude-plugin/marketplace.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Plugins []struct {
+			Name   string          `json:"name"`
+			Source json.RawMessage `json:"source"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range m.Plugins {
+		var src struct {
+			Source string `json:"source"`
+		}
+		if json.Unmarshal(p.Source, &src) == nil && src.Source == "github" {
+			t.Errorf("%s uses a github source; use {\"source\": \"url\", \"url\": \"https://github.com/<repo>.git\"}", p.Name)
+		}
+	}
+}

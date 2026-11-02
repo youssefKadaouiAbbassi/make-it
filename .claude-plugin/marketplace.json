@@ -37,8 +37,8 @@
       "name": "superpowers",
       "description": "obra/superpowers 7.0.1, tag v7.0.1, peeled commit pinned. MIT.",
       "source": {
-        "source": "github",
-        "repo": "obra/superpowers",
+        "source": "url",
+        "url": "https://github.com/obra/superpowers.git",
         "ref": "v7.0.1",
         "sha": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b"
       }
@@ -47,8 +47,8 @@
       "name": "ponytail",
       "description": "DietrichGebert/ponytail 5.3.2, tag v5.3.2 (lightweight; the commit is the pin), the commit measured on the hard test. MIT. Level full comes from PONYTAIL_DEFAULT_MODE in settings.baseline.json.",
       "source": {
-        "source": "github",
-        "repo": "DietrichGebert/ponytail",
+        "source": "url",
+        "url": "https://github.com/DietrichGebert/ponytail.git",
         "ref": "v5.3.2",
         "sha": "16352ac229eb08a9598dcae48fe9f2b342567d86"
       }
@@ -107,8 +107,8 @@
       "name": "security-audit",
       "description": "cloudflare/security-audit-skill, commit c1c8a8c on main (2026-09-14; no releases, no plugin.json: this entry is the manifest, the skills/ folder is scanned). MIT. Full codebase audit on request beside /security-review; added unmeasured (owner, 2026-10-26).",
       "source": {
-        "source": "github",
-        "repo": "cloudflare/security-audit-skill",
+        "source": "url",
+        "url": "https://github.com/cloudflare/security-audit-skill.git",
         "ref": "main",
         "sha": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8"
       }
