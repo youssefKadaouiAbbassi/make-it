@@ -145,7 +145,14 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	// The apply pass checks every step again, so it reports what it keeps afresh.
 	en.hints, en.kept = nil, nil
 	var saveErr error
-	rep.Plan = runPhases(ctx, phases, plan.Options{After: func(o plan.Outcome) {
+	rep.Plan = runPhases(ctx, phases, plan.Options{Before: func(s plan.Step) {
+		if e.Progress != nil {
+			e.Progress(plan.Event{Step: s})
+		}
+	}, After: func(o plan.Outcome) {
+		if e.Progress != nil {
+			e.Progress(plan.Event{Step: plan.Step{ID: o.ID, Title: o.Title}, Outcome: &o})
+		}
 		r := &state.StepRecord{Status: string(o.Status), At: time.Now().UTC()}
 		if o.Status == plan.Failed || o.Status == plan.Interrupted {
 			r.Error = o.Detail

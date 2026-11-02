@@ -17,6 +17,7 @@ import (
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
 	"makeit/internal/paths"
+	"makeit/internal/plan"
 	"makeit/internal/platform"
 	"makeit/internal/pluginrule"
 	"makeit/internal/state"
@@ -41,6 +42,8 @@ type Env struct {
 	Interactive, Yes, Root bool
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
+	// Progress, when set, sees each step of the apply pass start and finish (the live view).
+	Progress func(plan.Event)
 }
 
 // env is one run: the machine plus what earlier steps learned and the run's record.

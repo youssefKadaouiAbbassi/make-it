@@ -43,6 +43,7 @@ var Global = []Flag{
 	{Name: "quiet", Short: "q", Help: "print only warnings and errors"},
 	{Name: "verbose", Help: "print the commands run and their output"},
 	{Name: "color", Value: "auto|always|never", Help: "colour output (default auto; NO_COLOR is honoured)"},
+	{Name: "plain", Help: "plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)"},
 	{Name: "offline", Help: "makeit itself makes no network request"},
 }
 
