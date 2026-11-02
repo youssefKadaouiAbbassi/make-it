@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"makeit/internal/catalog"
@@ -72,6 +73,32 @@ func TestUpdateLeavesPinnedCatalog(t *testing.T) {
 	}
 	if c.called {
 		t.Error("a plugin set pinned to a tag was moved to newer plugin releases")
+	}
+}
+
+func TestAutoRunsOnceADay(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	fakeLatest(t, &state.PinMove{ID: "superpowers@makeit", FromTag: "v7.0.1", ToTag: "v7.1.0"})
+	code, out, errOut := run2(t, "update", "--auto")
+	if code != 0 || out != "" || errOut != "" {
+		t.Fatalf("first auto run: exit %d, stdout %q, stderr %q; want silence", code, out, errOut)
+	}
+	log, _ := os.ReadFile(filepath.Join(m.stack, "update.log"))
+	if strings.Count(string(log), "update --auto") != 1 {
+		t.Errorf("update.log:\n%s", log)
+	}
+	if note, _ := os.ReadFile(filepath.Join(m.stack, "pending-note")); !strings.Contains(string(note), "superpowers 7.1.0") {
+		t.Errorf("pending-note %q", note)
+	}
+	if code, _, _ := run2(t, "update", "--auto"); code != 0 {
+		t.Errorf("second auto run: exit %d", code)
+	}
+	log, _ = os.ReadFile(filepath.Join(m.stack, "update.log"))
+	if strings.Count(string(log), "update --auto") != 1 {
+		t.Errorf("a second auto run the same day ran:\n%s", log)
 	}
 }
 

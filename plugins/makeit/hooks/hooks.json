@@ -8,6 +8,12 @@
         ]
       },
       {
+        "matcher": "startup",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/autoupdate.sh\"", "timeout": 5 }
+        ]
+      },
+      {
         "matcher": "startup|clear|compact",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs.sh\"", "timeout": 5 }

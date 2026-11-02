@@ -7,11 +7,15 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/cli"
+	"makeit/internal/fsx"
+	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/release"
 	"makeit/internal/selfupdate"
@@ -29,6 +33,34 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 	if p.Bool["allow-downgrade"] && p.String["to"] == "" {
 		fmt.Fprintf(stderr, "%s: --allow-downgrade needs --to <version>\n", prog)
 		return 2
+	}
+	auto := p.Bool["auto"]
+	var stack string
+	if auto {
+		roots, err := paths.Current()
+		if err != nil {
+			return 0 // the daily run never fails a Claude Code start
+		}
+		stack = roots.Stack
+		// A re-executed new makeit runs under its parent's lock and gate.
+		if os.Getenv("MAKEIT_REEXEC") == "" {
+			if due, _ := autoDue(stack, time.Now()); !due {
+				return 0
+			}
+			lock, err := fsx.Acquire(filepath.Join(stack, "auto.lock"), time.Now())
+			if err != nil {
+				return 0
+			}
+			defer lock.Release()
+		}
+		logw, err := openAutoLog(stack)
+		if err != nil {
+			return 0
+		}
+		defer logw.Close()
+		fmt.Fprintf(logw, "\n== %s makeit %s update --auto\n", time.Now().UTC().Format(time.RFC3339), buildinfo.Version)
+		stdout, stderr = logw, logw
+		p.Bool["yes"], p.Bool["plain"] = true, true
 	}
 	var moved *selfMove
 	notice, needConsent := "", false
@@ -48,6 +80,12 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 		},
 		notice: func(context.Context) string { return notice },
 		after: func(w io.Writer, rep setup.Report) {
+			if auto {
+				if err := finishAuto(stack, rep, moved); err != nil {
+					fmt.Fprintf(w, "%s: %v\n", prog, err)
+				}
+				return
+			}
 			if rep.Reload {
 				fmt.Fprintln(w, "restart Claude Code or run /reload-plugins to load the changes")
 			}

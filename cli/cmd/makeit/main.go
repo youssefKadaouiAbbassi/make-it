@@ -54,6 +54,7 @@ var commands = []cli.Command{
 	{Name: "update", Summary: "update everything: makeit itself, the plugins, settings and global files (also runs daily on its own)", Flags: append([]cli.Flag{
 		{Name: "to", Value: "version", Help: "move makeit to this version instead of the latest; clears a skip"},
 		{Name: "allow-downgrade", Help: "allow --to an older version"},
+		{Name: "auto", Help: "the daily run Claude Code starts: at most once a day, no questions, output to ~/.makeit/update.log"},
 	}, catalogFlags...)},
 	{Name: "version", Summary: "print the version"},
 }
