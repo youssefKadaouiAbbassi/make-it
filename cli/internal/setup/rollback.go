@@ -1,0 +1,172 @@
+package setup
+
+import (
+	"context"
+	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"makeit/internal/fsx"
+	"makeit/internal/plan"
+	"makeit/internal/state"
+)
+
+// ErrNothingToRollBack: no run has changed this machine since the last rollback.
+var ErrNothingToRollBack = errors.New("nothing to roll back: no update has changed this machine yet")
+
+// LastUndoable is the run makeit rollback would undo.
+func LastUndoable(stack string) (*state.Generation, error) { return lastUndoable(stack) }
+
+// lastUndoable is the newest generation that a rollback has not undone yet. A rollback's own
+// generation is not undone by the next rollback: that one goes one run further back.
+func lastUndoable(stack string) (*state.Generation, error) {
+	gens, err := state.LoadGenerations(stack)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range gens {
+		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" {
+			return g, nil
+		}
+	}
+	return nil, ErrNothingToRollBack
+}
+
+// Rollback undoes the last run that changed something: its files where nobody edited them since,
+// and the plugin releases it moved, which stay skipped until something newer ships.
+func Rollback(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), argv []string) (Report, error) {
+	g, err := lastUndoable(e.Roots.Stack)
+	if err != nil {
+		return Report{}, err
+	}
+	rep, _, err := execute(ctx, e, "rollback", mode, confirm, argv, func(en *env) []phase {
+		return []phase{{steps: append([]plan.Step{en.claudeStep()}, en.rollbackSteps(g)...)}}
+	})
+	if err == nil && rep.Generation > 0 && !rep.Plan.Failed() {
+		g.Manifest.RolledBack = true
+		err = g.Save()
+	}
+	return rep, err
+}
+
+// rollbackSteps restore g's files, newest change first, then its plugin releases.
+func (e *env) rollbackSteps(g *state.Generation) []plan.Step {
+	var steps []plan.Step
+	ops := g.Manifest.Ops
+	for i := len(ops) - 1; i >= 0; i-- {
+		steps = append(steps, e.restoreStep(g, ops[i]))
+	}
+	if len(g.Manifest.Pins) > 0 {
+		steps = append(steps, e.pinsStep(g.Manifest.Pins))
+		for _, p := range g.Manifest.Pins {
+			steps = append(steps, plan.Step{ID: "plugin.rollback." + p.ID, Title: fmt.Sprintf("Put %s back to %s", p.ID, p.FromTag),
+				Run: func(ctx context.Context) (string, error) {
+					if e.claude == nil {
+						return "", errNoClaude
+					}
+					return "", e.act(e.claude.Update(ctx, p.ID, ""))
+				}})
+		}
+	}
+	return steps
+}
+
+func shaOrNil(data []byte, found bool) *string {
+	if !found {
+		return nil
+	}
+	s := fsx.Sha256(data)
+	return &s
+}
+
+func same(a, b *string) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+
+// restoreStep puts one file back as it was before op, unless it changed since the run.
+func (e *env) restoreStep(g *state.Generation, op state.Op) plan.Step {
+	path := e.Roots.Abs(op.Path)
+	id := op.ID
+	if !strings.Contains(id, ".") && id != "settings" {
+		id = "global." + id
+	}
+	return plan.Step{ID: id, Title: "Restore " + path,
+		Already: func(context.Context) (bool, error) {
+			cur, found, err := fsx.ReadOptional(path)
+			if err != nil {
+				return false, err
+			}
+			now := shaOrNil(cur, found)
+			switch {
+			case same(now, op.PreSha256):
+				return true, nil
+			case same(now, op.PostSha256):
+				return false, nil
+			}
+			e.keep(path, "changed since the update: kept as it is")
+			return true, nil
+		},
+		Run: func(context.Context) (string, error) {
+			if op.PreSha256 == nil {
+				return "", os.Remove(path)
+			}
+			old, err := os.ReadFile(filepath.Join(g.Dir, filepath.FromSlash(op.PreImage)))
+			if err != nil {
+				return "", err
+			}
+			return "", fsx.WriteAtomic(path, old, 0o600)
+		}}
+}
+
+// pinsStep writes the earlier releases back into the local plugin set, records the undone ones as
+// skipped, and refreshes the marketplace so Claude Code sees them.
+func (e *env) pinsStep(pins []state.PinMove) plan.Step {
+	cat := filepath.Join(e.Roots.Stack, "catalog", ".claude-plugin", "marketplace.json")
+	return plan.Step{ID: "catalog.pins", Title: "Restore the plugin releases",
+		Run: func(ctx context.Context) (string, error) {
+			data, err := os.ReadFile(cat)
+			if err != nil {
+				return "", err
+			}
+			var m map[string]any
+			if err := json.Unmarshal(data, &m); err != nil {
+				return "", fmt.Errorf("read %s: %w", cat, err)
+			}
+			plugins, _ := m["plugins"].([]any)
+			for _, p := range pins {
+				name, _, _ := strings.Cut(p.ID, "@")
+				for _, raw := range plugins {
+					entry, _ := raw.(map[string]any)
+					src, _ := entry["source"].(map[string]any)
+					if entry["name"] == name && src != nil {
+						src["ref"], src["sha"] = p.FromTag, p.FromSHA
+					}
+				}
+				e.st.PluginSkips = initSkips(e.st.PluginSkips)
+				if !slices.Contains(e.st.PluginSkips[p.ID], p.ToTag) {
+					e.st.PluginSkips[p.ID] = append(e.st.PluginSkips[p.ID], p.ToTag)
+				}
+			}
+			out, err := json.Marshal(m)
+			if err != nil {
+				return "", err
+			}
+			if err := fsx.WriteAtomic(cat, out, 0o644); err != nil {
+				return "", err
+			}
+			if e.claude == nil {
+				return "", errNoClaude
+			}
+			e.reload = true
+			return "", e.act(e.claude.UpdateMarketplace(ctx, e.req.Marketplace))
+		}}
+}
+
+func initSkips(m map[string][]string) map[string][]string {
+	if m == nil {
+		return map[string][]string{}
+	}
+	return m
+}

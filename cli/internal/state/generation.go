@@ -32,6 +32,19 @@ type Manifest struct {
 	Plugins    PluginOps `json:"plugins"`
 	// StateBackup is "state.pre-migration.json" when the run migrated state.json.
 	StateBackup *string `json:"stateBackup"`
+	// Pins are the plugin release moves the run made in the local plugin set (update's latest step).
+	Pins []PinMove `json:"pins,omitempty"`
+	// RolledBack is set once makeit rollback has undone this run, so the next rollback goes further back.
+	RolledBack bool `json:"rolledBack,omitempty"`
+}
+
+// PinMove is one plugin moved from one release to another.
+type PinMove struct {
+	ID      string `json:"id"`
+	FromTag string `json:"fromTag"`
+	FromSHA string `json:"fromSha"`
+	ToTag   string `json:"toTag"`
+	ToSHA   string `json:"toSha"`
 }
 
 // Op is one change to a file.

@@ -134,6 +134,24 @@ func TestUpdateDefaultBuildRefusesSelf(t *testing.T) {
 	}
 }
 
+// makeit never rolls itself back to a release without the daily update.
+func TestRollbackNeverBelow020(t *testing.T) {
+	e, _ := selfMachine(t, true)
+	write(t, filepath.Join(e.Roots.Stack, "self", "makeit-0.1.1"), "makeit 0.1.1")
+	write(t, e.Exe, "makeit 0.2.0")
+	prev := "0.1.1"
+	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: e.Roots.Portable(e.Exe), Version: "0.2.0", Target: e.Target, Previous: &prev})
+	e.Version = "0.2.0"
+	useSelfEnv(t, e)
+	code, _, errOut := call(t, noGather(t), "rollback", "--yes")
+	if code != 0 || !strings.Contains(errOut, "makeit stays at 0.2.0") {
+		t.Errorf("exit %d, stderr %q", code, errOut)
+	}
+	if content(t, e.Exe) != "makeit 0.2.0" {
+		t.Errorf("binary %q, want 0.2.0 kept", content(t, e.Exe))
+	}
+}
+
 func TestSelfFlags(t *testing.T) {
 	selfMachine(t, true)
 	for _, args := range [][]string{
