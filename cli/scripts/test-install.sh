@@ -80,6 +80,7 @@ same /tmp/h7/.local/bin/makeit
 echo "install.sh with no terminal: installs, then says how to set up: ok"
 out=$(runsetup /tmp/h8 --yes --dry-run 2>&1); echo "$out"
 grep -qE "^[0-9]+ would-change$" <<<"$out"
+if ls -d /tmp/tmp.* >/dev/null 2>&1; then echo "the download folder was left behind: $(ls -d /tmp/tmp.*)"; exit 1; fi
 echo "install.sh --yes --dry-run: setup ran with the flags: ok"
 out=$(runsetup /tmp/h9 --no-setup 2>&1)
 grep -q "^next: makeit setup$" <<<"$out"

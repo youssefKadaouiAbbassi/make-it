@@ -199,3 +199,11 @@ func TestApplyMoveFromDiskPin(t *testing.T) {
 		t.Errorf("moves %+v, want v7.1.0 -> v7.2.0", moves)
 	}
 }
+
+// A fresh machine has no plugin set on disk yet.
+func TestApplyNoCurrent(t *testing.T) {
+	got, _, _ := Apply(context.Background(), nil, tree(t), nil, nil)
+	if got == nil {
+		t.Fatal("no tree")
+	}
+}

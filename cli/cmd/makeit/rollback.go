@@ -105,6 +105,7 @@ func rollbackBinary(ctx context.Context, e selfupdate.Env, p cli.Parsed, stdout,
 		}
 	}
 	u := ui.New(os.Stdin, stderr, interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
+	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, asJSON, p.Bool["plain"] || p.Bool["verbose"])
 	rep := selfRollback(ctx, e, mode, u)
 	rep.Command = "rollback"
 	if asJSON {

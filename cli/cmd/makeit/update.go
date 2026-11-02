@@ -169,6 +169,7 @@ func selfStep(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 	asJSON := p.Bool["json"]
 	interactive := isTTY(os.Stdin) && isTTY(stderr) && !p.Bool["no-input"] && !asJSON
 	u := ui.New(os.Stdin, stderr, interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
+	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, asJSON, p.Bool["plain"] || p.Bool["verbose"])
 	stop, need, err := consent(plan.Decide(interactive, p.Bool["yes"], p.Bool["dry-run"]), u,
 		fmt.Sprintf("Update makeit %s → %s first?", e.Version, pick.To))
 	switch {

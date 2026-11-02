@@ -9,14 +9,16 @@ import (
 
 	"makeit/internal/catalog"
 	"makeit/internal/execx"
+	"makeit/internal/latest"
 	"makeit/internal/state"
 )
 
-// TestMain keeps update from asking the network for plugin releases; the tests below put back
-// a fake where they need one.
+// TestMain keeps update from asking the network for plugin releases: the real step runs with no
+// runner (as offline), so its carry-forward code runs in every command test; the tests below put
+// back a fake where they need one.
 func TestMain(m *testing.M) {
-	latestApply = func(_ context.Context, _ execx.Runner, t, _ *catalog.Tree, _ map[string][]string) (*catalog.Tree, []state.PinMove, []string) {
-		return t, nil, nil
+	latestApply = func(ctx context.Context, _ execx.Runner, t, current *catalog.Tree, skips map[string][]string) (*catalog.Tree, []state.PinMove, []string) {
+		return latest.Apply(ctx, nil, t, current, skips)
 	}
 	os.Exit(m.Run())
 }

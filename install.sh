@@ -70,7 +70,8 @@ fi
 chmod 755 "$dir/$name"
 "$dir/$name" self install --yes
 installed="$HOME/.local/bin/makeit"
-[ -x "$installed" ] || installed="$dir/$name"
+# exec below skips the EXIT trap, so the download goes now (unless it is all there is to run).
+if [ -x "$installed" ]; then rm -rf "$dir"; else installed="$dir/$name"; fi
 
 if [ -n "$no_setup" ]; then
   echo "next: makeit setup"

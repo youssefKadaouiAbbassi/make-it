@@ -165,7 +165,10 @@ func Apply(ctx context.Context, run execx.Runner, t, current *catalog.Tree, skip
 		files[marketFile], moves, notes, changed = out, mv, ns, c
 	}
 	if b, ok := files[mcpFile]; ok {
-		cur, _ := current.ReadFile(mcpFile)
+		var cur []byte // nil on a fresh machine, which has no plugin set yet
+		if current != nil {
+			cur, _ = current.ReadFile(mcpFile)
+		}
 		out, c := applyMCP(ctx, run, b, cur)
 		files[mcpFile], changed = out, changed || c
 	}
