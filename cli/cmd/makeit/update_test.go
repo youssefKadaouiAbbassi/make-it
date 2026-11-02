@@ -63,6 +63,8 @@ func TestUninstallDefaultsNo(t *testing.T) {
 	savedTTY, savedStdin := isTTY, os.Stdin
 	t.Cleanup(func() { isTTY, os.Stdin = savedTTY, savedStdin })
 	isTTY = func(io.Writer) bool { return true }
+	// The plain prompt is under test here; the live prompt has its own tests in internal/ui.
+	t.Setenv("CI", "1")
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

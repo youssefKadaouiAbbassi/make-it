@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 func liveAsker(input string) (*UI, *bytes.Buffer) {
@@ -37,6 +38,24 @@ func TestConfirmLiveAbortDeclines(t *testing.T) {
 	u, _ := liveAsker("\x03")
 	if ok, err := u.Confirm("Apply?", true); err != nil || ok {
 		t.Fatalf("confirm = %v, %v; want a plain no", ok, err)
+	}
+}
+
+// A closed input (the terminal went away, a pipe ended) must end the question, not hang it.
+func TestConfirmLiveInputClosed(t *testing.T) {
+	done := make(chan bool, 1)
+	go func() {
+		u, _ := liveAsker("")
+		ok, _ := u.Confirm("Apply?", true)
+		done <- ok
+	}()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Error("a closed input answered yes")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Confirm still waiting 5s after its input closed")
 	}
 }
 

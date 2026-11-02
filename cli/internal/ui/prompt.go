@@ -3,6 +3,8 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"io"
+	"time"
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
@@ -25,9 +27,28 @@ func (u *UI) theme(isDark bool) *huh.Styles {
 	return s
 }
 
+// abortOnEOF hands Huh one Ctrl-C when its input ends, so a closed terminal or pipe ends the
+// question the way a person pressing Ctrl-C would, instead of waiting forever.
+type abortOnEOF struct {
+	r    io.Reader
+	sent bool
+}
+
+func (a *abortOnEOF) Read(p []byte) (int, error) {
+	n, err := a.r.Read(p)
+	if errors.Is(err, io.EOF) && n == 0 && !a.sent && len(p) > 0 {
+		a.sent = true
+		// Keys read just before the end (Enter) settle the form first.
+		time.Sleep(300 * time.Millisecond)
+		p[0] = 0x03
+		return 1, nil
+	}
+	return n, err
+}
+
 func (u *UI) runForm(field huh.Field) (aborted bool, err error) {
 	f := huh.NewForm(huh.NewGroup(field)).
-		WithInput(u.in).WithOutput(u.Out).WithShowHelp(false).
+		WithInput(&abortOnEOF{r: u.in}).WithOutput(u.Out).WithShowHelp(false).
 		WithTheme(huh.ThemeFunc(u.theme))
 	if err := f.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
