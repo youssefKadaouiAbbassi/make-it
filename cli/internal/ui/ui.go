@@ -25,8 +25,12 @@ type UI struct {
 	Color       bool
 	Quiet       bool
 	Verbose     bool
-	in          *bufio.Reader
-	fd          int
+	// Mode is Plain (today's lines) unless the command decided Live; Light picks the accent for
+	// a light terminal background.
+	Mode  Mode
+	Light bool
+	in    *bufio.Reader
+	fd    int
 }
 
 // New builds a UI. in is read only when Interactive is set.
