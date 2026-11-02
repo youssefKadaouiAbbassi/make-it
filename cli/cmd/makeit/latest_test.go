@@ -22,16 +22,16 @@ func TestMain(m *testing.M) {
 }
 
 type applyCall struct {
-	called bool
-	skips  map[string][]string
+	called, online bool
+	skips          map[string][]string
 }
 
 func fakeLatest(t *testing.T, move *state.PinMove) *applyCall {
 	t.Helper()
 	c := &applyCall{}
 	saved := latestApply
-	latestApply = func(_ context.Context, _ execx.Runner, tr, _ *catalog.Tree, skips map[string][]string) (*catalog.Tree, []state.PinMove, []string) {
-		c.called, c.skips = true, skips
+	latestApply = func(_ context.Context, run execx.Runner, tr, _ *catalog.Tree, skips map[string][]string) (*catalog.Tree, []state.PinMove, []string) {
+		c.called, c.online, c.skips = true, run != nil, skips
 		if move == nil {
 			return tr, nil, nil
 		}
@@ -118,5 +118,23 @@ func TestManualUpdateIgnoresSkips(t *testing.T) {
 	}
 	if len(c.skips) != 0 {
 		t.Errorf("skips %v; an update run by hand takes the latest", c.skips)
+	}
+}
+
+// setup and update --offline keep the releases on disk without fetching; update fetches.
+func TestLatestOnlineOnlyForUpdate(t *testing.T) {
+	newCatMachine(t, nil)
+	c := fakeLatest(t, nil)
+	for _, tc := range []struct {
+		args   []string
+		online bool
+	}{{[]string{"setup", "--yes"}, false}, {[]string{"update", "--yes", "--offline"}, false}, {[]string{"update", "--yes"}, true}} {
+		*c = applyCall{}
+		if code, _, errOut := run2(t, tc.args...); code != 0 {
+			t.Fatalf("%v: exit %d\n%s", tc.args, code, errOut)
+		}
+		if !c.called || c.online != tc.online {
+			t.Errorf("%v: called %v online %v, want online %v", tc.args, c.called, c.online, tc.online)
+		}
 	}
 }

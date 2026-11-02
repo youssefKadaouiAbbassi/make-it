@@ -7,6 +7,7 @@ package latest
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"regexp"
@@ -25,9 +26,10 @@ const (
 )
 
 var (
-	refRe   = regexp.MustCompile(`^(.*?)(\d+\.\d+\.\d+)$`)
-	npmArg  = regexp.MustCompile(`^(@?[a-z0-9][a-z0-9._/-]*)@(\d+\.\d+\.\d+)$`)
-	numbers = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+	refRe     = regexp.MustCompile(`^(.*?)(\d+\.\d+\.\d+)$`)
+	npmQuoted = regexp.MustCompile(`"(@?[a-z0-9][a-z0-9._/-]*)@(\d+\.\d+\.\d+)"`)
+	npmArg    = regexp.MustCompile(`^(@?[a-z0-9][a-z0-9._/-]*)@(\d+\.\d+\.\d+)$`)
+	numbers   = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 )
 
 // Prefix is the tag family of a release ref ("skill-v4.8.0" → "skill-v"); ok is false for a ref
@@ -126,7 +128,7 @@ func pins(t *catalog.Tree) map[string]pin {
 	var m struct {
 		Plugins []struct {
 			Name   string         `json:"name"`
-			Source map[string]any `json:"source"`
+			Source jsontext.Value `json:"source"` // a string for the plugins inside the set
 		} `json:"plugins"`
 	}
 	b, err := t.ReadFile(marketFile)
@@ -134,17 +136,22 @@ func pins(t *catalog.Tree) map[string]pin {
 		return out
 	}
 	for _, p := range m.Plugins {
-		ref, _ := p.Source["ref"].(string)
-		sha, _ := p.Source["sha"].(string)
-		out[p.Name] = pin{ref, sha}
+		var src struct {
+			Ref string `json:"ref"`
+			SHA string `json:"sha"`
+		}
+		if json.Unmarshal(p.Source, &src) == nil && src.Ref != "" {
+			out[p.Name] = pin{src.Ref, src.SHA}
+		}
 	}
 	return out
 }
 
 // Apply returns t with each external plugin at its newest release and the MCP servers at their
 // newest npm versions, the moves it made (from the pins in current, the plugin set on disk, when
-// it has one), and a note for each plugin it could not check. The floor of a plugin is the higher
-// of its pin in t and in current.
+// it has one), and a note for each plugin it could not check. A plugin starts from the higher of
+// its pin in t and in current, so a pin on disk that is ahead stays when nothing newer is found.
+// A nil run is offline: the pins on disk carry forward and nothing is fetched.
 func Apply(ctx context.Context, run execx.Runner, t, current *catalog.Tree, skips map[string][]string) (*catalog.Tree, []state.PinMove, []string) {
 	files := map[string][]byte{}
 	for k, v := range t.Files {
@@ -158,7 +165,8 @@ func Apply(ctx context.Context, run execx.Runner, t, current *catalog.Tree, skip
 		files[marketFile], moves, notes, changed = out, mv, ns, c
 	}
 	if b, ok := files[mcpFile]; ok {
-		out, c := applyMCP(ctx, run, b)
+		cur, _ := current.ReadFile(mcpFile)
+		out, c := applyMCP(ctx, run, b, cur)
 		files[mcpFile], changed = out, changed || c
 	}
 	if !changed {
@@ -208,30 +216,27 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 			continue
 		}
 		id := name + "@" + market
-		floor := ref
 		from := pin{ref, sha}
-		if cur, ok := current[name]; ok && cur.ref != "" {
+		if cur, ok := current[name]; ok && ahead(cur, from, prefix) {
 			from = cur
-			if cv, ok := semver(strings.TrimPrefix(cur.ref, prefix)); ok {
-				if fv, ok := semver(strings.TrimPrefix(ref, prefix)); ok && less(fv, cv) {
-					floor = cur.ref
-				}
-			}
+			src["ref"], src["sha"] = cur.ref, cur.sha
+			rewritten = true
+		}
+		if run == nil {
+			continue
 		}
 		tags, err := lsRemote(ctx, run, url)
 		if err != nil {
 			notes = append(notes, fmt.Sprintf("%s kept at %s: could not read its releases (%v)", name, from.ref, err))
 			continue
 		}
-		tag, tagSHA, ok := Pick(tags, prefix, floor, skips[id])
-		if !ok || tag == ref {
+		tag, tagSHA, ok := Pick(tags, prefix, from.ref, skips[id])
+		if !ok || tag == from.ref {
 			continue
 		}
 		src["ref"], src["sha"] = tag, tagSHA
 		rewritten = true
-		if tag != from.ref {
-			moves = append(moves, state.PinMove{ID: id, FromTag: from.ref, FromSHA: from.sha, ToTag: tag, ToSHA: tagSHA})
-		}
+		moves = append(moves, state.PinMove{ID: id, FromTag: from.ref, FromSHA: from.sha, ToTag: tag, ToSHA: tagSHA})
 	}
 	if !rewritten {
 		return b, nil, notes, false
@@ -243,11 +248,31 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 	return out, moves, notes, true
 }
 
-func applyMCP(ctx context.Context, run execx.Runner, b []byte) ([]byte, bool) {
+// ahead reports a pin on disk of the same tag family as the shipped one and a newer release.
+func ahead(cur, shipped pin, prefix string) bool {
+	if cur.sha == "" || !strings.HasPrefix(cur.ref, prefix) {
+		return false
+	}
+	cv, cok := semver(strings.TrimPrefix(cur.ref, prefix))
+	sv, sok := semver(strings.TrimPrefix(shipped.ref, prefix))
+	return cok && sok && less(sv, cv)
+}
+
+// npmPins reads the package@version arguments of an .mcp.json.
+func npmPins(b []byte) map[string]string {
+	out := map[string]string{}
+	for _, mm := range npmQuoted.FindAllStringSubmatch(string(b), -1) {
+		out[mm[1]] = mm[2]
+	}
+	return out
+}
+
+func applyMCP(ctx context.Context, run execx.Runner, b, current []byte) ([]byte, bool) {
 	var m map[string]any
 	if json.Unmarshal(b, &m) != nil {
 		return b, false
 	}
+	onDisk := npmPins(current)
 	servers, _ := m["mcpServers"].(map[string]any)
 	changed := false
 	for _, raw := range servers {
@@ -259,15 +284,23 @@ func applyMCP(ctx context.Context, run execx.Runner, b []byte) ([]byte, bool) {
 			if mm == nil {
 				continue
 			}
-			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", mm[1], "version"}, Timeout: 30 * time.Second})
+			pkg, version := mm[1], mm[2]
+			cv, _ := semver(version)
+			if dv, ok := semver(onDisk[pkg]); ok && less(cv, dv) {
+				version, cv = onDisk[pkg], dv
+				args[i] = pkg + "@" + version
+				changed = true
+			}
+			if run == nil {
+				continue
+			}
+			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", pkg, "version"}, Timeout: 30 * time.Second})
 			if err != nil {
 				continue
 			}
 			latest := strings.TrimSpace(res.Stdout)
-			lv, lok := semver(latest)
-			cv, _ := semver(mm[2])
-			if lok && less(cv, lv) {
-				args[i] = mm[1] + "@" + latest
+			if lv, ok := semver(latest); ok && less(cv, lv) {
+				args[i] = pkg + "@" + latest
 				changed = true
 			}
 		}

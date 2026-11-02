@@ -148,3 +148,54 @@ func TestApplySkips(t *testing.T) {
 		}
 	}
 }
+
+// ahead is the plugin set on a machine whose daily runs already moved superpowers to 7.1.0,
+// impeccable to 4.9.0 and the docs server to 3.5.0.
+func aheadTree(t *testing.T) *catalog.Tree {
+	t.Helper()
+	m := strings.NewReplacer(`"ref":"v7.0.1","sha":"aaa"`, `"ref":"v7.1.0","sha":"new1"`, `"ref":"skill-v4.8.0","sha":"bbb"`, `"ref":"skill-v4.9.0","sha":"new2"`).Replace(market)
+	tr, err := catalog.TreeOf(map[string][]byte{".claude-plugin/marketplace.json": []byte(m), "plugins/makeit/.mcp.json": []byte(strings.Replace(mcp, "3.4.1", "3.5.0", 1))}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tr
+}
+
+// A plugin that cannot be checked keeps the pin it has on disk, never the older one makeit ships.
+func TestApplyUnreachableKeepsDiskPin(t *testing.T) {
+	got, moves, _ := Apply(context.Background(), fakeRun(map[string]bool{"obra/superpowers": true, "impeccable": true}), tree(t), aheadTree(t), nil)
+	b, _ := got.ReadFile(".claude-plugin/marketplace.json")
+	if !strings.Contains(string(b), `"ref":"v7.1.0"`) || !strings.Contains(string(b), `"ref":"skill-v4.9.0"`) {
+		t.Errorf("went back to the shipped pins: %s", b)
+	}
+	if len(moves) != 0 {
+		t.Errorf("moves %+v, want none", moves)
+	}
+}
+
+// Offline (no runner): nothing is fetched and every disk pin ahead of the shipped one stays.
+func TestApplyOfflineCarriesForward(t *testing.T) {
+	got, moves, notes := Apply(context.Background(), nil, tree(t), aheadTree(t), nil)
+	b, _ := got.ReadFile(".claude-plugin/marketplace.json")
+	m, _ := got.ReadFile("plugins/makeit/.mcp.json")
+	if !strings.Contains(string(b), `"ref":"v7.1.0"`) || !strings.Contains(string(m), "docs-mcp-server@3.5.0") {
+		t.Errorf("offline went back to the shipped pins:\n%s\n%s", b, m)
+	}
+	if len(moves) != 0 || len(notes) != 0 {
+		t.Errorf("moves %+v notes %v", moves, notes)
+	}
+}
+
+// A move starts from the pin on disk, so rollback puts back what the machine had.
+func TestApplyMoveFromDiskPin(t *testing.T) {
+	run := func(_ context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Contains(strings.Join(c.Argv, " "), "obra/superpowers") {
+			return execx.Result{Stdout: "new1\trefs/tags/v7.1.0\nnew3\trefs/tags/v7.2.0\n"}, nil
+		}
+		return execx.Result{Code: 1}, errors.New("offline")
+	}
+	_, moves, _ := Apply(context.Background(), run, tree(t), aheadTree(t), nil)
+	if len(moves) != 1 || moves[0].FromTag != "v7.1.0" || moves[0].FromSHA != "new1" || moves[0].ToTag != "v7.2.0" {
+		t.Errorf("moves %+v, want v7.1.0 -> v7.2.0", moves)
+	}
+}

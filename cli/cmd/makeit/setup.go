@@ -99,7 +99,7 @@ func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, 
 		}
 		e.Catalog, e.CatalogTree, e.CatalogRecord = prep.Source, prep.Tree, prep.Record
 		notices := prep.Notices
-		if command == "update" && !p.Bool["offline"] && followsReleases(prep.Record) {
+		if followsReleases(prep.Record) {
 			tree := prep.Tree
 			if tree == nil {
 				if tree, err = catalog.EmbeddedTree(); err != nil {
@@ -112,7 +112,13 @@ func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, 
 			if p.Bool["auto"] {
 				skips = st.PluginSkips
 			}
-			moved, pins, notes := latestApply(ctx, execx.Run, tree, current, skips)
+			// setup and an offline update fetch nothing: they keep the releases on disk (a nil runner)
+			// instead of writing the older pins makeit ships over them.
+			var run execx.Runner
+			if command == "update" && !p.Bool["offline"] {
+				run = execx.Run
+			}
+			moved, pins, notes := latestApply(ctx, run, tree, current, skips)
 			if moved != tree {
 				e.Catalog, e.CatalogTree = moved, moved
 			}
