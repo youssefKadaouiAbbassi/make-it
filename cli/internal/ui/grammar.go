@@ -91,7 +91,7 @@ func Group(stepID, title string) string {
 		return "Machine"
 	case "claude":
 		return "Claude Code"
-	case "catalog", "marketplace", "bundle", "plugin":
+	case "catalog", "marketplace", "bundle", "plugin", "plugins":
 		return "Plugins"
 	case "settings":
 		return "Settings"
@@ -111,11 +111,20 @@ func fit(s string, width int) string {
 	return ansi.Truncate(s, width, "…")
 }
 
+// pad fills s out to a column, and always leaves at least one space after a longer s.
 func pad(s string, width int) string {
 	if n := lipgloss.Width(s); n < width {
 		return s + strings.Repeat(" ", width-n)
 	}
-	return s
+	return s + " "
+}
+
+// liveLine writes one live line, cut to the terminal width so nothing wraps.
+func (u *UI) liveLine(s string) {
+	if u.Width > 0 {
+		s = fit(s, u.Width)
+	}
+	_, _ = fmt.Fprintln(u.Out, s)
 }
 
 // Header starts a live run: ">_ makeit  <command>" between blank lines. Plain runs have none.
@@ -149,7 +158,7 @@ func (u *UI) RowText(g Glyph, label, detail, note string) string {
 func (u *UI) Row(g Glyph, label, detail, note string) {
 	if u.Mode == Live {
 		if !u.Quiet || g == GWarn || g == GFail {
-			_, _ = fmt.Fprintln(u.Out, u.RowText(g, label, detail, note))
+			u.liveLine(u.RowText(g, label, detail, note))
 		}
 		return
 	}
@@ -182,7 +191,7 @@ func (u *UI) KV(label, value string, warn bool) {
 	if warn {
 		l = u.style(yellow, pad(label, 14))
 	}
-	_, _ = fmt.Fprintf(u.Out, "  %s%s\n", l, value)
+	u.liveLine("  " + l + value)
 }
 
 // Dot is a coloured status dot for a card value: green when ok, yellow when not.
@@ -230,9 +239,14 @@ func (u *UI) Summary(ok bool, verb string, notes ...string) {
 
 // Fix is the line under a problem row: "fix <command>".
 func (u *UI) Fix(cmd string) {
-	if u.Mode == Live {
-		_, _ = fmt.Fprintf(u.Out, "    %s %s\n", u.style(faint, "fix"), cmd)
+	if u.Mode != Live {
+		return
 	}
+	// The command is never cut: it wraps, each further line under the first.
+	if u.Width > 12 {
+		cmd = strings.ReplaceAll(ansi.Wrap(cmd, u.Width-8, ""), "\n", "\n        ")
+	}
+	_, _ = fmt.Fprintf(u.Out, "    %s %s\n", u.style(faint, "fix"), cmd)
 }
 
 // Next is the line under the result: the next step, then quieter hints such as the undo.

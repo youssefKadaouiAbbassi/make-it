@@ -65,7 +65,7 @@ type modifying struct {
 	// notice is update's newer-release line, asked before the run; nil for the others.
 	notice func(ctx context.Context) string
 	// after prints the command's own closing lines, in text mode, after a run without error.
-	after func(w io.Writer, rep setup.Report)
+	after func(w io.Writer, rep setup.Report, live bool)
 	// self is the swap update's parent made before running this binary; nil otherwise.
 	self *selfMove
 	// prepare picks the catalog the run plans with (setup and update); its lines join the notice.
@@ -161,13 +161,12 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 			live = ui.NewLive(u, outs)
 		}
 	}
-	run := e.Run
-	e.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
-		if c.Inherit && live != nil {
-			defer live.Hold()()
+	e.Run = liveRun(e.Run, func() holder {
+		if live == nil {
+			return nil // a nil *LiveView in the interface would not compare to nil
 		}
-		return run(ctx, c)
-	}
+		return live
+	})
 	e.Progress = func(ev plan.Event) {
 		startLive(nil)
 		if live != nil {
@@ -253,24 +252,25 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 	}
 	if u.Mode == ui.Live {
+		printNotesLive(u, rep)
 		finishLive(u, m.name, rep, time.Since(started))
 	} else {
 		fmt.Fprintln(stderr, rep.Plan.Summary())
-	}
-	for _, s := range rep.Skipped {
-		fmt.Fprintf(stderr, "install by hand: %s (%s)\n", s.ID, s.Manual)
-	}
-	for _, k := range rep.Kept {
-		fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)
-	}
-	for _, h := range rep.Hints {
-		fmt.Fprintf(stderr, "%s: %s\n", h.ID, h.Text)
+		for _, s := range rep.Skipped {
+			fmt.Fprintf(stderr, "install by hand: %s (%s)\n", s.ID, s.Manual)
+		}
+		for _, k := range rep.Kept {
+			fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)
+		}
+		for _, h := range rep.Hints {
+			fmt.Fprintf(stderr, "%s: %s\n", h.ID, h.Text)
+		}
 	}
 	if notice != "" {
 		fmt.Fprintln(stderr, notice)
 	}
 	if m.after != nil && err == nil {
-		m.after(stderr, rep)
+		m.after(stderr, rep, u.Mode == ui.Live)
 	}
 	return code
 }

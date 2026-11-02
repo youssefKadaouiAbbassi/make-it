@@ -48,7 +48,7 @@ func TestLiveGroupsInOrder(t *testing.T) {
 		m.apply(e)
 	}
 	got := lines(m)
-	want := []string{"  ✓ Machine", "  ✓ Claude Code", "  · Plugins", "  · Settings", "  · Files"}
+	want := []string{"  ✓ Machine        1 changed", "  ✓ Claude Code    1 changed", "  · Plugins", "  · Settings", "  · Files"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("rows:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -142,3 +142,14 @@ func TestHoldReleasesTerminal(t *testing.T) {
 }
 
 func stripANSI(s string) string { return ansi.Strip(s) }
+
+func TestLiveDoneSaysHowMany(t *testing.T) {
+	m := newLiveModel(liveUI(), []plan.Outcome{{ID: "catalog"}, {ID: "bundle"}})
+	m.apply(ev("catalog", "Write the plugin set", ""))
+	m.apply(ev("catalog", "Write the plugin set", plan.Done))
+	m.apply(ev("bundle", "Install makeit-bundle", ""))
+	m.apply(ev("bundle", "Install makeit-bundle", plan.Already))
+	if row := lines(m)[0]; !strings.Contains(row, "1 changed") {
+		t.Errorf("row %q, want the count", row)
+	}
+}

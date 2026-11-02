@@ -29,6 +29,8 @@ type UI struct {
 	// a light terminal background.
 	Mode  Mode
 	Light bool
+	// Width is the terminal's width in cells, 0 when unknown: live lines are cut to it.
+	Width int
 	in    *bufio.Reader
 	fd    int
 	file  *os.File // the terminal for Huh, which needs the file itself to read keys raw
@@ -36,7 +38,13 @@ type UI struct {
 
 // New builds a UI. in is read only when Interactive is set.
 func New(in *os.File, out io.Writer, interactive, color bool) *UI {
-	return &UI{Out: out, Interactive: interactive, Color: color, in: bufio.NewReader(in), fd: int(in.Fd()), file: in}
+	u := &UI{Out: out, Interactive: interactive, Color: color, in: bufio.NewReader(in), fd: int(in.Fd()), file: in}
+	if f, ok := out.(*os.File); ok {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil {
+			u.Width = w
+		}
+	}
+	return u
 }
 
 // NewFromReader is New for tests: prompts read from r.

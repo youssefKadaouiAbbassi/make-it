@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"makeit/internal/plan"
@@ -77,6 +78,24 @@ func lowerFirst(s string) string {
 var verbs = map[string]string{"setup": "Ready", "update": "Updated", "uninstall": "Removed", "rollback": "Rolled back", "init": "Project set up"}
 
 // finishLive closes a live run: the result line with its counts and the next step.
+// printNotesLive shows a run's notes as rows above its result: the optional programs left out on
+// one line (makeit doctor prints how to install each), each file kept, each hint.
+func printNotesLive(u *ui.UI, rep setup.Report) {
+	if len(rep.Skipped) > 0 {
+		ids := make([]string, len(rep.Skipped))
+		for i, s := range rep.Skipped {
+			ids[i] = s.ID
+		}
+		u.Row(ui.GWarn, "Optional", strings.Join(ids, ", "), "not installed; makeit doctor shows how")
+	}
+	for _, k := range rep.Kept {
+		u.Row(ui.GWarn, "Kept", k.Item, k.Reason)
+	}
+	for _, h := range rep.Hints {
+		u.Row(ui.GWarn, h.ID, h.Text, "")
+	}
+}
+
 func finishLive(u *ui.UI, name string, rep setup.Report, elapsed time.Duration) {
 	if rep.Generation == 0 && !rep.Plan.Failed() {
 		u.Result(true, "Nothing to do", elapsed, []string{"everything is current"})

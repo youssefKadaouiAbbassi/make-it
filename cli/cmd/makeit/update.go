@@ -79,14 +79,14 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 			return stackUpdate(ctx, e, mode, confirm, args)
 		},
 		notice: func(context.Context) string { return notice },
-		after: func(w io.Writer, rep setup.Report) {
+		after: func(w io.Writer, rep setup.Report, live bool) {
 			if auto {
 				if err := finishAuto(stack, rep, moved); err != nil {
 					fmt.Fprintf(w, "%s: %v\n", prog, err)
 				}
 				return
 			}
-			if rep.Reload {
+			if rep.Reload && !live { // the live result already says it
 				fmt.Fprintln(w, "restart Claude Code or run /reload-plugins to load the changes")
 			}
 		}})
@@ -110,7 +110,7 @@ func runUninstall(ctx context.Context, p cli.Parsed, args []string, stdout, stde
 		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
 			return setup.Uninstall(ctx, e, mode, confirm, args, opts)
 		},
-		after: func(w io.Writer, rep setup.Report) {
+		after: func(w io.Writer, rep setup.Report, live bool) {
 			if exe, err := os.Executable(); err == nil && rep.Generation > 0 && !rep.Plan.Failed() {
 				fmt.Fprintf(w, "makeit itself is still at %s: delete it, or remove it the way you installed it\n", exe)
 			}

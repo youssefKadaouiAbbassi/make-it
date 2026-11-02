@@ -61,6 +61,7 @@ type liveGroup struct {
 	name            string
 	total, finished int
 	running         int
+	changed         int
 	seen, stopped   bool
 	worst           int
 	failDetail      string
@@ -127,6 +128,9 @@ func (m *liveModel) apply(e plan.Event) {
 		g.running--
 	}
 	g.finished++
+	if e.Outcome.Status == plan.Done {
+		g.changed++
+	}
 	if s := severity(e.Outcome.Status); s > g.worst {
 		g.worst = s
 		if s == 3 {
@@ -187,7 +191,7 @@ func (m *liveModel) row(g *liveGroup) string {
 	case 0:
 		return u.RowText(GDone, g.name, u.style(faint, "up to date"), "")
 	}
-	return u.RowText(GDone, g.name, "", "")
+	return u.RowText(GDone, g.name, fmt.Sprintf("%d changed", g.changed), "")
 }
 
 func (m *liveModel) View() tea.View {

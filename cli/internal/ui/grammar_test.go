@@ -2,10 +2,12 @@ package ui
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestDecideMode(t *testing.T) {
@@ -46,6 +48,7 @@ func TestGroup(t *testing.T) {
 		"marketplace.official":             "Plugins",
 		"bundle.deps":                      "Plugins",
 		"plugin.update.superpowers@makeit": "Plugins",
+		"plugins.adopted":                  "Plugins",
 		"settings":                         "Settings",
 		"global.CLAUDE.md":                 "Files",
 		"self.rollback":                    "makeit",
@@ -126,5 +129,35 @@ func TestHeader(t *testing.T) {
 	u.Header("update")
 	if out.String() != "" {
 		t.Errorf("plain mode printed a header: %q", out.String())
+	}
+}
+
+// A label longer than its column still leaves a space before the detail.
+func TestRowLongLabelKeepsASpace(t *testing.T) {
+	u := liveUI()
+	if row := u.RowText(GDone, "a label far longer than the column", "up to date", ""); !strings.Contains(row, "column up to date") {
+		t.Errorf("row %q", row)
+	}
+}
+
+// Nothing wraps: rows and card lines are cut to the terminal width; a fix wraps under itself.
+func TestLinesFitTheTerminal(t *testing.T) {
+	var out bytes.Buffer
+	u := NewFromReader(nil, &out, false)
+	u.Mode, u.Width = Live, 40
+	u.Row(GWarn, "gh is missing: branch rulesets and the sha-pinning setting are applied through the GitHub API", "", "")
+	u.KV("7 to fix", "gh is missing: branch rulesets and the sha-pinning setting are applied", true)
+	u.Fix("go install github.com/vshulcz/deja-vu/cmd/deja@latest, or a release binary from github.com/vshulcz/deja-vu")
+	ls := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	for _, l := range ls {
+		if w := ansi.StringWidth(l); w > 40 {
+			t.Errorf("line of %d cells: %q", w, l)
+		}
+	}
+	if !strings.HasSuffix(ls[0], "…") || !strings.HasSuffix(ls[1], "…") {
+		t.Errorf("cut lines do not end in …: %q", ls[:2])
+	}
+	if len(ls) < 4 || !strings.HasPrefix(ls[3], "        ") || !strings.Contains(out.String(), "deja-vu") {
+		t.Errorf("the fix does not wrap under itself:\n%s", out.String())
 	}
 }
