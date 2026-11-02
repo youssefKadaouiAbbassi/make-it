@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"makeit/internal/catalog"
 	"makeit/internal/fsx"
 	"makeit/internal/plan"
 	"makeit/internal/state"
@@ -123,10 +124,15 @@ func (e *env) restoreStep(g *state.Generation, op state.Op) plan.Step {
 // pinsStep writes the earlier releases back into the local plugin set, records the undone ones as
 // skipped, and refreshes the marketplace so Claude Code sees them.
 func (e *env) pinsStep(pins []state.PinMove) plan.Step {
-	cat := filepath.Join(e.Roots.Stack, "catalog", ".claude-plugin", "marketplace.json")
+	dir := filepath.Join(e.Roots.Stack, "catalog")
+	cat := filepath.Join(dir, ".claude-plugin", "marketplace.json")
 	return plan.Step{ID: "catalog.pins", Title: "Restore the plugin releases",
 		Run: func(ctx context.Context) (string, error) {
-			data, err := os.ReadFile(cat)
+			tree, err := catalog.DirTree(dir)
+			if err != nil {
+				return "", err
+			}
+			data, err := tree.ReadFile(".claude-plugin/marketplace.json")
 			if err != nil {
 				return "", err
 			}
@@ -153,7 +159,21 @@ func (e *env) pinsStep(pins []state.PinMove) plan.Step {
 			if err != nil {
 				return "", err
 			}
-			if err := fsx.WriteAtomic(cat, out, 0o644); err != nil {
+			// Written the way the catalog step writes, marker included, so doctor sees makeit's own set.
+			files := map[string][]byte{}
+			for k, v := range tree.Files {
+				files[k] = v
+			}
+			files[".claude-plugin/marketplace.json"] = out
+			exec := map[string]bool{}
+			for _, f := range tree.Manifest.Files {
+				exec[f.Path] = f.Mode == "0755"
+			}
+			next, err := catalog.TreeOf(files, exec)
+			if err != nil {
+				return "", err
+			}
+			if _, err := catalog.SyncTree(dir, next); err != nil {
 				return "", err
 			}
 			if e.claude == nil {

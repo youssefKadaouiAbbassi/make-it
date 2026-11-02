@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"makeit/internal/catalog"
 	"makeit/internal/fsx"
 	"makeit/internal/plan"
 	"makeit/internal/state"
@@ -73,9 +74,15 @@ func TestRollbackKeepsEditedFile(t *testing.T) {
 
 func TestRollbackRestoresPins(t *testing.T) {
 	e, f := stackEnv(t, `[{"name":"makeit","source":"directory"}]`, "[]")
-	cat := filepath.Join(e.Roots.Stack, "catalog", ".claude-plugin", "marketplace.json")
-	_ = os.MkdirAll(filepath.Dir(cat), 0o700)
-	_ = os.WriteFile(cat, []byte(`{"name":"makeit","plugins":[{"name":"superpowers","source":{"source":"github","repo":"obra/superpowers","ref":"v7.1.0","sha":"bbb"}}]}`), 0o600)
+	dir := filepath.Join(e.Roots.Stack, "catalog")
+	cat := filepath.Join(dir, ".claude-plugin", "marketplace.json")
+	tr, err := catalog.TreeOf(map[string][]byte{".claude-plugin/marketplace.json": []byte(`{"name":"makeit","plugins":[{"name":"superpowers","source":{"source":"url","url":"https://github.com/obra/superpowers.git","ref":"v7.1.0","sha":"bbb"}}]}`)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.SyncTree(dir, tr); err != nil {
+		t.Fatal(err)
+	}
 	f.answers["claude plugin marketplace update makeit --json"] = text(ok)
 	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(ok)
 	g, _ := state.NewGeneration(e.Roots.Stack, 0, "update", nil)
@@ -87,6 +94,10 @@ func TestRollbackRestoresPins(t *testing.T) {
 	got, _ := os.ReadFile(cat)
 	if !strings.Contains(string(got), `"ref":"v7.0.1"`) || !strings.Contains(string(got), `"sha":"aaa"`) {
 		t.Errorf("catalog %s, want v7.0.1 at aaa", got)
+	}
+	// doctor compares the plugin set with makeit's marker: a rollback is makeit's own write.
+	if now, err := catalog.DirTree(dir); err != nil || catalog.Digest(now.Manifest) != catalog.ReadMarker(dir).Digest {
+		t.Errorf("the plugin set no longer matches its marker after rollback (%v): doctor would warn", err)
 	}
 	if s := e.st.PluginSkips["superpowers@makeit"]; !slices.Contains(s, "v7.1.0") {
 		t.Errorf("skips %v, want v7.1.0", s)
