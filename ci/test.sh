@@ -57,7 +57,8 @@ import pathlib, re, sys
 root = pathlib.Path(sys.argv[1]).resolve()
 files = [root / f for f in ("README.md", "SECURITY.md", "CHANGELOG.md", "CONTRIBUTING.md") if (root / f).exists()]
 files += sorted((root / "docs").glob("*.md")) + sorted((root / ".github/ISSUE_TEMPLATE").glob("*.md"))
-emoji = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
+# \u2713 and \u2717 are makeit's own text status marks in output samples, not emoji.
+emoji = re.compile("[\U0001F000-\U0001FAFF\u2600-\u2712\u2714-\u2716\u2718-\u27BF\uFE0F]")
 bad = []
 for f in files:
     text = f.read_text(encoding="utf-8")
