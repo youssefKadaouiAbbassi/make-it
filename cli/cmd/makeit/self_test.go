@@ -1,8 +1,8 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"makeit/internal/buildinfo"
+	"makeit/internal/cli"
 	"makeit/internal/execx"
 	"makeit/internal/minisign/minisigntest"
 	"makeit/internal/paths"
@@ -100,7 +101,9 @@ func rolledForward(t *testing.T) selfupdate.Env {
 }
 
 // The delegate's test: a default build refuses even a correctly signed release, before any request.
-func TestSelfUpdateDefaultBuildRefuses(t *testing.T) {
+// The delegate's test, moved from self update to update's self step: a default build refuses even a
+// correctly signed release, before any request.
+func TestUpdateDefaultBuildRefusesSelf(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("MAKEIT_DIR", filepath.Join(os.Getenv("HOME"), ".makeit"))
 	machine, srv := selfMachine(t, true)
@@ -114,88 +117,20 @@ func TestSelfUpdateDefaultBuildRefuses(t *testing.T) {
 	// Only the machine is faked; the version, repository and keys are the build's own.
 	e.Roots, e.Exe, e.Base, e.Client, e.Run = machine.Roots, machine.Exe, machine.Base, machine.Client, machine.Run
 	useSelfEnv(t, e)
-	code, _, errOut := call(t, noGather(t), "self", "update", "--yes")
-	if code != 1 || !strings.Contains(errOut, "this makeit is a development build: it does not update itself") {
-		t.Errorf("exit %d, stderr %q", code, errOut)
+	i := slices.IndexFunc(commands, func(c cli.Command) bool { return c.Name == "update" })
+	p, err := cli.Parse(commands[i], []string{"--yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if o := selfStep(context.Background(), p, []string{"update", "--yes"}, &out, &errb); o.exited {
+		t.Errorf("the self step swapped a default build: %+v, stderr %q", o, errb.String())
 	}
 	if got := content(t, e.Exe); got != "makeit 1.1.0" {
 		t.Errorf("binary %q", got)
 	}
 	if got := srv.Requests(); len(got) > 0 {
 		t.Errorf("requests %v", got)
-	}
-}
-
-func TestSelfUpdateNoReceipt(t *testing.T) {
-	e, _ := selfMachine(t, false)
-	code, _, errOut := call(t, noGather(t), "self", "update", "--yes")
-	if code != 1 || !strings.Contains(errOut, "run `"+e.Exe+" self install` first") {
-		t.Errorf("exit %d, stderr %q", code, errOut)
-	}
-}
-
-func TestSelfUpdateYes(t *testing.T) {
-	e, _ := selfMachine(t, true)
-	code, _, errOut := call(t, noGather(t), "self", "update", "--yes")
-	if code != 0 || !strings.Contains(errOut, "makeit updated from 1.1.0 to 1.2.0 ("+e.Exe+")") {
-		t.Fatalf("exit %d, stderr %q", code, errOut)
-	}
-	if r := loadReceipt(t, e); r.Version != "1.2.0" || content(t, e.Exe) != "makeit 1.2.0" {
-		t.Errorf("receipt %+v, binary %q", r, content(t, e.Exe))
-	}
-}
-
-func TestSelfUpdateJSON(t *testing.T) {
-	e, _ := selfMachine(t, true)
-	code, out, errOut := call(t, noGather(t), "self", "update", "--yes", "--json")
-	var rep map[string]string
-	if err := json.Unmarshal([]byte(out), &rep); code != 0 || err != nil {
-		t.Fatalf("exit %d, %v: %q", code, err, out)
-	}
-	if rep["command"] != "self update" || rep["from"] != "1.1.0" || rep["to"] != "1.2.0" || rep["outcome"] != "done" || rep["path"] != e.Exe {
-		t.Errorf("report %v", rep)
-	}
-	if errOut != "" {
-		t.Errorf("stderr in --json mode: %q", errOut)
-	}
-}
-
-func TestSelfUpdateConsent(t *testing.T) {
-	e, _ := selfMachine(t, true)
-	code, _, errOut := call(t, noGather(t), "self", "update")
-	if code != 2 || !strings.Contains(errOut, "--yes") || content(t, e.Exe) != "makeit 1.1.0" {
-		t.Errorf("exit %d, stderr %q, binary %q", code, errOut, content(t, e.Exe))
-	}
-}
-
-func TestSelfUpdateDryRun(t *testing.T) {
-	e, srv := selfMachine(t, true)
-	code, _, errOut := call(t, noGather(t), "self", "update", "--dry-run")
-	if code != 0 || !strings.Contains(errOut, "would update makeit 1.1.0 → 1.2.0") || content(t, e.Exe) != "makeit 1.1.0" {
-		t.Errorf("exit %d, stderr %q", code, errOut)
-	}
-	if got := srv.Requests(); !slices.Equal(got, []string{"HEAD /o/makeit/releases/latest"}) {
-		t.Errorf("requests %v, want only the HEAD", got)
-	}
-}
-
-func TestSelfUpdateSkipped(t *testing.T) {
-	e, srv := selfMachine(t, true)
-	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: e.Roots.Portable(e.Exe), Version: "1.1.0", Skipped: "1.2.0"})
-	code, _, errOut := call(t, noGather(t), "self", "update", "--yes")
-	if code != 0 || !strings.Contains(errOut, "makeit 1.2.0 is skipped (you rolled back from it): `makeit self update --to 1.2.0` takes it") {
-		t.Errorf("exit %d, stderr %q", code, errOut)
-	}
-	if got := srv.Requests(); len(got) != 1 {
-		t.Errorf("requests %v, want only the HEAD", got)
-	}
-}
-
-func TestSelfUpdateOffline(t *testing.T) {
-	_, srv := selfMachine(t, true)
-	code, _, errOut := call(t, noGather(t), "self", "update", "--yes", "--offline")
-	if code != 1 || !strings.Contains(errOut, "network disabled") || len(srv.Requests()) > 0 {
-		t.Errorf("exit %d, stderr %q, requests %v", code, errOut, srv.Requests())
 	}
 }
 
@@ -256,8 +191,8 @@ func TestSelfInstallPathLine(t *testing.T) {
 
 func TestSelfRollbackYes(t *testing.T) {
 	e := rolledForward(t)
-	code, _, errOut := call(t, noGather(t), "self", "rollback", "--yes")
-	if code != 0 || !strings.Contains(errOut, "makeit rolled back from 1.2.0 to 1.1.0; 1.2.0 is skipped until a newer release or `makeit self update --to 1.2.0`") {
+	code, _, errOut := call(t, noGather(t), "rollback", "--yes")
+	if code != 0 || !strings.Contains(errOut, "makeit rolled back from 1.2.0 to 1.1.0; 1.2.0 is skipped until a newer release or `makeit update --to 1.2.0`") {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
 	}
 	if r := loadReceipt(t, e); r.Version != "1.1.0" || r.Skipped != "1.2.0" || content(t, e.Exe) != "makeit 1.1.0" {
@@ -267,14 +202,14 @@ func TestSelfRollbackYes(t *testing.T) {
 
 func TestSelfRollbackNothing(t *testing.T) {
 	selfMachine(t, true)
-	if code, _, errOut := call(t, noGather(t), "self", "rollback", "--yes"); code != 1 || !strings.Contains(errOut, "nothing to roll back to") {
+	if code, _, errOut := call(t, noGather(t), "rollback", "--yes"); code != 1 || !strings.Contains(errOut, "nothing to roll back to") {
 		t.Errorf("exit %d, stderr %q", code, errOut)
 	}
 }
 
 func TestSelfRollbackDryRun(t *testing.T) {
 	e := rolledForward(t)
-	code, _, errOut := call(t, noGather(t), "self", "rollback", "--dry-run")
+	code, _, errOut := call(t, noGather(t), "rollback", "--dry-run")
 	if code != 0 || !strings.Contains(errOut, "would roll makeit back from 1.2.0 to 1.1.0") || content(t, e.Exe) != "makeit 1.2.0" {
 		t.Errorf("exit %d, stderr %q, binary %q", code, errOut, content(t, e.Exe))
 	}

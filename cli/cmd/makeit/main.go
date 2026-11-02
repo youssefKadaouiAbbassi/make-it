@@ -32,7 +32,7 @@ var catalogFlags = []cli.Flag{
 
 // commands lists only what this build has, so usage never names a command that does not exist.
 var commands = []cli.Command{
-	{Name: "docs", Args: "sync [dir]", Summary: "index the docs of a project's dependencies for the docs MCP server", Flags: []cli.Flag{
+	{Name: "docs", Hidden: true, Args: "sync [dir]", Summary: "index the docs of a project's dependencies for the docs MCP server", Flags: []cli.Flag{
 		{Name: "if-changed", Help: "only when a manifest or lockfile changed since the last sync (the hooks use it)"},
 	}},
 	{Name: "doctor", Summary: "check this machine against what makeit sets up; changes nothing"},
@@ -41,17 +41,20 @@ var commands = []cli.Command{
 		{Name: "update", Help: "also update files init wrote earlier that nobody changed since"},
 		{Name: "rulesets", Help: "also send makeit's GitHub rulesets to the repository (needs gh and a GitHub remote)"},
 	}},
-	{Name: "self", Args: "install|update|rollback", Summary: "install, update or roll back makeit itself", Flags: []cli.Flag{
-		{Name: "prefix", Value: "dir", Help: "self install: where to put makeit (default ~/.local/bin)"},
-		{Name: "to", Value: "version", Help: "self update: this version instead of the latest; clears a skip"},
-		{Name: "allow-downgrade", Help: "self update: allow --to an older version"},
+	{Name: "rollback", Summary: "undo the last update that changed something", Modifies: true},
+	// self install is what install.sh and install.ps1 run; update and rollback replaced the rest.
+	{Name: "self", Hidden: true, Args: "install", Summary: "install this makeit binary", Flags: []cli.Flag{
+		{Name: "prefix", Value: "dir", Help: "where to put makeit (default ~/.local/bin)"},
 	}},
 	{Name: "setup", Summary: "set up this machine: prerequisites, Claude Code, the plugin set, settings and global files", Flags: catalogFlags},
 	{Name: "uninstall", Summary: "remove what makeit put on this machine and nobody changed since", Flags: []cli.Flag{
 		{Name: "keep-settings", Help: "leave settings.json as it is"},
 		{Name: "purge", Help: "also delete the data of the plugins makeit installed, and the makeit directory with every backup; cannot be undone"},
 	}},
-	{Name: "update", Summary: "bring this machine to what this makeit carries: the plugin set, plugins, settings and global files", Flags: catalogFlags},
+	{Name: "update", Summary: "update everything: makeit itself, the plugins, settings and global files (also runs daily on its own)", Flags: append([]cli.Flag{
+		{Name: "to", Value: "version", Help: "move makeit to this version instead of the latest; clears a skip"},
+		{Name: "allow-downgrade", Help: "allow --to an older version"},
+	}, catalogFlags...)},
 	{Name: "version", Summary: "print the version"},
 }
 
@@ -126,8 +129,7 @@ func names() []string {
 // run is the whole program; main adds the process and signal plumbing.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather func(context.Context) (doctor.Machine, error)) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, cli.Usage(prog, buildinfo.Version, commands))
-		return 2
+		return runHome(ctx, stdout, stderr, gather)
 	}
 	name, rest := args[0], args[1:]
 	if name == "-h" || name == "--help" {
@@ -173,6 +175,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 		return runSetup(ctx, p, args, stdout, stderr)
 	case "self":
 		return runSelf(ctx, p, stdout, stderr)
+	case "rollback":
+		if len(p.Positionals) > 0 {
+			fmt.Fprintf(stderr, "%s: rollback takes no arguments\n", prog)
+			return 2
+		}
+		return runRollback(ctx, p, stdout, stderr)
 	case "docs":
 		return runDocs(ctx, p, stdout, stderr)
 	case "init":

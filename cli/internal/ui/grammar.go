@@ -171,6 +171,31 @@ func (u *UI) Row(g Glyph, label, detail, note string) {
 	}
 }
 
+// KV prints one line of a status card: a faint label column and its value; plain, "label: value".
+// warn colours the label yellow (the "to fix" line).
+func (u *UI) KV(label, value string, warn bool) {
+	if u.Mode != Live {
+		_, _ = fmt.Fprintf(u.Out, "%s: %s\n", label, value)
+		return
+	}
+	l := u.style(faint, pad(label, 14))
+	if warn {
+		l = u.style(yellow, pad(label, 14))
+	}
+	_, _ = fmt.Fprintf(u.Out, "  %s%s\n", l, value)
+}
+
+// Dot is a coloured status dot for a card value: green when ok, yellow when not.
+func (u *UI) Dot(ok bool) string {
+	if ok {
+		return u.style(green, "●")
+	}
+	return u.style(yellow, "●")
+}
+
+// Faint is secondary text.
+func (u *UI) Faint(s string) string { return u.style(faint, s) }
+
 // Result is a live run's last line: "✓ Updated in 4s · <counts>", or ✗ when it failed.
 func (u *UI) Result(ok bool, verb string, elapsed time.Duration, counts []string) {
 	if u.Mode != Live {

@@ -26,6 +26,10 @@ var stackUpdate = setup.Update
 var releaseBase = "https://github.com"
 
 func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {
+	if p.Bool["allow-downgrade"] && p.String["to"] == "" {
+		fmt.Fprintf(stderr, "%s: --allow-downgrade needs --to <version>\n", prog)
+		return 2
+	}
 	var moved *selfMove
 	notice, needConsent := "", false
 	if from := os.Getenv("MAKEIT_REEXEC"); from != "" {
@@ -112,12 +116,15 @@ func selfStep(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 		}
 		return selfOutcome{notice: notice}
 	}
-	pick, err := e.Pick(ctx, rec, "", false)
+	pick, err := e.Pick(ctx, rec, p.String["to"], p.Bool["allow-downgrade"])
 	switch {
+	case errors.Is(err, selfupdate.ErrDowngrade):
+		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
+		return selfOutcome{exited: true, code: 2}
 	case err != nil:
 		return selfOutcome{notice: "could not check for a newer makeit: " + err.Error()}
 	case pick.Skipped:
-		return selfOutcome{notice: fmt.Sprintf("makeit %s is skipped (you rolled back from it): `makeit self update --to %s` takes it", pick.Latest, pick.Latest)}
+		return selfOutcome{notice: fmt.Sprintf("makeit %s is skipped (you rolled back from it): `makeit update --to %s` takes it", pick.Latest, pick.Latest)}
 	case pick.To == "":
 		return selfOutcome{}
 	}

@@ -126,13 +126,11 @@ func call(t *testing.T, gather func(context.Context) (doctor.Machine, error), ar
 
 func TestHelp(t *testing.T) {
 	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}} {
-		if code, out, _ := call(t, noGather(t), args...); code != 0 || !strings.Contains(out, "Usage: makeit <command>") {
+		if code, out, _ := call(t, noGather(t), args...); code != 0 || !strings.Contains(out, "Usage: makeit [command]") {
 			t.Errorf("%v: exit %d, stdout %q", args, code, out)
 		}
 	}
-	if code, out, errOut := call(t, noGather(t)); code != 2 || out != "" || !strings.Contains(errOut, "Usage: makeit <command>") {
-		t.Errorf("no args: exit %d, stdout %q, stderr %q", code, out, errOut)
-	}
+	// No arguments is the home card (home_test.go), not usage.
 	for _, args := range [][]string{{"help", "doctor"}, {"doctor", "-h"}} {
 		if code, out, _ := call(t, noGather(t), args...); code != 0 || !strings.Contains(out, "Usage: makeit doctor") {
 			t.Errorf("%v: exit %d, stdout %q", args, code, out)
@@ -151,7 +149,7 @@ func TestHelp(t *testing.T) {
 		}
 	}
 	_, out, _ := call(t, noGather(t), "help")
-	for _, built := range []string{"docs", "init", "self", "setup", "update", "uninstall"} {
+	for _, built := range []string{"init", "rollback", "setup", "update", "uninstall"} {
 		if !strings.Contains(out, "  "+built+" ") {
 			t.Errorf("usage does not list %s: %q", built, out)
 		}

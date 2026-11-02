@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -130,6 +131,26 @@ func Prune(stackDir string) error {
 		ns = ns[1:]
 	}
 	return nil
+}
+
+// LoadGenerations reads every generation's manifest, newest first. A folder without a readable
+// manifest is left out.
+func LoadGenerations(stackDir string) ([]*Generation, error) {
+	ns, err := generations(stackDir)
+	if err != nil {
+		return nil, err
+	}
+	var out []*Generation
+	for i := len(ns) - 1; i >= 0; i-- {
+		dir := filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[i]))
+		var m Manifest
+		data, found, err := fsx.ReadOptional(filepath.Join(dir, "manifest.json"))
+		if err != nil || !found || json.Unmarshal(data, &m) != nil {
+			continue
+		}
+		out = append(out, &Generation{Dir: dir, Manifest: m})
+	}
+	return out, nil
 }
 
 // generations lists the generation numbers on disk, ascending.
