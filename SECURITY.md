@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-makeit is in beta. Only the latest 0.x release gets security fixes. Update with `makeit update`
-or `makeit self update`.
+makeit is in beta. Only the latest 0.x release gets security fixes. makeit updates itself once a
+day; `makeit update` updates now.
 
 ## Reporting a vulnerability
 
@@ -54,7 +54,7 @@ key. They:
 3. Check the binary's sha256 against `checksums.txt`, and stop on a mismatch.
 4. Run `makeit self install --yes`, which copies makeit to `~/.local/bin`.
 
-After that, `makeit self update` and `makeit update` replace the binary only when `checksums.txt`
+After that, `makeit update` (and its daily run) replaces the binary only when `checksums.txt`
 carries a valid signature from a key built into the running makeit and the new binary matches its
 sha256. That check does not depend on minisign being installed.
 
@@ -62,6 +62,9 @@ sha256. That check does not depend on minisign being installed.
 
 makeit runs package managers (with `sudo` on Linux, shown in the plan first), `git`, `gh` and the
 `claude` CLI. The plugins it installs run hooks and MCP servers with your user's rights. Each one is
-pinned to a commit in the plugin set, except the four language-server plugins, which come from
-claude-plugins-official and update with it; [What makeit installs](docs/included.md) lists them and the
+pinned to a release tag and its commit in the plugin set, and `update` (daily, on its own) moves it
+to the newest stable release its own repository tags: a plugin release makeit has not tested can
+reach your machine the day it is published. `makeit rollback` moves it back, and
+`"autoUpdate": false` in `~/.makeit/config.json` stops the daily run. The four language-server
+plugins come from claude-plugins-official and update with it; [What makeit installs](docs/included.md) lists them and the
 settings makeit writes, including `permissions.defaultMode: bypassPermissions`.

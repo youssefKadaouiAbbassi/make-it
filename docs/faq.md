@@ -58,8 +58,8 @@ project. See [What makeit installs](included.md) for the values makeit sets.
 
 - `setup` and `update` do not fetch a `--catalog` git source: a recorded one stays where it is, and a
   new one is refused. The plugin set built into makeit is still applied.
-- `update` skips replacing makeit with a newer release, and skips the check for one.
-- `self update` is refused.
+- `update` skips replacing makeit with a newer release, skips the check for one, and keeps every
+  plugin at its current release.
 - `init` skips the docs index and refuses `--rulesets`. `docs sync` does nothing.
 
 The programs makeit runs still use the network when they need it: package managers that install
@@ -90,10 +90,25 @@ makeit is at 0.x. Commands, flags and the files it writes may still change betwe
 breaking change raises the minor version (0.1 to 0.2). Every release is a normal GitHub release, so
 `makeit update` takes it.
 
+## How do I turn the daily update off?
+
+Put `{"autoUpdate": false}` in `~/.makeit/config.json`. The daily run starts when Claude Code starts,
+at most once in 24 hours; it asks nothing, writes to `~/.makeit/update.log`, and leaves one line for
+the next session when something moved. `makeit` with no command shows whether it is on.
+
+## How do I undo an update?
+
+`makeit rollback` undoes the last update that changed something: it puts back the files that update
+wrote (a file you changed since is kept), moves the plugins back to their previous releases, and puts
+back the previous makeit when that update installed a new one. The daily run then skips the plugin
+releases you rolled back from; `makeit update` run by hand takes them. Run it again to go one more
+update back. makeit never rolls itself back below 0.2.0.
+
 ## Where does the plugin set come from?
 
 By default, from makeit itself: each release carries a plugin set, a Claude Code marketplace that
-pins every plugin to a commit. `--catalog` on `setup` and `update` points makeit at another plugin
+pins every plugin to a release tag and its commit. `update` moves each plugin to the newest stable
+release of the same tag family, never below the pin it has. `--catalog` on `setup` and `update` points makeit at another plugin
 set instead (the flag keeps its older name):
 
 ```console

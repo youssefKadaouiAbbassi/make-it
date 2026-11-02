@@ -22,7 +22,9 @@ PS> irm https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/downloa
 The script downloads the makeit binary for your machine, checks it against the release's
 `checksums.txt`, and runs `makeit self install`. That puts makeit in `~/.local/bin`
 (`%USERPROFILE%\.local\bin` on Windows). If that directory is not on your `PATH`, makeit prints
-the line to add.
+the line to add. Then the script runs `makeit setup` (below), so one command sets up the machine.
+`| sh -s -- --yes` sets up without asking, `| sh -s -- --no-setup` installs makeit only; on
+Windows, set `MAKEIT_YES=1` or `MAKEIT_NO_SETUP=1` first.
 
 With [minisign](https://jedisct1.github.io/minisign/) installed, the script also verifies the
 release signature first and stops if it does not verify. Without minisign it says the signature
@@ -35,6 +37,8 @@ $ makeit version
 ```
 
 ## Set up your machine
+
+The install script already ran this. To run it again, or after `--no-setup`:
 
 ```console
 $ makeit setup
@@ -91,9 +95,19 @@ $ makeit init
 $ makeit update
 ```
 
+You do not need to run it: once a day, when Claude Code starts, makeit runs `makeit update --auto`
+in the background. It writes to `~/.makeit/update.log`, and the next session shows one line naming
+what moved. Run `makeit update` yourself to update now.
+
 `update` first replaces makeit with the newest signed release, when makeit was installed by the
-install script. Then it brings the plugin set, the plugins, the settings and the global files to
-what that release carries. Anything you changed is kept and listed.
+install script. Then it moves each plugin to its newest release and brings the settings and the
+global files to what that makeit carries. Anything you changed is kept and listed.
+
+To undo the last update:
+
+```console
+$ makeit rollback
+```
 
 In each project, after an update:
 
