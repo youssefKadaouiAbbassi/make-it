@@ -249,6 +249,17 @@ func (u *UI) Fix(cmd string) {
 	_, _ = fmt.Fprintf(u.Out, "    %s %s\n", u.style(faint, "fix"), cmd)
 }
 
+// Detail is the text under a row, such as a failure's error: wrapped under itself, never cut.
+func (u *UI) Detail(text string) {
+	if u.Mode != Live || text == "" {
+		return
+	}
+	if u.Width > 8 {
+		text = strings.ReplaceAll(ansi.Wrap(text, u.Width-4, ""), "\n", "\n    ")
+	}
+	_, _ = fmt.Fprintf(u.Out, "    %s\n", text)
+}
+
 // Next is the line under the result: the next step, then quieter hints such as the undo.
 func (u *UI) Next(lines ...string) {
 	if u.Mode != Live || len(lines) == 0 {

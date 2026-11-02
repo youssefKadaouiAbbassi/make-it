@@ -119,6 +119,14 @@ func finishLive(u *ui.UI, name string, rep setup.Report, elapsed time.Duration) 
 		counts = append(counts, fmt.Sprintf("%d already", already))
 	}
 	if rep.Plan.Failed() {
+		// The live rows keep one cut line per area; here is every failed step, whole.
+		_, _ = fmt.Fprintln(u.Out)
+		for _, o := range rep.Plan.Outcomes {
+			if o.Status == plan.Failed {
+				u.Row(ui.GFail, o.Title, "", "")
+				u.Detail(o.Detail)
+			}
+		}
 		u.Result(false, "Stopped", elapsed, counts)
 		u.Next("Fix the ✗ line above, then run makeit " + name + " again.")
 		return
