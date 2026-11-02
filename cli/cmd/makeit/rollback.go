@@ -33,6 +33,9 @@ func runRollback(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) in
 		fmt.Fprintf(stderr, "%s: %v\n", prog, gerr)
 		return 1
 	}
+	if binaryIsLast(se, g) {
+		return rollbackBinary(ctx, se, p, stdout, stderr, false)
+	}
 	if gerr == nil {
 		question := fmt.Sprintf("Undo the %s of %s?", g.Manifest.Command, g.Manifest.StartedAt.Local().Format("Jan 2 15:04"))
 		code := runModifying(ctx, p, stdout, stderr, modifying{name: "rollback", question: question, yesFirst: true,
@@ -48,6 +51,17 @@ func runRollback(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) in
 
 // binaryMovedIn reports whether the update in m installed the makeit running now: its swap is
 // recorded just before the run started, and the version it brought is the one that ran.
+// binaryIsLast reports that the last change was makeit itself, replaced after the newest run that
+// wrote files (an update with nothing else to do writes no generation). After a rollback of the
+// binary its receipt skips the version it left, so a second rollback goes on to the files.
+func binaryIsLast(e selfupdate.Env, g *state.Generation) bool {
+	rec, err := e.Gate()
+	if err != nil || rec.Previous == nil || rec.InstalledAt.IsZero() || rec.Skipped == *rec.Previous {
+		return false
+	}
+	return g == nil || rec.InstalledAt.After(g.Manifest.StartedAt.Add(time.Minute))
+}
+
 func binaryMovedIn(e selfupdate.Env, m state.Manifest) bool {
 	rec, err := e.Gate()
 	if err != nil || rec.Previous == nil || rec.Version != m.CLIVersion {

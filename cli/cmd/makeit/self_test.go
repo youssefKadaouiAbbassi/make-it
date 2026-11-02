@@ -152,6 +152,44 @@ func TestRollbackNeverBelow020(t *testing.T) {
 	}
 }
 
+// A daily update that replaced only makeit wrote no generation: rollback undoes that update, not the
+// setup before it.
+func TestRollbackBinaryOnlyUpdate(t *testing.T) {
+	e, _ := selfMachine(t, true)
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", []string{"setup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Manifest.StartedAt = time.Now().Add(-2 * time.Hour).UTC()
+	if err := g.Save(); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(e.Roots.Stack, "self", "makeit-0.2.0"), "makeit 0.2.0")
+	write(t, e.Exe, "makeit 0.3.0")
+	prev := "0.2.0"
+	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: e.Roots.Portable(e.Exe), Version: "0.3.0", Target: e.Target,
+		Previous: &prev, InstalledAt: time.Now().Add(-10 * time.Minute).UTC()})
+	e.Version = "0.3.0"
+	useSelfEnv(t, e)
+	code, _, errOut := call(t, noGather(t), "rollback", "--yes")
+	if code != 0 || strings.Contains(errOut, "Undo the setup") {
+		t.Fatalf("exit %d, stderr %q", code, errOut)
+	}
+	if content(t, e.Exe) != "makeit 0.2.0" {
+		t.Errorf("binary %q, want 0.2.0 back", content(t, e.Exe))
+	}
+	gens, _ := state.LoadGenerations(e.Roots.Stack)
+	if len(gens) != 1 || gens[0].Manifest.RolledBack {
+		t.Errorf("the setup was rolled back: %d generations", len(gens))
+	}
+	e.Version = "0.2.0"
+	useSelfEnv(t, e)
+	call(t, noGather(t), "rollback", "--yes")
+	if content(t, e.Exe) != "makeit 0.2.0" {
+		t.Errorf("a second rollback swapped makeit back to %q", content(t, e.Exe))
+	}
+}
+
 func TestSelfFlags(t *testing.T) {
 	selfMachine(t, true)
 	for _, args := range [][]string{
