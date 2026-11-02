@@ -20,20 +20,25 @@ project. [What was tested](docs/included.md#the-plugin-set).
 
 ```console
 $ makeit setup
-  will: Install git
-  will: Install node
-  will: Install Claude Code
-  will: Write the plugin set to /home/dev/.makeit/catalog
-  will: Install makeit-bundle@makeit
-  will: Merge makeit's settings into /home/dev/.claude/settings.json
-  will: Write /home/dev/.claude/CLAUDE.md
-? Apply this plan? [Y/n]
-ok Install git
-ok Install node
-ok Install Claude Code
-ok Install makeit-bundle@makeit
-ok Merge makeit's settings into /home/dev/.claude/settings.json
-17 done
+
+>_ makeit  setup
+
+  ● Machine        4 changes
+  ● Claude Code    install Claude Code
+  ● Plugins        5 changes
+  ● Settings       merge makeit's settings into /home/u/.claude/settings.json
+  ● Files          7 changes
+
+  Apply this plan? Yes
+
+  ✓ Machine        4 changed
+  ✓ Claude Code    1 changed
+  ✓ Plugins        4 changed
+  ✓ Settings       1 changed
+  ✓ Files          7 changed
+
+  ✓ Ready in 124s · 17 changed · 1 already
+    Open Claude Code to start.  undo: makeit rollback
 ```
 
 <p align="center"><sub>makeit setup on a fresh Ubuntu 24.04: the plan, one question, the result. Lines cut from the real output; nothing retyped.</sub></p>
@@ -115,14 +120,17 @@ release and each plugin to its newest release. The next session says what change
 
 ```console
 $ makeit doctor
-ok git found
-ok node found
-!! pyright is missing: the pyright-lsp plugin runs it for .py files
-   fix: npm install -g pyright
-ok Claude Code 2.1.316
-ok settings.json has every makeit value
-ok makeit-bundle@makeit 0.1.0
-0 errors, 7 warnings
+
+>_ makeit  doctor
+
+  ✓ 32 checks passed
+  ! deja-vu is missing: the memory plugin's local search binary
+    fix go install github.com/vshulcz/deja-vu/cmd/deja@latest, or a release binary from
+        github.com/vshulcz/deja-vu
+  ! pyright is missing: the pyright-lsp plugin runs it for .py files
+    fix npm install -g pyright
+
+  ✓ Healthy · 7 warnings · every check: makeit doctor --verbose
 ```
 
 ## Commands
