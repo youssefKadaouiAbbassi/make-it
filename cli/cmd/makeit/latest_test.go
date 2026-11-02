@@ -41,7 +41,9 @@ func fakeLatest(t *testing.T, move *state.PinMove) *applyCall {
 	return c
 }
 
-func TestUpdateRecordsLatestMoves(t *testing.T) {
+// The fake claude never updates a plugin: a move latest made is then not recorded, so the next
+// session announces nothing and rollback has nothing to undo for it.
+func TestUpdateDropsMovesThatDidNotUpdate(t *testing.T) {
 	m := newCatMachine(t, nil)
 	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
 		t.Fatalf("setup: exit %d\n%s", code, errOut)
@@ -57,8 +59,8 @@ func TestUpdateRecordsLatestMoves(t *testing.T) {
 	if err != nil || len(gens) == 0 {
 		t.Fatalf("generations %v, %v", gens, err)
 	}
-	if p := gens[0].Manifest.Pins; len(p) != 1 || p[0].ToTag != "v7.1.0" {
-		t.Errorf("pins %+v, want the move recorded for rollback", p)
+	if p := gens[0].Manifest.Pins; len(p) != 0 {
+		t.Errorf("pins %+v, want none: superpowers did not update", p)
 	}
 }
 
@@ -90,8 +92,8 @@ func TestAutoRunsOnceADay(t *testing.T) {
 	if strings.Count(string(log), "update --auto") != 1 {
 		t.Errorf("update.log:\n%s", log)
 	}
-	if note, _ := os.ReadFile(filepath.Join(m.stack, "pending-note")); !strings.Contains(string(note), "superpowers 7.1.0") {
-		t.Errorf("pending-note %q", note)
+	if note, err := os.ReadFile(filepath.Join(m.stack, "pending-note")); err == nil {
+		t.Errorf("pending-note %q announces a plugin that did not update", note)
 	}
 	if code, _, _ := run2(t, "update", "--auto"); code != 0 {
 		t.Errorf("second auto run: exit %d", code)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"makeit/internal/catalog"
@@ -137,7 +138,6 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 		return rep, en, err
 	}
 	en.gen = gen
-	gen.Manifest.Pins = e.Pins
 	st.Generation = gen.Manifest.Generation
 	st.Machine = state.Machine{OS: e.Platform.OS, Arch: e.Platform.Arch, WSL: e.Platform.WSL}
 	if st.Steps == nil {
@@ -167,6 +167,8 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	}})
 	rep.Hints, rep.Kept, rep.Reload = en.hints, en.kept, en.reload
 	rep.Generation = gen.Manifest.Generation
+	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
+	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())
@@ -211,4 +213,15 @@ func nothingToDo(r plan.Report) bool {
 		}
 	}
 	return true
+}
+
+// updatedPins keeps the pin moves whose plugin is in updated.
+func updatedPins(pins []state.PinMove, updated []string) []state.PinMove {
+	var out []state.PinMove
+	for _, p := range pins {
+		if slices.Contains(updated, p.ID) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
