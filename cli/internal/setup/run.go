@@ -137,6 +137,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 		return rep, en, err
 	}
 	en.gen = gen
+	gen.Manifest.Pins = e.Pins
 	st.Generation = gen.Manifest.Generation
 	st.Machine = state.Machine{OS: e.Platform.OS, Arch: e.Platform.Arch, WSL: e.Platform.WSL}
 	if st.Steps == nil {

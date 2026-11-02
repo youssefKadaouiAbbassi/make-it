@@ -44,6 +44,9 @@ type Env struct {
 	Getenv func(string) string
 	// Progress, when set, sees each step of the apply pass start and finish (the live view).
 	Progress func(plan.Event)
+	// Pins are the plugin release moves update's latest step made in CatalogTree, recorded in the
+	// run's generation for rollback.
+	Pins []state.PinMove
 }
 
 // env is one run: the machine plus what earlier steps learned and the run's record.

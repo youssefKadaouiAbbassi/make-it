@@ -17,6 +17,7 @@ import (
 	"makeit/internal/claudecli"
 	"makeit/internal/cli"
 	"makeit/internal/execx"
+	"makeit/internal/latest"
 	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
@@ -97,8 +98,44 @@ func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, 
 			return nil, err
 		}
 		e.Catalog, e.CatalogTree, e.CatalogRecord = prep.Source, prep.Tree, prep.Record
-		return prep.Notices, nil
+		notices := prep.Notices
+		if command == "update" && !p.Bool["offline"] && followsReleases(prep.Record) {
+			tree := prep.Tree
+			if tree == nil {
+				if tree, err = catalog.EmbeddedTree(); err != nil {
+					return nil, err
+				}
+			}
+			current, _ := catalog.DirTree(filepath.Join(e.Roots.Stack, "catalog"))
+			// The daily run leaves releases a rollback undid; an update run by hand takes the latest.
+			var skips map[string][]string
+			if p.Bool["auto"] {
+				skips = st.PluginSkips
+			}
+			moved, pins, notes := latestApply(ctx, execx.Run, tree, current, skips)
+			if moved != tree {
+				e.Catalog, e.CatalogTree = moved, moved
+			}
+			e.Pins = pins
+			notices = append(notices, notes...)
+		}
+		return notices, nil
 	}
+}
+
+// latestApply moves plugins to their newest releases; tests replace it to stay off the network.
+var latestApply = latest.Apply
+
+// followsReleases is true for a plugin set that is not pinned: makeit's own, or a git one that
+// follows its newest tag or a branch. A directory or a tag or commit pin stays exactly as given.
+func followsReleases(rec state.Catalog) bool {
+	switch rec.Kind {
+	case "", "embedded":
+		return true
+	case "git":
+		return rec.RefKind == "latest" || rec.RefKind == "branch"
+	}
+	return false
 }
 
 // runModifying is what setup, update and uninstall share: the consent rule, the plan shown before
