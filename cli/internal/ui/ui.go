@@ -142,6 +142,9 @@ func (u *UI) Confirm(q string, def bool) (bool, error) {
 	if err := u.need(); err != nil {
 		return false, err
 	}
+	if u.Mode == Live {
+		return u.confirmLive(q, def)
+	}
 	hint := "[y/N]"
 	if def {
 		hint = "[Y/n]"
@@ -168,6 +171,9 @@ func (u *UI) Confirm(q string, def bool) (bool, error) {
 func (u *UI) Select(q string, opts []string, def int) (int, error) {
 	if err := u.need(); err != nil {
 		return 0, err
+	}
+	if u.Mode == Live {
+		return u.selectLive(q, opts, def)
 	}
 	_, _ = fmt.Fprintf(u.Out, "? %s\n", q)
 	for i, o := range opts {
