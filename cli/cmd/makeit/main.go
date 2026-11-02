@@ -307,6 +307,12 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 	}
 	u := ui.New(os.Stdin, stderr, false, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
+	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, false, p.Bool["plain"] || p.Bool["verbose"])
+	if u.Mode == ui.Live {
+		u.Header("doctor")
+		printDoctorLive(u, checks)
+		return code
+	}
 	for _, c := range checks {
 		switch c.Level {
 		case doctor.OK:

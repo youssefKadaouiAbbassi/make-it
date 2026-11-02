@@ -3,6 +3,7 @@
 #   irm https://github.com/<repo>/releases/download/v<version>/install.ps1 | iex
 # The copy attached to a release carries that release's version, repository and public key.
 # MAKEIT_VERSION installs another version; MAKEIT_RELEASES_URL replaces https://github.com.
+# Then it runs `makeit setup` (MAKEIT_YES=1: without asking; MAKEIT_NO_SETUP=1: not at all).
 # irm | iex runs in the caller's session: everything lives in a script block, and failures throw
 # instead of exit, so the window stays open and no variable or preference leaks.
 & {
@@ -49,4 +50,10 @@
     } finally {
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
+
+    # Then setup, asking its one question in this console. MAKEIT_YES=1 sets up without asking;
+    # MAKEIT_NO_SETUP=1 installs makeit only.
+    $installed = Join-Path $env:USERPROFILE '.local\bin\makeit.exe'
+    if ($env:MAKEIT_NO_SETUP) { Write-Output 'next: makeit setup'; return }
+    if ($env:MAKEIT_YES) { & $installed setup --yes } else { & $installed setup }
 }

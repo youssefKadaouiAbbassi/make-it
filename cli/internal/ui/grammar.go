@@ -212,6 +212,29 @@ func (u *UI) Result(ok bool, verb string, elapsed time.Duration, counts []string
 	_, _ = fmt.Fprintf(u.Out, "\n  %s %s\n", mark, u.style(faint, rest))
 }
 
+// Summary is a result line without a duration, for a check rather than a run ("✓ Healthy · 1 warning").
+func (u *UI) Summary(ok bool, verb string, notes ...string) {
+	if u.Mode != Live {
+		return
+	}
+	mark := u.style(green.Bold(true), "✓ "+verb)
+	if !ok {
+		mark = u.style(red.Bold(true), "✗ "+verb)
+	}
+	rest := ""
+	for _, n := range notes {
+		rest += " · " + n
+	}
+	_, _ = fmt.Fprintf(u.Out, "\n  %s%s\n", mark, u.style(faint, rest))
+}
+
+// Fix is the line under a problem row: "fix <command>".
+func (u *UI) Fix(cmd string) {
+	if u.Mode == Live {
+		_, _ = fmt.Fprintf(u.Out, "    %s %s\n", u.style(faint, "fix"), cmd)
+	}
+}
+
 // Next is the line under the result: the next step, then quieter hints such as the undo.
 func (u *UI) Next(lines ...string) {
 	if u.Mode != Live || len(lines) == 0 {

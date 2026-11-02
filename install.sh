@@ -4,7 +4,22 @@
 #   curl -fsSL https://github.com/<repo>/releases/download/v<version>/install.sh | sh
 # The copy attached to a release carries that release's version, repository and public key.
 # MAKEIT_VERSION installs another version; MAKEIT_RELEASES_URL replaces https://github.com.
+# Then it runs `makeit setup`, asking its one question on the terminal:
+#   ... | sh -s -- --yes        set up without asking (MAKEIT_YES=1)
+#   ... | sh -s -- --no-setup   install makeit only (MAKEIT_NO_SETUP=1)
+# Any other flag goes to setup as is (--offline, --catalog <src>, --dry-run).
 set -eu
+
+yes=${MAKEIT_YES:-}
+no_setup=${MAKEIT_NO_SETUP:-}
+setup_args=""
+for a in "$@"; do
+  case "$a" in
+    --yes | -y) yes=1 ;;
+    --no-setup) no_setup=1 ;;
+    *) setup_args="$setup_args $a" ;;
+  esac
+done
 
 version=${MAKEIT_VERSION:-@VERSION@}
 repo=@REPO@
@@ -54,3 +69,18 @@ fi
 
 chmod 755 "$dir/$name"
 "$dir/$name" self install --yes
+installed="$HOME/.local/bin/makeit"
+[ -x "$installed" ] || installed="$dir/$name"
+
+if [ -n "$no_setup" ]; then
+  echo "next: makeit setup"
+  exit 0
+fi
+# The script itself arrives on stdin (curl | sh), so setup's question reads the terminal directly.
+# shellcheck disable=SC2086 # setup_args is a list of flags, split on purpose
+if [ -n "$yes" ]; then
+  exec "$installed" setup --yes $setup_args
+elif (: </dev/tty) 2>/dev/null; then
+  exec "$installed" setup $setup_args </dev/tty
+fi
+echo "next: makeit setup  (no terminal to ask on; or rerun with: sh -s -- --yes)"
