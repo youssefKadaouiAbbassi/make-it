@@ -2,6 +2,8 @@ package ui
 
 import (
 	"bytes"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -64,5 +66,27 @@ func TestSelectLiveArrowDown(t *testing.T) {
 	i, err := u.Select("What next?", []string{"Update now", "Doctor", "Nothing"}, 0)
 	if err != nil || i != 1 {
 		t.Fatalf("select = %d, %v; want 1", i, err)
+	}
+}
+
+// A pipe is not a terminal: it keeps the wrapper that ends the question when the input closes.
+func TestFormInputPipeWrapped(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	if _, ok := New(r, &bytes.Buffer{}, true, false).formInput().(*abortOnEOF); !ok {
+		t.Error("a pipe went to Huh unwrapped")
+	}
+	if _, ok := NewFromReader(strings.NewReader(""), &bytes.Buffer{}, true).formInput().(*abortOnEOF); !ok {
+		t.Error("a reader went to Huh unwrapped")
+	}
+}
+
+func TestEscLeavesAQuestion(t *testing.T) {
+	if !slices.Contains(keymap().Quit.Keys(), "esc") {
+		t.Error("Esc does not leave a question")
 	}
 }

@@ -31,11 +31,12 @@ type UI struct {
 	Light bool
 	in    *bufio.Reader
 	fd    int
+	file  *os.File // the terminal for Huh, which needs the file itself to read keys raw
 }
 
 // New builds a UI. in is read only when Interactive is set.
 func New(in *os.File, out io.Writer, interactive, color bool) *UI {
-	return &UI{Out: out, Interactive: interactive, Color: color, in: bufio.NewReader(in), fd: int(in.Fd())}
+	return &UI{Out: out, Interactive: interactive, Color: color, in: bufio.NewReader(in), fd: int(in.Fd()), file: in}
 }
 
 // NewFromReader is New for tests: prompts read from r.

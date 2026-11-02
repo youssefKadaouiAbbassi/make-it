@@ -6,8 +6,10 @@ import (
 	"io"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+	"golang.org/x/term"
 )
 
 // theme is Huh's base theme with makeit's accent and no left border, so a question sits in the
@@ -46,9 +48,25 @@ func (a *abortOnEOF) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// formInput is what Huh reads: a terminal as itself, so Bubble Tea can put it in raw mode (wrapped,
+// keys are echoed and never reach the form); anything else wrapped in abortOnEOF.
+func (u *UI) formInput() io.Reader {
+	if u.file != nil && term.IsTerminal(int(u.file.Fd())) {
+		return u.file
+	}
+	return &abortOnEOF{r: u.in}
+}
+
+// keymap is Huh's, with Esc leaving a question like Ctrl-C (Huh's own quits on Ctrl-C only).
+func keymap() *huh.KeyMap {
+	km := huh.NewDefaultKeyMap()
+	km.Quit = key.NewBinding(key.WithKeys("ctrl+c", "esc"))
+	return km
+}
+
 func (u *UI) runForm(field huh.Field) (aborted bool, err error) {
 	f := huh.NewForm(huh.NewGroup(field)).
-		WithInput(&abortOnEOF{r: u.in}).WithOutput(u.Out).WithShowHelp(false).
+		WithInput(u.formInput()).WithOutput(u.Out).WithShowHelp(false).WithKeyMap(keymap()).
 		WithTheme(huh.ThemeFunc(u.theme))
 	if err := f.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
