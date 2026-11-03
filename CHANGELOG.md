@@ -31,6 +31,11 @@ New:
 - `makeit doctor` at a terminal counts the passing checks and spells out each problem with its fix;
   `--verbose` lists every check.
 
+Fixes:
+
+- Plugins from other GitHub repositories (superpowers, ponytail, security-audit) are fetched over
+  HTTPS, so they update on a machine with no GitHub SSH key, such as a fresh install or CI.
+
 ## 0.1.1
 
 Fixes:
