@@ -198,6 +198,12 @@ func (r *report) prereqs(m Machine) {
 			level = Error
 		}
 		if dir := offPath(s.Prereq, m.Getenv); dir != "" {
+			// Setup already put the folder in the env file and the block in the profile: it is on
+			// PATH in a new terminal; this one is just older than that. Nothing to fix.
+			if envPath, missing := profileState(m); envPath != "" && len(missing) == 0 && envLists(envPath, dir, m) {
+				r.add(id, "prereqs", Info, fmt.Sprintf("%s is in %s, on PATH in a new terminal: %s", s.Prereq.ID, dir, s.Prereq.Why), "")
+				continue
+			}
 			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why), "makeit setup")
 			continue
 		}
@@ -218,23 +224,23 @@ func (r *report) prereqs(m Machine) {
 	}
 }
 
-// profile checks that the shell profile loads ~/.makeit/env, without which nothing makeit
-// installs is on PATH in a new terminal. Skipped on Windows (the registry PATH) and without a home.
-func (r *report) profile(m Machine) {
+// profileState is the env file's path and the profile files that do not load it yet; "" on
+// Windows (the registry PATH) and without a home.
+func profileState(m Machine) (envPath string, missing []string) {
 	if m.Getenv == nil || m.Platform.OS == "windows" {
-		return
+		return "", nil
 	}
 	home := cmp.Or(m.Getenv("HOME"), m.Getenv("USERPROFILE"))
 	if home == "" {
-		return
+		return "", nil
 	}
 	stack := filepath.Join(home, ".makeit")
 	if m.StatePath != "" {
 		stack = filepath.Dir(m.StatePath)
 	}
+	envPath = filepath.Join(stack, "env")
 	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
-	var missing []string
-	for _, p := range pathenv.Profiles(home, filepath.Join(stack, "env"), m.Getenv("SHELL"), m.Getenv, exists) {
+	for _, p := range pathenv.Profiles(home, envPath, m.Getenv("SHELL"), m.Getenv, exists) {
 		b, _ := os.ReadFile(p.Path)
 		want := p.Lines[len(p.Lines)-1]
 		if !p.Fish {
@@ -244,11 +250,27 @@ func (r *report) profile(m Machine) {
 			missing = append(missing, p.Path)
 		}
 	}
-	if len(missing) > 0 {
-		r.add("path.profile", "prereqs", Warn, "the shell profile does not load "+filepath.Join(stack, "env")+": "+strings.Join(missing, ", "), "makeit setup")
-		return
+	return envPath, missing
+}
+
+// envLists reports whether the env file at envPath puts dir on PATH.
+func envLists(envPath, dir string, m Machine) bool {
+	home := cmp.Or(m.Getenv("HOME"), m.Getenv("USERPROFILE"))
+	b, err := os.ReadFile(envPath)
+	return err == nil && strings.Contains(string(b), `"`+pathenv.HomeRef(dir, home)+`:`)
+}
+
+// profile checks that the shell profile loads ~/.makeit/env, without which nothing makeit
+// installs is on PATH in a new terminal.
+func (r *report) profile(m Machine) {
+	envPath, missing := profileState(m)
+	switch {
+	case envPath == "":
+	case len(missing) > 0:
+		r.add("path.profile", "prereqs", Warn, "the shell profile does not load "+envPath+": "+strings.Join(missing, ", "), "makeit setup")
+	default:
+		r.add("path.profile", "prereqs", OK, "the shell profile loads "+envPath, "")
 	}
-	r.add("path.profile", "prereqs", OK, "the shell profile loads "+filepath.Join(stack, "env"), "")
 }
 
 // offPath returns the folder makeit's env file puts on PATH (~/.local/bin, the go and cargo

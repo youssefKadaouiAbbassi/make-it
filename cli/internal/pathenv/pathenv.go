@@ -25,8 +25,8 @@ func Dirs(home string, getenv func(string) string, exists func(string) bool) []s
 	return dirs
 }
 
-// homeRef writes p with $HOME for the home directory, so the file reads the same on every machine.
-func homeRef(p, home string) string {
+// HomeRef writes p with $HOME for the home directory, so the file reads the same on every machine.
+func HomeRef(p, home string) string {
 	if rel, err := filepath.Rel(home, p); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "$HOME/" + filepath.ToSlash(rel)
 	}
@@ -38,7 +38,7 @@ func EnvFile(dirs []string, home string) []byte {
 	var b strings.Builder
 	b.WriteString("# written by makeit: folders where it installs programs\n")
 	for _, d := range dirs {
-		ref := homeRef(d, home)
+		ref := HomeRef(d, home)
 		b.WriteString(`case ":$PATH:" in *":` + ref + `:"*) ;; *) PATH="` + ref + `:$PATH";; esac` + "\n")
 	}
 	b.WriteString("export PATH\n")
@@ -56,7 +56,7 @@ type Profile struct {
 // is there. Guarded, because a profile must never fail: dash exits a login shell whose `.` fails,
 // and the env file can be gone (a rollback, a deleted ~/.makeit) while the block stays.
 func Block(envPath, home string) []string {
-	ref := homeRef(envPath, home)
+	ref := HomeRef(envPath, home)
 	return []string{"# >>> makeit >>>", `[ -r "` + ref + `" ] && . "` + ref + `"`, "# <<< makeit <<<"}
 }
 

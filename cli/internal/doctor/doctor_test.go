@@ -432,3 +432,48 @@ func TestPrereqRoutedFixIsSetup(t *testing.T) {
 		t.Errorf("chrome on apk fix = %q, want the manual line", got.Fix)
 	}
 }
+
+// Right after setup, in the same terminal: a tool in a folder the env file lists, with the
+// profile block in place, is on PATH in a new terminal. That is information, not a problem, and
+// "makeit setup" would change nothing.
+func TestPrereqOffPathLoadsInANewTerminal(t *testing.T) {
+	m, _ := healthy(t)
+	home := t.TempDir()
+	m.StatePath = filepath.Join(home, ".makeit", "state.json")
+	m.Getenv = func(k string) string {
+		switch k {
+		case "HOME":
+			return home
+		case "SHELL":
+			return "/bin/bash"
+		}
+		return ""
+	}
+	gopls := filepath.Join(home, "go", "bin", "gopls")
+	if err := os.MkdirAll(filepath.Dir(gopls), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gopls, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m.Prereqs = []platform.State{{Prereq: platform.Prereq{ID: "gopls", Bins: []string{"gopls"}, Via: []platform.Via{{Bin: "go"}}}}}
+	// Without the env file and the block: a warning, and setup is the fix.
+	if got := byID(t, Run(context.Background(), m), "prereq.gopls"); got.Level != Warn || got.Fix != "makeit setup" {
+		t.Errorf("before setup: %+v", got)
+	}
+	envPath := filepath.Join(home, ".makeit", "env")
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envPath, pathenv.EnvFile(pathenv.Dirs(home, m.Getenv, exists), home), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(strings.Join(pathenv.Block(envPath, home), "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := byID(t, Run(context.Background(), m), "prereq.gopls")
+	if got.Level != Info || got.Fix != "" || !strings.Contains(got.Message, "on PATH in a new terminal") {
+		t.Errorf("after setup, same terminal: %+v", got)
+	}
+}
