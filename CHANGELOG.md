@@ -44,6 +44,8 @@ Fixes:
   of `~/.profile` at login; the fish line quotes the folder.
 - On Windows, the npm tools land in `~/.local/bin`, `uninstall` finds `.exe` release binaries, and
   a quote in the home path no longer breaks the `PATH` command.
+- `makeit uninstall` removes only the block between makeit's markers: a copy of its line you put
+  elsewhere in the profile stays, and `setup` repairs a block edited inside instead of adding one.
 
 ## 0.2.1
 

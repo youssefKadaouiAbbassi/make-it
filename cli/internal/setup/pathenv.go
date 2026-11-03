@@ -96,7 +96,7 @@ func (e *env) profileStep() plan.Step {
 				if err != nil {
 					return false, err
 				}
-				if mergefile.MergeLines(cur, p.Lines, nil).Changed {
+				if mergefile.MergeBlock(cur, p.Lines).Changed {
 					return false, nil
 				}
 			}
@@ -108,7 +108,7 @@ func (e *env) profileStep() plan.Step {
 				if err != nil {
 					return "", err
 				}
-				m := mergefile.MergeLines(cur, p.Lines, nil)
+				m := mergefile.MergeBlock(cur, p.Lines)
 				if !m.Changed {
 					continue
 				}
@@ -144,7 +144,7 @@ func (e *env) unMergeStep(key string) plan.Step {
 			if err != nil {
 				return false, err
 			}
-			if _, changed := mergefile.RemoveLines(cur, rec.Added); !found || !changed {
+			if _, changed := mergefile.RemoveBlock(cur, rec.Added); !found || !changed {
 				delete(e.st.Files, key)
 				return true, nil
 			}
@@ -155,7 +155,7 @@ func (e *env) unMergeStep(key string) plan.Step {
 			if err != nil {
 				return "", err
 			}
-			body, _ := mergefile.RemoveLines(cur, rec.Added)
+			body, _ := mergefile.RemoveBlock(cur, rec.Added)
 			if len(bytes.TrimSpace(body)) == 0 && !rec.PreExisted {
 				err = e.remove("file."+key, path)
 			} else {

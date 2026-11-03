@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"makeit/internal/pathenv"
 	"makeit/internal/plan"
 	"makeit/internal/state"
 )
@@ -136,5 +137,21 @@ func TestProfileStepWindowsCommand(t *testing.T) {
 	// A quote in the home path is doubled inside the single-quoted PowerShell string.
 	if ps := s.Command[len(s.Command)-1]; !strings.Contains(ps, "O''Brien") || strings.Contains(ps, "O'Brien") {
 		t.Errorf("quote not escaped: %s", ps)
+	}
+}
+
+// A line someone copied from makeit's block into their profile by hand survives uninstall; only
+// the block between the markers goes.
+func TestUninstallKeepsHandWrittenLoaderLine(t *testing.T) {
+	e := pathEnvFixture(t, "/bin/bash")
+	profile := filepath.Join(e.Roots.Home, ".profile")
+	runStep(t, e.envStep())
+	runStep(t, e.profileStep())
+	withBlock, _ := os.ReadFile(profile)
+	loader := pathenv.Block(e.envPath(), e.Roots.Home)[1]
+	writeFile(t, profile, "export FOO=1\n"+loader+"\n"+string(withBlock))
+	runStep(t, e.unFileStep(e.Roots.Portable(profile)))
+	if b, _ := os.ReadFile(profile); string(b) != "export FOO=1\n"+loader+"\n" {
+		t.Errorf("profile after uninstall %q", b)
 	}
 }

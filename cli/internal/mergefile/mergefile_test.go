@@ -41,3 +41,38 @@ func TestRemoveLines(t *testing.T) {
 		t.Errorf("crlf: %q", body)
 	}
 }
+
+func TestMergeBlock(t *testing.T) {
+	block := []string{"# >>> makeit >>>", `. "$HOME/.makeit/env"`, "# <<< makeit <<<"}
+	// A copy of the loader line someone wrote by hand is not the block: the block is appended whole.
+	m := MergeBlock([]byte(". \"$HOME/.makeit/env\"\n"), block)
+	if !m.Changed || string(m.Body) != ". \"$HOME/.makeit/env\"\n# >>> makeit >>>\n. \"$HOME/.makeit/env\"\n# <<< makeit <<<\n" || len(m.Added) != 3 {
+		t.Errorf("hand line: %q %v", m.Body, m.Added)
+	}
+	if m := MergeBlock(m.Body, block); m.Changed {
+		t.Errorf("present: changed to %q", m.Body)
+	}
+	// A block edited inside is repaired in place, not added a second time.
+	m = MergeBlock([]byte("a\n# >>> makeit >>>\n# broken\n# <<< makeit <<<\nb\n"), block)
+	if !m.Changed || string(m.Body) != "a\n# >>> makeit >>>\n. \"$HOME/.makeit/env\"\n# <<< makeit <<<\nb\n" {
+		t.Errorf("repair: %q", m.Body)
+	}
+	if m := MergeBlock([]byte("a\r\n"), block); string(m.Body) != "a\r\n# >>> makeit >>>\r\n. \"$HOME/.makeit/env\"\r\n# <<< makeit <<<\r\n" {
+		t.Errorf("crlf: %q", m.Body)
+	}
+}
+
+func TestRemoveBlockKeepsHandWrittenLine(t *testing.T) {
+	block := []string{"# >>> makeit >>>", `. "$HOME/.makeit/env"`, "# <<< makeit <<<"}
+	body, changed := RemoveBlock([]byte(". \"$HOME/.makeit/env\"\n# >>> makeit >>>\n. \"$HOME/.makeit/env\"\n# <<< makeit <<<\nb\n"), block)
+	if !changed || string(body) != ". \"$HOME/.makeit/env\"\nb\n" {
+		t.Errorf("%q %v", body, changed)
+	}
+	// Markers alone (an older run found the line by hand and added only them) go too.
+	if body, changed := RemoveBlock([]byte("x\n# >>> makeit >>>\n# <<< makeit <<<\n"), []string{"# >>> makeit >>>", "# <<< makeit <<<"}); !changed || string(body) != "x\n" {
+		t.Errorf("markers only: %q %v", body, changed)
+	}
+	if body, changed := RemoveBlock([]byte("x\n"), block); changed || string(body) != "x\n" {
+		t.Errorf("absent: %q %v", body, changed)
+	}
+}
