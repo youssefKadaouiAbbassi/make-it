@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -56,5 +57,32 @@ func TestBareMakeitPlainCard(t *testing.T) {
 	}
 	if strings.Contains(out, "What next?") {
 		t.Errorf("plain card asked a question:\n%s", out)
+	}
+	if strings.Contains(out, "checking") || strings.Contains(out, "\x1b[") {
+		t.Errorf("plain card has a checking line or an escape sequence:\n%q", out)
+	}
+}
+
+// The home prints its header and version before it checks, with a faint "checking" line that the
+// result replaces (cursor up, clear line).
+func TestHomeHeaderBeforeChecks(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	fakeTTYPrompt(t, "q")
+	var out, errb bytes.Buffer
+	headerFirst := false
+	gather := func(context.Context) (doctor.Machine, error) {
+		headerFirst = strings.Contains(out.String(), "makeit")
+		return fakeGather(context.Background())
+	}
+	if code := run(context.Background(), nil, &out, &errb, gather); code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out.String(), errb.String())
+	}
+	s := out.String()
+	if !headerFirst {
+		t.Error("the checks ran before the header was printed")
+	}
+	i, j, k := strings.Index(s, "checking"), strings.Index(s, "\x1b[1A\x1b[2K"), strings.Index(s, "not set up")
+	if i < 0 || j < i || k < j {
+		t.Errorf("want checking, then the erase sequence, then the status; got %d %d %d:\n%q", i, j, k, s)
 	}
 }

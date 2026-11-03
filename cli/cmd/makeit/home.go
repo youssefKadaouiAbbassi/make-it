@@ -56,22 +56,32 @@ func lastChange(stack string, now time.Time) string {
 
 // runHome is bare `makeit`: a status card, then, at a terminal, what to do next.
 func runHome(ctx context.Context, stdout, stderr io.Writer, gather func(context.Context) (doctor.Machine, error)) int {
+	interactive := isTTY(os.Stdin) && isTTY(stdout) && isTTY(stderr)
+	u := ui.New(os.Stdin, stdout, interactive, ui.ColorWanted("", isTTY(stdout)))
+	u.Mode = ui.DecideMode(isTTY(stdout), isTTY(stderr), os.Getenv, false, false)
+	// The checks take a second or two: the header and version come first, with a line the status
+	// replaces (cursor up, clear line) once they are done.
+	u.Header("")
+	u.KV("makeit", buildinfo.Version, false)
+	if u.Mode == ui.Live {
+		u.KV("status", u.Faint("checking..."), false)
+	}
 	m, err := gather(ctx)
+	var checks []doctor.Check
+	if err == nil {
+		checks = doctor.Run(ctx, m)
+	}
+	if u.Mode == ui.Live {
+		_, _ = fmt.Fprint(stdout, "\x1b[1A\x1b[2K")
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return 1
 	}
-	checks := doctor.Run(ctx, m)
 	errs, warns := doctor.Count(checks)
-	interactive := isTTY(os.Stdin) && isTTY(stdout) && isTTY(stderr)
-	u := ui.New(os.Stdin, stdout, interactive, ui.ColorWanted("", isTTY(stdout)))
-	u.Mode = ui.DecideMode(isTTY(stdout), isTTY(stderr), os.Getenv, false, false)
 	stack := filepath.Dir(m.StatePath)
 	_, statErr := os.Stat(m.StatePath)
 	setUp := m.StatePath != "" && statErr == nil
-
-	u.Header("")
-	u.KV("makeit", buildinfo.Version, false)
 	switch {
 	case !setUp:
 		u.KV("status", u.Dot(false)+" not set up "+u.Faint("· makeit setup sets this machine up"), false)
