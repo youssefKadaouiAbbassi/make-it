@@ -271,3 +271,19 @@ func TestListingsCachedUntilAction(t *testing.T) {
 		t.Errorf("a failed listing was kept: %v", calls)
 	}
 }
+
+// A listing that was out while a mutating verb ran is not kept: it may predate the mutation.
+func TestListingRacedByActionIsNotKept(t *testing.T) {
+	calls := 0
+	var c *CLI
+	c = &CLI{Path: "claude", Run: func(context.Context, execx.Cmd) (execx.Result, error) {
+		calls++
+		c.forget() // an Action ran while this listing was out
+		return execx.Result{Stdout: "[]\n"}, nil
+	}}
+	_, _ = c.Plugins(context.Background())
+	_, _ = c.Plugins(context.Background())
+	if calls != 2 {
+		t.Errorf("runs %d, want 2: a listing older than an action was kept", calls)
+	}
+}

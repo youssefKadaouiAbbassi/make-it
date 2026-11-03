@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -84,5 +85,14 @@ func TestHomeHeaderBeforeChecks(t *testing.T) {
 	i, j, k := strings.Index(s, "checking"), strings.Index(s, "\x1b[1A\x1b[2K"), strings.Index(s, "not set up")
 	if i < 0 || j < i || k < j {
 		t.Errorf("want checking, then the erase sequence, then the status; got %d %d %d:\n%q", i, j, k, s)
+	}
+}
+
+// A gather error in plain mode: the error on stderr, exit 1, and nothing on stdout, as before.
+func TestHomeGatherErrorPlain(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	code, out, errOut := call(t, func(context.Context) (doctor.Machine, error) { return doctor.Machine{}, errors.New("no state dir") })
+	if code != 1 || out != "" || !strings.Contains(errOut, "no state dir") {
+		t.Errorf("exit %d stdout %q stderr %q", code, out, errOut)
 	}
 }

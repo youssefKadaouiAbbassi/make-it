@@ -13,6 +13,8 @@ Fixes:
   process and at the same time (they ran two to four times, one after the other), the version probes
   (`git ls-remote` per plugin source, `npm view` per MCP package) run concurrently, and the home
   prints its header and version before it checks.
+- `makeit update` says when a plugin's source could not be reached ("kept at v7.0.1: could not
+  read its releases"); before, git's exit code was dropped and the pin stayed without a word.
 
 ## 0.3.0
 

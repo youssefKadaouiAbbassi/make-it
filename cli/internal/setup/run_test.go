@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -284,5 +285,32 @@ func TestNeedsYouSurvivesTheApplyPass(t *testing.T) {
 	rep := apply(t, m)
 	if !slices.ContainsFunc(rep.NeedsYou, func(n NeedsYou) bool { return n.ID == "chrome" }) {
 		t.Errorf("needs you %+v, want chrome", rep.NeedsYou)
+	}
+}
+
+// setup's two listings run together from the start: a runner that releases each listing only
+// once both are in flight; listings one after the other wait out the deadline and a step fails.
+func TestSetupListsConcurrently(t *testing.T) {
+	m := newMachine(t)
+	var arrived atomic.Int32
+	open := make(chan struct{})
+	var once sync.Once
+	inner := m.env.Run
+	m.env.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		cmd := strings.Join(c.Argv, " ")
+		if strings.HasSuffix(cmd, "plugin list --json") || strings.HasSuffix(cmd, "plugin marketplace list --json") {
+			if arrived.Add(1) == 2 {
+				once.Do(func() { close(open) })
+			}
+			select {
+			case <-open:
+			case <-time.After(2 * time.Second):
+				return execx.Result{Code: 1, Stderr: "deadline: the listings ran one after the other"}, nil
+			}
+		}
+		return inner(ctx, c)
+	}
+	if rep := apply(t, m); rep.Plan.Failed() {
+		t.Errorf("a step failed: %s", rep.Plan.Summary())
 	}
 }

@@ -41,12 +41,15 @@ type CLI struct {
 	// cost 0.6 s each and doctor, setup and update ask for them several times. Action clears it.
 	mu       sync.Mutex
 	listings map[string]string
+	// gen moves with every forget, so a listing that was out while an action ran is not kept.
+	gen uint64
 }
 
 // forget drops the cached listings: something may have changed.
 func (c *CLI) forget() {
 	c.mu.Lock()
 	c.listings = nil
+	c.gen++
 	c.mu.Unlock()
 }
 
@@ -189,6 +192,7 @@ func (c *CLI) list(ctx context.Context, out any, args ...string) error {
 	key := strings.Join(args, " ")
 	c.mu.Lock()
 	stdout, cached := c.listings[key]
+	gen := c.gen
 	c.mu.Unlock()
 	if !cached {
 		r, err := c.run(ctx, readTimeout, nil, args...)
@@ -204,10 +208,12 @@ func (c *CLI) list(ctx context.Context, out any, args ...string) error {
 		return fmt.Errorf("claude %s printed no JSON array: %w", key, err)
 	}
 	c.mu.Lock()
-	if c.listings == nil {
-		c.listings = map[string]string{}
+	if c.gen == gen {
+		if c.listings == nil {
+			c.listings = map[string]string{}
+		}
+		c.listings[key] = stdout
 	}
-	c.listings[key] = stdout
 	c.mu.Unlock()
 	return nil
 }

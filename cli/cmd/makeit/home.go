@@ -59,11 +59,13 @@ func runHome(ctx context.Context, stdout, stderr io.Writer, gather func(context.
 	interactive := isTTY(os.Stdin) && isTTY(stdout) && isTTY(stderr)
 	u := ui.New(os.Stdin, stdout, interactive, ui.ColorWanted("", isTTY(stdout)))
 	u.Mode = ui.DecideMode(isTTY(stdout), isTTY(stderr), os.Getenv, false, false)
-	// The checks take a second or two: the header and version come first, with a line the status
-	// replaces (cursor up, clear line) once they are done.
-	u.Header("")
-	u.KV("makeit", buildinfo.Version, false)
-	if u.Mode == ui.Live {
+	// The checks take a second or two: at a terminal the header and version come first, with a
+	// line the status replaces (cursor up, clear line) once they are done. Plain output starts
+	// after the checks, so an error leaves stdout empty.
+	live := u.Mode == ui.Live
+	if live {
+		u.Header("")
+		u.KV("makeit", buildinfo.Version, false)
 		u.KV("status", u.Faint("checking..."), false)
 	}
 	m, err := gather(ctx)
@@ -71,12 +73,15 @@ func runHome(ctx context.Context, stdout, stderr io.Writer, gather func(context.
 	if err == nil {
 		checks = doctor.Run(ctx, m)
 	}
-	if u.Mode == ui.Live {
+	if live {
 		_, _ = fmt.Fprint(stdout, "\x1b[1A\x1b[2K")
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return 1
+	}
+	if !live {
+		u.KV("makeit", buildinfo.Version, false)
 	}
 	errs, warns := doctor.Count(checks)
 	stack := filepath.Dir(m.StatePath)

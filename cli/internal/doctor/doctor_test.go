@@ -547,3 +547,21 @@ func TestRunListsConcurrently(t *testing.T) {
 		}
 	}
 }
+
+// With a Claude Code below the floor, no listing runs at all: the plugin checks are skipped and
+// a listing on an unusable install would only cost time (or a timeout) for nothing.
+func TestUnusableClaudeListsNothing(t *testing.T) {
+	m, f := healthy(t)
+	f.answers["--version"] = text("2.1.100 (Claude Code)\n")
+	listings := 0
+	m.Claude = &claudecli.CLI{Path: nativePath, Run: func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Contains(strings.Join(c.Argv, " "), "list --json") {
+			listings++
+		}
+		return f.run(ctx, c)
+	}}
+	Run(context.Background(), m)
+	if listings != 0 {
+		t.Errorf("%d listings ran on an unusable Claude Code", listings)
+	}
+}

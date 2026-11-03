@@ -112,8 +112,13 @@ func parseLsRemote(out string) map[string]string {
 func lsRemote(ctx context.Context, run execx.Runner, url string) (map[string]string, error) {
 	res, err := run(ctx, execx.Cmd{Argv: []string{"git", "ls-remote", "--tags", url},
 		Env: []string{"GIT_TERMINAL_PROMPT=0"}, Timeout: 30 * time.Second})
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s", url, strings.TrimSpace(res.Text()+" "+err.Error()))
+	// git exits 128 for an unreachable remote; execx keeps that as the code, not as an error.
+	if err != nil || res.Code != 0 {
+		why := res.Text()
+		if err != nil {
+			why += " " + err.Error()
+		}
+		return nil, fmt.Errorf("%s: %s", url, strings.TrimSpace(why))
 	}
 	return parseLsRemote(res.Stdout), nil
 }
@@ -161,17 +166,32 @@ func Apply(ctx context.Context, run execx.Runner, t, current *catalog.Tree, skip
 	var moves []state.PinMove
 	var notes []string
 	changed := false
-	if b, ok := files[marketFile]; ok {
-		out, mv, ns, c := applyMarket(ctx, run, b, pins(current), skips)
-		files[marketFile], moves, notes, changed = out, mv, ns, c
+	// The git probes and the npm probes run as two batches at the same time; each batch writes
+	// its own variables, and files is touched only once both are done.
+	var wg sync.WaitGroup
+	var mOut, cOut []byte
+	var mChanged, cChanged bool
+	marketB, hasMarket := files[marketFile]
+	if hasMarket {
+		cur := pins(current)
+		wg.Add(1)
+		go func() { defer wg.Done(); mOut, moves, notes, mChanged = applyMarket(ctx, run, marketB, cur, skips) }()
 	}
-	if b, ok := files[mcpFile]; ok {
+	mcpB, hasMCP := files[mcpFile]
+	if hasMCP {
 		var cur []byte // nil on a fresh machine, which has no plugin set yet
 		if current != nil {
 			cur, _ = current.ReadFile(mcpFile)
 		}
-		out, c := applyMCP(ctx, run, b, cur)
-		files[mcpFile], changed = out, changed || c
+		wg.Add(1)
+		go func() { defer wg.Done(); cOut, cChanged = applyMCP(ctx, run, mcpB, cur) }()
+	}
+	wg.Wait()
+	if hasMarket {
+		files[marketFile], changed = mOut, mChanged
+	}
+	if hasMCP {
+		files[mcpFile], changed = cOut, changed || cChanged
 	}
 	if !changed {
 		return t, nil, notes

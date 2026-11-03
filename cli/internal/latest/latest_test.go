@@ -211,29 +211,63 @@ func TestApplyNoCurrent(t *testing.T) {
 	}
 }
 
-// The git probes are all in flight at once: a runner that releases each git call only once both
-// have arrived; a sequential implementation waits out the deadline and keeps a pin.
+// Every probe is in flight at once, git and npm alike: a runner that releases each call only
+// once all three have arrived; an implementation that waits for one batch before the next waits
+// out the deadline and keeps a pin.
 func TestApplyProbesConcurrently(t *testing.T) {
-	const gitProbes = 2
+	const probes = 3 // two git sources with a release tag, one npm package
 	var arrived atomic.Int32
 	open := make(chan struct{})
 	var once sync.Once
 	base := fakeRun(nil)
 	run := func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
-		if c.Argv[0] == "git" {
-			if arrived.Add(1) == gitProbes {
-				once.Do(func() { close(open) })
-			}
-			select {
-			case <-open:
-			case <-time.After(2 * time.Second):
-				return execx.Result{Code: 1}, errors.New("deadline: the probes did not run together")
-			}
+		if arrived.Add(1) == probes {
+			once.Do(func() { close(open) })
+		}
+		select {
+		case <-open:
+		case <-time.After(2 * time.Second):
+			return execx.Result{Code: 1}, errors.New("deadline: the probes did not run together")
+		}
+		return base(ctx, c)
+	}
+	got, moves, notes := Apply(context.Background(), run, tree(t), tree(t), nil)
+	m, _ := got.ReadFile("plugins/makeit/.mcp.json")
+	if len(moves) != 2 || !strings.Contains(string(m), "@arabold/docs-mcp-server@3.5.0") {
+		t.Errorf("moves %+v, notes %v, mcp %s: a probe waited for the one before it", moves, notes, m)
+	}
+}
+
+// A cancelled context stops every probe: pins stay, nothing moves, no goroutine is left waiting.
+func TestApplyCancelledKeepsPins(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	base := fakeRun(nil)
+	run := func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if err := ctx.Err(); err != nil {
+			return execx.Result{Code: -1}, err
+		}
+		return base(ctx, c)
+	}
+	got, moves, notes := Apply(ctx, run, tree(t), tree(t), nil)
+	b, _ := got.ReadFile(".claude-plugin/marketplace.json")
+	if len(moves) != 0 || !strings.Contains(string(b), `"ref":"v7.0.1"`) || len(notes) != 2 {
+		t.Errorf("moves %+v notes %v:\n%s", moves, notes, b)
+	}
+}
+
+// git exits 128 for an unreachable remote without a Go error (execx.Run keeps the code): the
+// plugin keeps its pin and the run says why.
+func TestUnreachableRemoteIsReported(t *testing.T) {
+	base := fakeRun(nil)
+	run := func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Contains(strings.Join(c.Argv, " "), "obra/superpowers") {
+			return execx.Result{Code: 128, Stderr: "fatal: unable to access"}, nil
 		}
 		return base(ctx, c)
 	}
 	_, moves, notes := Apply(context.Background(), run, tree(t), tree(t), nil)
-	if len(moves) != 2 {
-		t.Errorf("moves %+v, notes %v: a probe waited for the one before it", moves, notes)
+	if len(moves) != 1 || len(notes) != 1 || !strings.Contains(notes[0], "superpowers kept at v7.0.1") || !strings.Contains(notes[0], "unable to access") {
+		t.Errorf("moves %+v notes %v", moves, notes)
 	}
 }
