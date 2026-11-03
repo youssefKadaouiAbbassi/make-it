@@ -101,7 +101,8 @@ func (e Env) Update(ctx context.Context, v string) (Result, error) {
 		return Result{}, err
 	}
 	from := e.Version
-	rec.Version, rec.Target, rec.Previous = v, e.Target, &from
+	// The swap is this makeit's install time: rollback reads it to know which update brought it.
+	rec.Version, rec.Target, rec.Previous, rec.InstalledAt = v, e.Target, &from, e.Now().UTC()
 	if n, err := claudecli.Compare(v, rec.Skipped); rec.Skipped != "" && err == nil && n >= 0 {
 		rec.Skipped = ""
 	}

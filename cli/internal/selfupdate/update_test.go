@@ -326,3 +326,21 @@ func TestUpdateCancelledBeforeSwap(t *testing.T) {
 	}
 	unchanged(t, e, before)
 }
+
+// The receipt's install time is when this makeit was swapped in, not when the first one was:
+// rollback decides by it whether the last update brought the running makeit.
+func TestUpdateRecordsInstalledAt(t *testing.T) {
+	k := minisigntest.NewKey()
+	e, _ := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
+	t1 := time.Date(2026, 11, 3, 13, 10, 0, 0, time.UTC)
+	e.Now = func() time.Time { return t1 }
+	r := ours(e)
+	r.InstalledAt = t1.Add(-3 * time.Hour)
+	writeReceipt(t, e, r)
+	if _, err := e.Update(context.Background(), "1.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	if got := receiptOf(t, e).InstalledAt; !got.Equal(t1) {
+		t.Errorf("InstalledAt %v, want %v (the swap)", got, t1)
+	}
+}

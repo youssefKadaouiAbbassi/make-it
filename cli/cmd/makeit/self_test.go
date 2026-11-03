@@ -371,3 +371,61 @@ func TestBinaryIsLastNotBelowFloor(t *testing.T) {
 		}
 	}
 }
+
+// The daily run updates makeit hours or days after it was installed. Rolling that update back
+// must bring the previous makeit back too: its receipt dates from the swap, not the first install.
+func TestRollbackAfterAgedUpdate(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	k := minisigntest.NewKey()
+	srv := releasetest.NewServer("1.2.0")
+	t.Cleanup(srv.Close)
+	srv.Add(releasetest.Files(k, "1.2.0", buildinfo.Target(), []byte("makeit 1.2.0")))
+	roots := paths.Roots{Home: m.home, Claude: filepath.Join(m.home, ".claude"), Stack: m.stack}
+	exe := filepath.Join(m.home, ".local", "bin", "makeit")
+	write(t, exe, "makeit 1.1.0")
+	e := selfupdate.Env{Roots: roots, Exe: exe, Version: "1.1.0", Target: buildinfo.Target(), Repo: "o/makeit",
+		Keys: []string{k.Public()}, Base: srv.URL, Client: srv.Client(), Run: byContent,
+		Getenv: func(string) string { return "" }, Now: time.Now}
+	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: roots.Portable(exe), Version: "1.1.0", Target: e.Target,
+		InstalledAt: time.Now().Add(-3 * time.Hour).UTC()})
+	if _, err := e.Update(context.Background(), "1.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	// The new makeit then ran the stack update and made a generation that wrote a file.
+	st, _, _ := state.LoadState(filepath.Join(m.stack, "state.json"))
+	g, err := state.NewGeneration(m.stack, st.Generation, "update", []string{"update", "--auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(m.home, "touched.txt")
+	write(t, file, "after")
+	rel, err := g.PreImage([]byte("before"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pre, post := fsx.Sha256([]byte("before")), fsx.Sha256([]byte("after"))
+	if err := g.Record(state.Op{ID: "global.touched", Kind: "write", Path: file, PreSha256: &pre, PostSha256: &post, PreImage: rel}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Save(); err != nil {
+		t.Fatal(err)
+	}
+	mf := filepath.Join(g.Dir, "manifest.json")
+	b, _ := os.ReadFile(mf)
+	write(t, mf, strings.Replace(string(b), `"cliVersion": "`+buildinfo.Version+`"`, `"cliVersion": "1.2.0"`, 1))
+	e.Version = "1.2.0"
+	useSelfEnv(t, e)
+	code, _, errOut := call(t, noGather(t), "rollback", "--yes")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, errOut)
+	}
+	if content(t, exe) != "makeit 1.1.0" {
+		t.Errorf("makeit is %q after the rollback, want 1.1.0 back\n%s", content(t, exe), errOut)
+	}
+	if content(t, file) != "before" {
+		t.Errorf("the file was not rolled back")
+	}
+}
