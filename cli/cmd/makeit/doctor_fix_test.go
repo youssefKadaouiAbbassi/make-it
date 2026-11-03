@@ -129,3 +129,19 @@ func TestDoctorPlainModeNeverAsks(t *testing.T) {
 		t.Error("settings.json was written in plain mode")
 	}
 }
+
+// Plain mode says to open a new terminal too, when the run added the profile block.
+func TestSetupPlainSaysNewTerminal(t *testing.T) {
+	newCatMachine(t, nil)
+	if _, _, errOut := call(t, noGather(t), "setup", "--yes"); !strings.Contains(errOut, "open a new terminal to pick up PATH") {
+		t.Errorf("no new-terminal line in plain mode:\n%s", errOut)
+	}
+}
+
+func TestSetupReinstallUnknownTool(t *testing.T) {
+	newCatMachine(t, nil)
+	code, _, errOut := call(t, noGather(t), "setup", "--yes", "--reinstall", "nope")
+	if code != 2 || !strings.Contains(errOut, "nope") {
+		t.Errorf("exit %d, stderr %q; want 2 and the name", code, errOut)
+	}
+}

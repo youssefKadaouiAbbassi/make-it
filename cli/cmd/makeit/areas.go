@@ -122,7 +122,11 @@ func movedPhrase(self *selfMove, pins []state.PinMove, others int) string {
 
 func finishLive(u *ui.UI, name string, rep setup.Report, self *selfMove, elapsed time.Duration) {
 	if rep.Generation == 0 && !rep.Plan.Failed() {
-		u.Result(true, "Nothing to do", elapsed, []string{"everything is current"})
+		note := []string{"everything is current"}
+		if n := len(rep.NeedsYou); n > 0 {
+			note = []string{plural(n, "tool needs you", "tools need you")}
+		}
+		u.Result(true, "Nothing to do", elapsed, note)
 		return
 	}
 	changed, already := 0, 0

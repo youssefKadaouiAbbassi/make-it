@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,7 +46,6 @@ var setupEnv = func(context.Context) (setup.Env, error) {
 		// Geteuid is -1 on Windows, where there is no sudo.
 		Root:   os.Geteuid() == 0,
 		Getenv: os.Getenv,
-		Client: &http.Client{Timeout: 10 * time.Minute},
 	}, nil
 }
 
@@ -172,6 +171,10 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 			e.Reinstall = append(e.Reinstall, id)
 		}
 	}
+	if err := setup.CheckReinstall(e.Reinstall); err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
+		return 2
+	}
 	u := ui.New(os.Stdin, stderr, e.Interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
 	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, asJSON, p.Bool["plain"] || p.Bool["verbose"])
@@ -279,6 +282,9 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 		fmt.Fprintln(stderr, rep.Plan.Summary())
 		for _, n := range rep.NeedsYou {
 			fmt.Fprintf(stderr, "%s needs you: %s\n", n.ID, n.Manual)
+		}
+		if slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.ID == "path.profile" && o.Status == plan.Done }) {
+			fmt.Fprintln(stderr, "open a new terminal to pick up PATH")
 		}
 		for _, k := range rep.Kept {
 			fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)

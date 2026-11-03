@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/execx"
+	"makeit/internal/fetch"
 	"makeit/internal/fsx"
 	"makeit/internal/pathenv"
 	"makeit/internal/plan"
@@ -116,6 +118,12 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 		v := r.Via[i]
 		cmd := v.Cmd(e.Roots.Home)
 		cmd.Timeout = installTimeout
+		// On Windows npm puts its shims in the prefix itself, not in <prefix>/bin.
+		if e.Platform.OS == "windows" && v.Bin == "npm" {
+			if j := slices.Index(cmd.Argv, "--prefix"); j >= 0 && j+1 < len(cmd.Argv) {
+				cmd.Argv[j+1] = filepath.Join(e.Roots.Home, ".local", "bin")
+			}
+		}
 		return toolRoute{name: v.Bin, detail: "with " + v.Bin, argv: cmd.Argv, run: func(ctx context.Context) (string, error) {
 			if err := e.runAll(ctx, []execx.Cmd{cmd}); err != nil {
 				return "", err
@@ -172,13 +180,31 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 	return toolRoute{}
 }
 
-// client is the HTTP client for downloads: the one given, else one with a timeout.
+// client is the HTTP client for one download: the one given (tests), else a new one whose roots
+// are read from the CA bundle files now, so a download after this run installed ca-certificates
+// sees them.
 func (e *env) client() *http.Client {
 	if e.Client != nil {
 		return e.Client
 	}
-	return &http.Client{Timeout: 10 * time.Minute}
+	return fetch.Client(10*time.Minute, fetch.BundlePaths(e.getenv))
 }
+
+// CheckReinstall refuses a --reinstall id the tool table does not know.
+func CheckReinstall(ids []string) error {
+	for _, id := range ids {
+		if !slices.ContainsFunc(platform.Prereqs, func(r platform.Prereq) bool { return r.ID == id }) {
+			var known []string
+			for _, r := range platform.Prereqs {
+				known = append(known, r.ID)
+			}
+			return fmt.Errorf("no tool named %q; the tools: %s", id, strings.Join(known, ", "))
+		}
+	}
+	return nil
+}
+
+func (e *env) checkReinstall() error { return CheckReinstall(e.Reinstall) }
 
 func userAgent() string { return "makeit/" + buildinfo.Version }
 

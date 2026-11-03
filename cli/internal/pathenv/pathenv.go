@@ -66,8 +66,10 @@ func Block(envPath, home string) []string {
 func Profiles(home, envPath, shell string, getenv func(string) string, exists func(string) bool) []Profile {
 	block := Block(envPath, home)
 	out := []Profile{{Path: filepath.Join(home, ".profile"), Lines: block}}
-	if bashrc := filepath.Join(home, ".bashrc"); exists(bashrc) {
-		out = append(out, Profile{Path: bashrc, Lines: block})
+	for _, name := range []string{".bashrc", ".bash_profile"} { // bash reads .bash_profile at login instead of .profile
+		if p := filepath.Join(home, name); exists(p) {
+			out = append(out, Profile{Path: p, Lines: block})
+		}
 	}
 	zdot := getenv("ZDOTDIR")
 	if zdot == "" {
@@ -79,7 +81,7 @@ func Profiles(home, envPath, shell string, getenv func(string) string, exists fu
 	if fish := filepath.Join(home, ".config", "fish"); exists(fish) {
 		lines := []string{"# written by makeit: folders where it installs programs"}
 		for _, d := range Dirs(home, getenv, exists) {
-			lines = append(lines, "fish_add_path -g "+d)
+			lines = append(lines, `fish_add_path -g "`+d+`"`)
 		}
 		out = append(out, Profile{Path: filepath.Join(fish, "conf.d", "makeit.fish"), Lines: lines, Fish: true})
 	}

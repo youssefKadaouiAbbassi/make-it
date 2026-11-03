@@ -36,10 +36,10 @@ var (
 	ErrNoBinary = errors.New("the archive has no such program")
 )
 
-const (
-	archiveLimit = 200 << 20
-	sumsLimit    = 1 << 20
-)
+// archiveLimit bounds a download and an entry inside it; a variable for the tests.
+var archiveLimit int64 = 200 << 20
+
+const sumsLimit = 1 << 20
 
 var hexLine = regexp.MustCompile(`^([0-9a-fA-F]{64})(?:\s+\*?(\S+))?\s*$`)
 
@@ -124,7 +124,7 @@ func fromTarGz(b []byte, name string) ([]byte, error) {
 			return nil, err
 		}
 		if h.Typeflag == tar.TypeReg && path.Base(h.Name) == name {
-			return io.ReadAll(io.LimitReader(tr, archiveLimit))
+			return readEntry(tr, name)
 		}
 	}
 }
@@ -135,7 +135,7 @@ func fromZip(b []byte, name string) ([]byte, error) {
 		return nil, err
 	}
 	for _, f := range zr.File {
-		if path.Base(f.Name) != name || f.FileInfo().IsDir() {
+		if path.Base(f.Name) != name || !f.Mode().IsRegular() {
 			continue
 		}
 		rc, err := f.Open()
@@ -143,9 +143,21 @@ func fromZip(b []byte, name string) ([]byte, error) {
 			return nil, err
 		}
 		defer func() { _ = rc.Close() }()
-		return io.ReadAll(io.LimitReader(rc, archiveLimit))
+		return readEntry(rc, name)
 	}
 	return nil, fmt.Errorf("%w: %s", ErrNoBinary, name)
+}
+
+// readEntry reads one archive entry, refusing one past the limit instead of cutting it.
+func readEntry(r io.Reader, name string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, archiveLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > archiveLimit {
+		return nil, fmt.Errorf("%s is larger than %d bytes", name, archiveLimit)
+	}
+	return data, nil
 }
 
 // FetchPackageFile downloads a vendor's .deb or .rpm into a fresh directory under the system

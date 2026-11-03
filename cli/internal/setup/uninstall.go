@@ -687,6 +687,9 @@ func (e *env) toolSteps() []plan.Step {
 		if r := platform.Find(id).Release; r != nil {
 			bin = r.Bin
 		}
+		if e.Platform.OS == "windows" {
+			bin += ".exe"
+		}
 		path := filepath.Join(e.Roots.Home, ".local", "bin", bin)
 		steps = append(steps, plan.Step{ID: "tool." + id, Title: "Remove " + path,
 			Already: func(context.Context) (bool, error) {

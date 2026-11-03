@@ -2,13 +2,12 @@ package setup
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"makeit/internal/fsx"
 	"makeit/internal/state"
 )
 
@@ -30,7 +29,8 @@ func writeBin(t *testing.T, e *env, name, content string) string {
 	return path
 }
 
-func sha(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+// sha is the form setup records for a release binary (fsx.Sha256), so a match is a real match.
+func sha(s string) string { return fsx.Sha256([]byte(s)) }
 
 // Release binaries makeit downloaded are removed; one changed since is kept, like any owned file.
 func TestUninstallRemovesReleaseBinaries(t *testing.T) {
@@ -96,5 +96,22 @@ func TestUninstallNamesPackageTools(t *testing.T) {
 		if !strings.Contains(r, want) {
 			t.Errorf("%s: kept %q, want it to mention %q", id, r, want)
 		}
+	}
+}
+
+func TestUninstallRemovesReleaseExeOnWindows(t *testing.T) {
+	e := toolEnv(t)
+	e.Platform.OS = "windows"
+	writeBin(t, e, "prek.exe", "MZ")
+	e.st.Prereqs = map[string]*state.Prereq{"prek": {InstalledBy: "makeit", Route: "release", Sha256: sha("MZ")}}
+	s := step(t, e.toolSteps(), "tool.prek")
+	if done, _ := s.Already(context.Background()); done {
+		t.Fatal("prek.exe counted as gone")
+	}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(e.Roots.Home, ".local", "bin", "prek.exe")); err == nil {
+		t.Error("prek.exe still there")
 	}
 }

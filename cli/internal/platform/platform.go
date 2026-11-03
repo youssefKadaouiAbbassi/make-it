@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"makeit/internal/execx"
+	"makeit/internal/fetch"
 )
 
 // PM is a package manager.
@@ -297,18 +298,11 @@ func Find(id string) Prereq {
 	return Prereqs[i]
 }
 
-// hasCABundle reports whether Go found any system root. A missing bundle gives an empty pool,
-// and TLS then fails with "certificate signed by unknown authority" (measured on slim images).
-// hasCABundle reports a CA bundle on disk, read from the files Go's crypto/x509 reads on Linux.
-// It must not call x509.SystemCertPool: Go loads that pool once per process, and this probe runs
-// before setup installs ca-certificates, so it would cache an empty pool for every download the
-// same run makes afterward (seen on ubuntu:24.04, 2026-11-03).
-func hasCABundle() bool {
-	return caBundleIn([]string{
-		"/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/ca-bundle.pem",
-		"/etc/pki/tls/cacert.pem", "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", "/etc/ssl/cert.pem",
-	})
-}
+// hasCABundle reports a CA bundle on disk, read from the files Go's crypto/x509 reads (and
+// SSL_CERT_FILE, SSL_CERT_DIR). It must not call x509.SystemCertPool: Go loads that pool once per
+// process, and this probe runs before setup installs ca-certificates, so it would cache an empty
+// pool for every download the same run makes afterward (seen on ubuntu:24.04, 2026-11-03).
+func hasCABundle() bool { return caBundleIn(fetch.BundlePaths(os.Getenv)) }
 
 // caBundleIn reports whether one of paths holds a certificate.
 func caBundleIn(paths []string) bool {

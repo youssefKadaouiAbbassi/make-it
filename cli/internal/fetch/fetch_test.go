@@ -3,10 +3,14 @@ package fetch
 import (
 	"bytes"
 	"context"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func server(t *testing.T, body string) (*httptest.Server, *http.Client) {
@@ -48,5 +52,45 @@ func TestGetStatus(t *testing.T) {
 	s, c := server(t, "")
 	if err := Get(context.Background(), c, "makeit/test", s.URL+"/missing", 10, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("err %v", err)
+	}
+}
+
+// A client's roots come from the bundle files at creation, never from Go's one-shot cache: a
+// run that installs ca-certificates then downloads something gets a client that sees them.
+func TestClientUsesBundleFiles(t *testing.T) {
+	s, _ := server(t, "hello")
+	dir := t.TempDir()
+	bundle := filepath.Join(dir, "ca.crt")
+	if err := os.WriteFile(bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.Certificate().Raw}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	empty := filepath.Join(dir, "empty.crt")
+	if err := os.WriteFile(empty, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	if err := Get(context.Background(), Client(time.Minute, []string{empty, bundle}), "makeit/test", s.URL+"/x", 100, &b); err != nil || b.String() != "hello" {
+		t.Errorf("with the bundle: %q %v", b.String(), err)
+	}
+	if err := Get(context.Background(), Client(time.Minute, []string{empty}), "makeit/test", s.URL+"/x", 100, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "certificate") {
+		t.Errorf("without the bundle: %v, want a certificate error", err)
+	}
+}
+
+func TestBundlePaths(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"a.pem", "b.pem"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := BundlePaths(func(k string) string {
+		return map[string]string{"SSL_CERT_FILE": "/x/bundle.pem", "SSL_CERT_DIR": dir}[k]
+	})
+	if len(got) < 3 || got[0] != "/x/bundle.pem" || got[1] != filepath.Join(dir, "a.pem") || got[2] != filepath.Join(dir, "b.pem") {
+		t.Errorf("paths %v, want SSL_CERT_FILE, then SSL_CERT_DIR's files, then the system list", got)
+	}
+	if got := BundlePaths(func(string) string { return "" }); len(got) == 0 || got[0] != "/etc/ssl/certs/ca-certificates.crt" {
+		t.Errorf("default paths %v", got)
 	}
 }

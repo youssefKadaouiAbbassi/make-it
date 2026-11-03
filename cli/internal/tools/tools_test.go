@@ -169,3 +169,35 @@ func TestPackageFileLandsInTmp(t *testing.T) {
 		t.Errorf("mode %v", fi.Mode())
 	}
 }
+
+// An archive entry past the limit is refused, not cut.
+func TestArchiveEntryOverLimitRefused(t *testing.T) {
+	saved := archiveLimit
+	archiveLimit = 64
+	t.Cleanup(func() { archiveLimit = saved })
+	big := bytes.Repeat([]byte("x"), 100)
+	archive := tarGz(t, map[string][]byte{"tool": big})
+	s, r := release(t, map[string][]byte{"tool.tar.gz": archive, "sums.txt": []byte(sha(archive) + "  tool.tar.gz\n")})
+	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "linux", "amd64", t.TempDir()); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("err %v, want a refusal", err)
+	}
+}
+
+// A zip entry that is a symlink is not the program.
+func TestZipSymlinkEntryRefused(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	h := &zip.FileHeader{Name: "tool.exe"}
+	h.SetMode(os.ModeSymlink | 0o777)
+	w, err := zw.CreateHeader(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte("/etc/passwd"))
+	_ = zw.Close()
+	archive := buf.Bytes()
+	s, r := release(t, map[string][]byte{"tool.zip": archive, "sums.txt": []byte(sha(archive) + "  tool.zip\n")})
+	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "windows", "amd64", t.TempDir()); !errors.Is(err, ErrNoBinary) {
+		t.Errorf("err %v, want ErrNoBinary", err)
+	}
+}

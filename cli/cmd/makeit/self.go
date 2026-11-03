@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,6 +14,7 @@ import (
 	"makeit/internal/buildinfo"
 	"makeit/internal/cli"
 	"makeit/internal/execx"
+	"makeit/internal/fetch"
 	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/selfupdate"
@@ -41,7 +41,7 @@ func defaultSelfEnv(context.Context) (selfupdate.Env, error) {
 		return selfupdate.Env{}, err
 	}
 	return selfupdate.Env{Roots: roots, Exe: exe, Version: buildinfo.Version, Target: buildinfo.Target(), Repo: buildinfo.Repo,
-		Keys: buildinfo.Keys(), Base: base, Client: http.DefaultClient, Run: execx.Run, Windows: runtime.GOOS == "windows",
+		Keys: buildinfo.Keys(), Base: base, Client: fetch.Client(10*time.Minute, fetch.BundlePaths(os.Getenv)), Run: execx.Run, Windows: runtime.GOOS == "windows",
 		Getenv: os.Getenv, Now: time.Now}, nil
 }
 

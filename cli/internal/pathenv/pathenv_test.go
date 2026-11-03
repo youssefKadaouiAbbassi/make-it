@@ -3,7 +3,6 @@ package pathenv
 import (
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -51,6 +50,8 @@ func TestProfiles(t *testing.T) {
 		{"zsh with ZDOTDIR", "/usr/bin/zsh", nil, map[string]string{"ZDOTDIR": "/h/.config/zsh"}, []string{"/h/.profile", "/h/.config/zsh/.zshenv"}},
 		{"bash with an existing zshenv", "/bin/bash", []string{"/h/.zshenv"}, nil, []string{"/h/.profile", "/h/.zshenv"}},
 		{"fish installed", "/usr/bin/fish", []string{"/h/.config/fish"}, nil, []string{"/h/.profile", "/h/.config/fish/conf.d/makeit.fish"}},
+		// bash reads .bash_profile instead of .profile at login when it exists.
+		{"bash_profile", "/bin/bash", []string{"/h/.bash_profile"}, nil, []string{"/h/.profile", "/h/.bash_profile"}},
 	} {
 		var paths []string
 		for _, p := range Profiles(h, filepath.Join(h, ".makeit", "env"), tc.shell, env(tc.getenv), exists(tc.have...)) {
@@ -65,7 +66,7 @@ func TestProfiles(t *testing.T) {
 	if sh := ps[0].Lines; !slices.Equal(sh, []string{"# >>> makeit >>>", `[ -r "$HOME/.makeit/env" ] && . "$HOME/.makeit/env"`, "# <<< makeit <<<"}) {
 		t.Errorf("sh lines %v", sh)
 	}
-	if fish := ps[1].Lines; len(fish) == 0 || !strings.HasPrefix(fish[len(fish)-1], "fish_add_path") {
-		t.Errorf("fish lines %v", fish)
+	if fish := ps[1].Lines; len(fish) == 0 || fish[len(fish)-1] != `fish_add_path -g "/h/.local/bin"` {
+		t.Errorf("fish lines %v, want the folder quoted", fish)
 	}
 }

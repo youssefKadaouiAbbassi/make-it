@@ -305,3 +305,27 @@ func TestBrewAndWingetNeedNoSudo(t *testing.T) {
 		}
 	}
 }
+
+// On Windows npm puts its shims in the prefix itself, so the prefix is ~/.local/bin there.
+func TestNpmPrefixOnWindows(t *testing.T) {
+	e, _ := newEnv(t, "winget", "git", "node", "jq", "npm")
+	e.Platform = platform.Platform{OS: "windows", Arch: "amd64", PM: platform.WinGet}
+	s := stepByID(t, e, "prereq.pyright")
+	i := slices.Index(s.Command, "--prefix")
+	if i < 0 || i+1 >= len(s.Command) || s.Command[i+1] != filepath.Join(e.Roots.Home, ".local", "bin") {
+		t.Errorf("command %v, want --prefix ~/.local/bin on Windows", s.Command)
+	}
+}
+
+// --reinstall names a tool the table knows, or the run stops before the plan.
+func TestReinstallUnknownTool(t *testing.T) {
+	e, _ := newEnv(t, "apt-get", "sudo", "git", "node", "jq")
+	e.Reinstall = []string{"nope"}
+	if err := e.checkReinstall(); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Errorf("err %v, want the unknown tool named", err)
+	}
+	e.Reinstall = []string{"prek"}
+	if err := e.checkReinstall(); err != nil {
+		t.Errorf("a known tool: %v", err)
+	}
+}

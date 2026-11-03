@@ -103,3 +103,14 @@ func TestFinishLiveSaysNewTerminal(t *testing.T) {
 		t.Errorf("no new-terminal line in:\n%s", out.String())
 	}
 }
+
+// Nothing to do, but a tool was left to the user: the result says so instead of "everything is current".
+func TestFinishLiveNothingToDoNamesNeedsYou(t *testing.T) {
+	var out bytes.Buffer
+	u := ui.NewFromReader(nil, &out, false)
+	u.Mode = ui.Live
+	finishLive(u, "setup", setup.Report{NeedsYou: []setup.NeedsYou{{ID: "chrome", Manual: "x"}}}, nil, time.Second)
+	if s := out.String(); !strings.Contains(s, "1 tool needs you") || strings.Contains(s, "everything is current") {
+		t.Errorf("result:\n%s", s)
+	}
+}

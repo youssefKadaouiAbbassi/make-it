@@ -128,8 +128,13 @@ func TestUninstallRemovesBlockAndEnv(t *testing.T) {
 func TestProfileStepWindowsCommand(t *testing.T) {
 	e := pathEnvFixture(t, "")
 	e.Platform.OS = "windows"
+	e.Roots.Home = filepath.Join(e.Roots.Home, "O'Brien")
 	s := e.profileStep()
 	if len(s.Command) < 3 || s.Command[0] != "powershell" || !strings.Contains(s.Command[len(s.Command)-1], "SetEnvironmentVariable('Path'") {
 		t.Errorf("command %v", s.Command)
+	}
+	// A quote in the home path is doubled inside the single-quoted PowerShell string.
+	if ps := s.Command[len(s.Command)-1]; !strings.Contains(ps, "O''Brien") || strings.Contains(ps, "O'Brien") {
+		t.Errorf("quote not escaped: %s", ps)
 	}
 }

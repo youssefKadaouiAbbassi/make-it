@@ -78,6 +78,8 @@ var Environment = []EnvVar{
 	{"GOBIN", "where doctor looks for gopls that go install put off PATH (then GOPATH/bin, then ~/go/bin)"},
 	{"GOPATH", "its first entry's bin is where doctor looks for gopls when GOBIN is not set"},
 	{"CARGO_HOME", "its bin is where doctor looks for rust-analyzer off PATH (default ~/.cargo/bin)"},
+	{"SSL_CERT_FILE", "a CA bundle read first, before the system ones, for makeit's downloads"},
+	{"SSL_CERT_DIR", "a folder of CA certificates read after SSL_CERT_FILE"},
 	{"NO_COLOR", "when set, no colour"},
 	{"FORCE_COLOR", "when set, colour even without a terminal (NO_COLOR, TERM=dumb and ACCESSIBLE win)"},
 	{"TERM", "dumb turns colour off"},

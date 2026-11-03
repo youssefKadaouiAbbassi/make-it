@@ -75,7 +75,8 @@ func (e *env) profileStep() plan.Step {
 	home := e.Roots.Home
 	if e.Platform.OS == "windows" {
 		dir := filepath.Join(home, ".local", "bin")
-		ps := fmt.Sprintf(`$p=[Environment]::GetEnvironmentVariable('Path','User'); if (($p -split ';') -notcontains '%s') { [Environment]::SetEnvironmentVariable('Path', (($p.TrimEnd(';') + ';%s').TrimStart(';')), 'User') }`, dir, dir)
+		q := strings.ReplaceAll(dir, "'", "''") // a quote inside a single-quoted PowerShell string
+		ps := fmt.Sprintf(`$p=[Environment]::GetEnvironmentVariable('Path','User'); if (($p -split ';') -notcontains '%s') { [Environment]::SetEnvironmentVariable('Path', (($p.TrimEnd(';') + ';%s').TrimStart(';')), 'User') }`, q, q)
 		cmd := execx.Cmd{Argv: []string{"powershell", "-NoProfile", "-Command", ps}}
 		return plan.Step{ID: "path.profile", Title: "Add " + dir + " to your PATH", Command: cmd.Argv,
 			Already: func(context.Context) (bool, error) {
