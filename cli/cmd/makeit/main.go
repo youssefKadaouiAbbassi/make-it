@@ -307,12 +307,17 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 			Warnings int            `json:"warnings"`
 		}{buildinfo.Version, checks, errs, warns}, code)
 	}
-	u := ui.New(os.Stdin, stderr, false, ui.ColorWanted(p.String["color"], isTTY(stderr)))
+	interactive := isTTY(os.Stdin) && isTTY(stderr) && !p.Bool["no-input"]
+	u := ui.New(os.Stdin, stderr, interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
 	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, false, p.Bool["plain"] || p.Bool["verbose"])
+	fix, n := fixCommand(checks)
 	if u.Mode == ui.Live {
 		u.Header("doctor")
 		printDoctorLive(u, checks)
+		if interactive && fix != "" {
+			return doctorFix(ctx, p, stdout, stderr, fix, n, u, code)
+		}
 		return code
 	}
 	for _, c := range checks {
@@ -334,7 +339,46 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 		}
 	}
 	fmt.Fprintf(stderr, "%d errors, %d warnings\n", errs, warns)
+	if interactive && fix != "" {
+		return doctorFix(ctx, p, stdout, stderr, fix, n, u, code)
+	}
 	return code
+}
+
+// fixCommand says which of setup or update to run for checks, and how many problems it covers:
+// update when any problem's fix is "makeit update" (which includes setup's own steps), else
+// setup when any is "makeit setup", else "" when every fix needs the user's own hands.
+func fixCommand(checks []doctor.Check) (cmd string, n int) {
+	setup := false
+	for _, c := range checks {
+		switch c.Fix {
+		case "makeit update":
+			cmd = "update"
+		case "makeit setup":
+			setup = true
+		default:
+			continue
+		}
+		n++
+	}
+	if cmd == "" && setup {
+		cmd = "setup"
+	}
+	return cmd, n
+}
+
+// doctorFix asks once, at a terminal, whether to run the fixing command now; Yes runs it with
+// --yes and returns its exit code, No or EOF leaves doctor's own code.
+func doctorFix(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, cmd string, n int, u *ui.UI, code int) int {
+	yes, err := u.Confirm(fmt.Sprintf("Fix %s now?", plural(n, "problem", "problems")), true)
+	if err != nil || !yes {
+		return code
+	}
+	fp := cli.Parsed{Bool: map[string]bool{"yes": true}, String: p.String}
+	if cmd == "update" {
+		return runUpdate(ctx, fp, nil, stdout, stderr)
+	}
+	return runSetup(ctx, fp, nil, stdout, stderr)
 }
 
 // isTTY reports whether w is a terminal.
