@@ -279,7 +279,7 @@ func TestStatusWhenAndVia(t *testing.T) {
 	if s, ok := state(only(), "typescript-language-server"); !ok || s.Via != nil {
 		t.Errorf("no npm: %+v %v", s, ok)
 	}
-	if s, _ := state(only("npm"), "pyright"); !slices.Equal(s.Via, []string{"npm", "install", "-g", "pyright"}) {
+	if s, _ := state(only("npm"), "pyright"); !slices.Equal(s.Via, []string{"npm", "install", "-g", "--prefix", "~/.local", "pyright"}) {
 		t.Errorf("npm: %+v", s)
 	}
 	for _, id := range []string{"typescript-language-server", "pyright", "rust-analyzer", "gopls"} {

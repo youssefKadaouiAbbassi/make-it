@@ -83,12 +83,58 @@ type Prereq struct {
 	// Via are toolchain routes, tried in order before the package manager: the first whose Bin
 	// is on PATH is the fix.
 	Via []Via
+	// PkgFile is a .deb or .rpm the vendor publishes for x86-64, installed with the package manager.
+	PkgFile map[PM]string
+	// Release is the program's GitHub release, the route when no package or toolchain has it.
+	Release *Release
 }
 
 // Via is an install command that needs one program, such as rustup or npm.
 type Via struct {
 	Bin  string
 	Argv []string
+	// Env is KEY=value for the command. A "~" starting an element of Argv or an Env value is the
+	// home directory.
+	Env []string
+}
+
+// Cmd is the route's command with "~" expanded to home.
+func (v Via) Cmd(home string) execx.Cmd {
+	argv := make([]string, len(v.Argv))
+	for i, a := range v.Argv {
+		argv[i] = expandHome(a, home)
+	}
+	var env []string
+	for _, kv := range v.Env {
+		k, val, _ := strings.Cut(kv, "=")
+		env = append(env, k+"="+expandHome(val, home))
+	}
+	return execx.Cmd{Argv: argv, Env: env}
+}
+
+func expandHome(s, home string) string {
+	switch {
+	case s == "~":
+		return home
+	case strings.HasPrefix(s, "~/"):
+		return filepath.Join(home, s[2:])
+	}
+	return s
+}
+
+// Release is a program published as a binary on a GitHub release, verified by the checksum file
+// the project publishes beside it.
+type Release struct {
+	Repo, Version string // owner/repo and the version without "v"; the tag is "v" + Version
+	Bin           string // the program's name inside the archive and in ~/.local/bin
+	// Asset names the archive and its checksum file for a target; "" when the project ships
+	// nothing for it.
+	Asset func(v, goos, goarch string) (asset, sums string)
+}
+
+// URL is where name is downloaded from, under base (https://github.com).
+func (r Release) URL(base, name string) string {
+	return base + "/" + r.Repo + "/releases/download/v" + r.Version + "/" + name
 }
 
 // Into is the folder this route installs programs into, which is often not on PATH: go install
@@ -148,38 +194,50 @@ var Prereqs = []Prereq{
 	},
 	{
 		ID: "chrome", Why: "chrome-devtools-mcp drives an installed Chrome (also used by sitespeed.io)",
-		Bins:   []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "Google Chrome"},
-		Pkgs:   map[PM][]string{Brew: {"--cask", "google-chrome"}, WinGet: {"Google.Chrome"}},
-		Manual: "https://www.google.com/chrome/ (on Linux, the distribution's chromium package also works)",
+		Bins: []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "Google Chrome"},
+		Pkgs: map[PM][]string{Brew: {"--cask", "google-chrome"}, WinGet: {"Google.Chrome"}},
+		// chrome-devtools-mcp supports Google Chrome and Chrome for Testing only, not chromium.
+		PkgFile: map[PM]string{APT: "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
+			DNF: "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm"},
+		Manual: "Google Chrome or Chrome for Testing: https://www.google.com/chrome/",
 	},
 	{
 		ID: "prek", Why: "the commit hook runner (reads .pre-commit-config.yaml, no Python needed)", Bins: []string{"prek"},
-		Pkgs:   map[PM][]string{Brew: {"prek"}, WinGet: {"j178.prek"}},
-		Manual: "uv tool install prek, or cargo install --locked prek, or a release binary from github.com/j178/prek",
+		Pkgs: map[PM][]string{Brew: {"prek"}, WinGet: {"j178.prek"}},
+		Release: &Release{Repo: "j178/prek", Bin: "prek", Asset: prekAsset,
+			Version: "0.5.9", // renovate: github-releases=j178/prek
+		},
+		Manual: "a release binary from github.com/j178/prek",
 	},
 	{
 		ID: "deja-vu", Why: "the memory plugin's local search binary", Bins: []string{"deja"},
-		Pkgs:   map[PM][]string{Brew: {"deja-vu"}},
-		Manual: "go install github.com/vshulcz/deja-vu/cmd/deja@latest, or a release binary from github.com/vshulcz/deja-vu",
+		Pkgs: map[PM][]string{Brew: {"deja-vu"}},
+		Release: &Release{Repo: "vshulcz/deja-vu", Bin: "deja", Asset: goreleaserAsset("deja-vu", "checksums.txt", true),
+			Version: "0.23.5", // renovate: github-releases=vshulcz/deja-vu
+		},
+		Manual: "a release binary from github.com/vshulcz/deja-vu",
 	},
 	{
 		ID: "grype", Why: "the vulnerability scan, as a local command (CI runs it too)", Bins: []string{"grype"},
-		Pkgs:   map[PM][]string{Brew: {"grype"}, WinGet: {"Anchore.Grype"}},
-		Manual: "a release binary from github.com/anchore/grype (verify its checksum)",
+		Pkgs: map[PM][]string{Brew: {"grype"}, WinGet: {"Anchore.Grype"}},
+		Release: &Release{Repo: "anchore/grype", Bin: "grype", Asset: goreleaserAsset("grype", "grype_%s_checksums.txt", false),
+			Version: "0.121.1", // renovate: github-releases=anchore/grype
+		},
+		Manual: "a release binary from github.com/anchore/grype",
 	},
 	// The language servers the bundle's LSP plugins start (LSP-ROWS.md). npm needs node, a
 	// required row, so the two npm servers apply everywhere.
 	{
 		ID: "typescript-language-server", Why: "the typescript-lsp plugin runs it for .ts and .js files", Bins: []string{"typescript-language-server"},
 		Pkgs:   map[PM][]string{Brew: {"typescript-language-server"}},
-		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "typescript-language-server", "typescript"}}},
-		Manual: "npm install -g typescript-language-server typescript (with sudo for a distribution's node; with an npm user prefix, add $(npm prefix -g)/bin to PATH)",
+		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "--prefix", "~/.local", "typescript-language-server", "typescript"}}},
+		Manual: "npm install -g typescript-language-server typescript",
 	},
 	{
 		ID: "pyright", Why: "the pyright-lsp plugin runs it for .py files", Bins: []string{"pyright-langserver"},
 		Pkgs:   map[PM][]string{Brew: {"pyright"}},
-		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "pyright"}}},
-		Manual: "npm install -g pyright, or pipx install pyright (with an npm user prefix, add $(npm prefix -g)/bin to PATH)",
+		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "--prefix", "~/.local", "pyright"}}},
+		Manual: "npm install -g pyright",
 	},
 	{
 		ID: "rust-analyzer", Why: "the rust-analyzer-lsp plugin runs it for .rs files", Bins: []string{"rust-analyzer"},
@@ -192,9 +250,42 @@ var Prereqs = []Prereq{
 		ID: "gopls", Why: "the gopls-lsp plugin runs it for .go files", Bins: []string{"gopls"},
 		When:   []string{"go"},
 		Pkgs:   map[PM][]string{Brew: {"gopls"}, APT: {"gopls"}, APK: {"gopls"}},
-		Via:    []Via{{Bin: "go", Argv: []string{"go", "install", "golang.org/x/tools/gopls@latest"}}},
-		Manual: "go install golang.org/x/tools/gopls@latest, then add $(go env GOPATH)/bin to PATH (go install puts it there)",
+		Via:    []Via{{Bin: "go", Argv: []string{"go", "install", "golang.org/x/tools/gopls@latest"}, Env: []string{"GOBIN=~/.local/bin"}}},
+		Manual: "go install golang.org/x/tools/gopls@latest",
 	},
+}
+
+// prekAsset names prek's cargo-dist archives: the musl build on Linux (static, so Alpine works).
+func prekAsset(_, goos, goarch string) (string, string) {
+	cpu := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[goarch]
+	triple, ext := map[string]string{"linux": "unknown-linux-musl", "darwin": "apple-darwin", "windows": "pc-windows-msvc"}[goos], "tar.gz"
+	if goos == "windows" {
+		ext = "zip"
+	}
+	if cpu == "" || triple == "" {
+		return "", ""
+	}
+	asset := "prek-" + cpu + "-" + triple + "." + ext
+	return asset, asset + ".sha256"
+}
+
+// goreleaserAsset names a goreleaser project's archives, <name>_<v>_<os>_<arch>.tar.gz (zip on
+// Windows), with sums the checksum file (a %s in it is the version). windowsArm64 says whether
+// the project ships that target.
+func goreleaserAsset(name, sums string, windowsArm64 bool) func(v, goos, goarch string) (string, string) {
+	return func(v, goos, goarch string) (string, string) {
+		if !slices.Contains([]string{"linux", "darwin", "windows"}, goos) || !slices.Contains([]string{"amd64", "arm64"}, goarch) {
+			return "", ""
+		}
+		if goos == "windows" && goarch == "arm64" && !windowsArm64 {
+			return "", ""
+		}
+		ext := "tar.gz"
+		if goos == "windows" {
+			ext = "zip"
+		}
+		return name + "_" + v + "_" + goos + "_" + goarch + "." + ext, strings.ReplaceAll(sums, "%s", v)
+	}
 }
 
 // Find returns the row with id; an unknown id is a programming error.
