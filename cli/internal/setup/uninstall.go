@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"makeit/internal/platform"
 	"os"
 	"path/filepath"
 	"slices"
@@ -143,6 +144,7 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 	for _, k := range keys {
 		steps = append(steps, e.unFileStep(k))
 	}
+	steps = append(steps, e.toolSteps()...)
 	steps = append(steps, e.unDirsStep(), e.unCatalogStep(), e.unStateStep())
 	if opts.Purge {
 		steps = append(steps, plan.Step{ID: "purge",
@@ -658,4 +660,81 @@ func (e *env) unStateStep() plan.Step {
 			e.stateRemoved = true
 			return "removed; a copy is in the generation", nil
 		}}
+}
+
+// toolSteps removes the release binaries makeit downloaded, one step per tool so each is
+// recorded like any other removal. A tool makeit installed any other way (package manager,
+// npm, a toolchain) is left alone and reported with the command to remove it by hand.
+func (e *env) toolSteps() []plan.Step {
+	ids := make([]string, 0, len(e.st.Prereqs))
+	for id := range e.st.Prereqs {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	var steps []plan.Step
+	for _, id := range ids {
+		rec := e.st.Prereqs[id]
+		if rec.InstalledBy != "makeit" {
+			continue
+		}
+		if rec.Route != "release" {
+			e.keep(id, "installed by makeit through "+rec.Route+"; to remove: "+removeCommand(rec.Route, id))
+			continue
+		}
+		bin := id
+		if r := platform.Find(id).Release; r != nil {
+			bin = r.Bin
+		}
+		path := filepath.Join(e.Roots.Home, ".local", "bin", bin)
+		steps = append(steps, plan.Step{ID: "tool." + id, Title: "Remove " + path,
+			Already: func(context.Context) (bool, error) {
+				cur, found, err := fsx.ReadOptional(path)
+				if err != nil {
+					return false, err
+				}
+				if !found {
+					delete(e.st.Prereqs, id)
+					return true, nil
+				}
+				if fsx.Sha256(cur) != rec.Sha256 {
+					e.keep(id, "changed since makeit wrote it")
+					return true, nil
+				}
+				return false, nil
+			},
+			Run: func(context.Context) (string, error) {
+				if err := e.remove("tool."+id, path); err != nil {
+					return "", err
+				}
+				delete(e.st.Prereqs, id)
+				return "", nil
+			}})
+	}
+	return steps
+}
+
+// removeCommand is the line to remove a tool makeit installed through a route other than a
+// release download.
+func removeCommand(route, id string) string {
+	switch route {
+	case "apt", "deb":
+		return "sudo apt-get remove " + id
+	case "dnf", "rpm":
+		return "sudo dnf remove " + id
+	case "apk":
+		return "sudo apk del " + id
+	case "pacman":
+		return "sudo pacman -R " + id
+	case "brew":
+		return "brew uninstall " + id
+	case "winget":
+		return "winget uninstall " + id
+	case "npm":
+		return "npm uninstall -g --prefix ~/.local " + id
+	case "go":
+		return "rm ~/.local/bin/" + id
+	case "rustup":
+		return "rustup component remove " + id
+	}
+	return "remove it the way you installed it"
 }
