@@ -42,8 +42,10 @@ func catalogText(t *testing.T, rel string) string {
 	return string(b)
 }
 
+// owned is a global file's record: Source set, as updateGlobalSteps always sets it, so the
+// stale-global cleanup can tell it apart from a different owned-class record (path.env).
 func owned(content string) *state.File {
-	return &state.File{Class: "owned", Sha256: fsx.Sha256([]byte(content))}
+	return &state.File{Class: "owned", Source: "templates/global/x", Sha256: fsx.Sha256([]byte(content))}
 }
 
 func TestUpdateGlobalWritesNew(t *testing.T) {

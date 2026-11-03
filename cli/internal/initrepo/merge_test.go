@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"makeit/internal/mergefile"
 )
 
 var checkScripts = [][2]string{
@@ -115,29 +117,6 @@ func TestMergeJSONRefusesJSON5(t *testing.T) {
 	}
 }
 
-func TestMergeLines(t *testing.T) {
-	lines := []string{".env", ".env.*", "!.env.example"}
-	m := MergeLines([]byte("node_modules\n.env\n"), lines, nil)
-	if string(m.Body) != "node_modules\n.env\n.env.*\n!.env.example\n" || !slices.Equal(m.Added, []string{".env.*", "!.env.example"}) {
-		t.Errorf("%q %v", m.Body, m.Added)
-	}
-	m = MergeLines([]byte("dist"), lines, nil)
-	if string(m.Body) != "dist\n.env\n.env.*\n!.env.example\n" {
-		t.Errorf("no final newline: %q", m.Body)
-	}
-	m = MergeLines([]byte("dist\r\n.env\r\n"), lines, nil)
-	if string(m.Body) != "dist\r\n.env\r\n.env.*\r\n!.env.example\r\n" {
-		t.Errorf("crlf: %q", m.Body)
-	}
-	m = MergeLines([]byte("  .env  \n.env.*\n!.env.example\n"), lines, nil)
-	if m.Changed {
-		t.Errorf("present lines added again: %q", m.Body)
-	}
-	if m = MergeLines(nil, lines, nil); string(m.Body) != ".env\n.env.*\n!.env.example\n" || !m.Changed {
-		t.Errorf("new file: %q", m.Body)
-	}
-}
-
 // What a merge adds is recorded leaf by leaf, and a leaf in skip (added before, since removed by
 // the user) is not added again, even inside an object that is missing as a whole.
 func TestMergeSkipsRemovedLeaves(t *testing.T) {
@@ -157,7 +136,7 @@ func TestMergeSkipsRemovedLeaves(t *testing.T) {
 	if !slices.Equal(m.Added, []string{"/rules/y"}) {
 		t.Errorf("matched array: %v", m.Added)
 	}
-	if l := MergeLines([]byte("a\n"), []string{".env", ".env.*"}, map[string]bool{".env": true}); !slices.Equal(l.Added, []string{".env.*"}) {
+	if l := mergefile.MergeLines([]byte("a\n"), []string{".env", ".env.*"}, map[string]bool{".env": true}); !slices.Equal(l.Added, []string{".env.*"}) {
 		t.Errorf("lines: %v", l.Added)
 	}
 }

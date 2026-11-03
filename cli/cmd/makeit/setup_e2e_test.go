@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"makeit/internal/pathenv"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -81,8 +82,15 @@ esac
 	t.Setenv("MAKEIT_DIR", stack)
 	t.Setenv("PATH", bin)
 	t.Setenv("CALLS", filepath.Join(t.TempDir(), "calls"))
+	// PATH management (0.3) is also already in place by hand: the env file and the profile block.
+	t.Setenv("SHELL", "/bin/sh")
+	envPath := filepath.Join(stack, "env")
+	write(t, envPath, string(pathenv.EnvFile(pathenv.Dirs(home, os.Getenv, dirExists), home)))
+	write(t, filepath.Join(home, ".profile"), strings.Join(pathenv.Block(envPath, home), "\n")+"\n")
 	return claudeDir, stack
 }
+
+func dirExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 type setupReport struct {
 	Plan []struct {

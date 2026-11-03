@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -167,6 +168,9 @@ func finishLive(u *ui.UI, name string, rep setup.Report, self *selfMove, elapsed
 		return
 	}
 	u.Result(true, verb, elapsed, counts)
+	if slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.ID == "path.profile" && o.Status == plan.Done }) {
+		u.Next("Open a new terminal to pick up PATH.")
+	}
 	switch {
 	case name == "setup":
 		u.Next("Open Claude Code to start.", "undo: makeit rollback")

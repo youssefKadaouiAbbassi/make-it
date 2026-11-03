@@ -91,3 +91,15 @@ func TestFinishLiveNamesMoves(t *testing.T) {
 		}
 	}
 }
+
+// A run that just put the PATH line in the profile says to open a new terminal.
+func TestFinishLiveSaysNewTerminal(t *testing.T) {
+	var out bytes.Buffer
+	u := ui.NewFromReader(nil, &out, false)
+	u.Mode = ui.Live
+	rep := setup.Report{Generation: 1, Plan: plan.Report{Outcomes: []plan.Outcome{{ID: "path.profile", Title: "Load ~/.makeit/env from the shell profile", Status: plan.Done}}}}
+	finishLive(u, "setup", rep, nil, time.Second)
+	if !strings.Contains(out.String(), "Open a new terminal to pick up PATH.") {
+		t.Errorf("no new-terminal line in:\n%s", out.String())
+	}
+}

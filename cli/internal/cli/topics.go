@@ -71,6 +71,8 @@ var Environment = []EnvVar{
 	{"GIT_SSH_COMMAND", "used for a --catalog git source over ssh when set; otherwise ssh runs in batch mode"},
 	{"GIT_SSH", "used for a --catalog git source over ssh when set, as is core.sshCommand; makeit then leaves ssh as you set it"},
 	{"HOME", "the home directory (USERPROFILE on Windows)"},
+	{"SHELL", "picks .zshenv for the PATH line when it names zsh; empty means not zsh"},
+	{"ZDOTDIR", "where .zshenv goes when zsh reads it from here instead of HOME"},
 	{"PATH", "where claude, npm, git and the package managers are looked up"},
 	{"USERPROFILE", "the home directory on Windows"},
 	{"GOBIN", "where doctor looks for gopls that go install put off PATH (then GOPATH/bin, then ~/go/bin)"},

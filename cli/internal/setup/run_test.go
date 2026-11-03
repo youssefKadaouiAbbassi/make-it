@@ -211,7 +211,7 @@ func TestSecondRunResumes(t *testing.T) {
 	for _, o := range second.Plan.Outcomes {
 		want := plan.Already
 		// bundle failed on the first run; settings and the global files come after it.
-		if o.ID == "bundle" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") {
+		if o.ID == "bundle" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") || strings.HasPrefix(o.ID, "path.") {
 			want = plan.Done
 		}
 		if o.Status != want {

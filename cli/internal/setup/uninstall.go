@@ -430,6 +430,9 @@ func (e *env) unSettingsStep() plan.Step {
 // changed, had before makeit, or linked is kept.
 func (e *env) unFileStep(key string) plan.Step {
 	rec := e.st.Files[key]
+	if rec.Class == "merge" {
+		return e.unMergeStep(key)
+	}
 	path := e.Roots.Abs(key)
 	return plan.Step{ID: "file." + strings.TrimPrefix(key, "claude:"), Title: "Remove " + path,
 		Already: func(context.Context) (bool, error) {

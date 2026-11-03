@@ -3,8 +3,10 @@
 package doctor
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"makeit/internal/pathenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +85,7 @@ func Run(ctx context.Context, m Machine) []Check {
 	r.catalogSource(m)
 	r.platform(m)
 	r.prereqs(m)
+	r.profile(m)
 	unusable := r.claude(ctx, m, req, reqErr)
 	r.settings(ctx, m, req.Marketplace, unusable)
 	st, info, stErr := state.LoadState(m.StatePath)
@@ -193,8 +196,7 @@ func (r *report) prereqs(m Machine) {
 			level = Error
 		}
 		if dir := offPath(s.Prereq, m.Getenv); dir != "" {
-			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why),
-				`export PATH="`+dir+`:$PATH"  (in your shell profile)`)
+			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why), "makeit setup")
 			continue
 		}
 		fix := s.Prereq.Manual
@@ -206,6 +208,39 @@ func (r *report) prereqs(m Machine) {
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)
 	}
+}
+
+// profile checks that the shell profile loads ~/.makeit/env, without which nothing makeit
+// installs is on PATH in a new terminal. Skipped on Windows (the registry PATH) and without a home.
+func (r *report) profile(m Machine) {
+	if m.Getenv == nil || m.Platform.OS == "windows" {
+		return
+	}
+	home := cmp.Or(m.Getenv("HOME"), m.Getenv("USERPROFILE"))
+	if home == "" {
+		return
+	}
+	stack := filepath.Join(home, ".makeit")
+	if m.StatePath != "" {
+		stack = filepath.Dir(m.StatePath)
+	}
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	var missing []string
+	for _, p := range pathenv.Profiles(home, filepath.Join(stack, "env"), m.Getenv("SHELL"), m.Getenv, exists) {
+		b, _ := os.ReadFile(p.Path)
+		want := p.Lines[len(p.Lines)-1]
+		if !p.Fish {
+			want = p.Lines[1]
+		}
+		if !strings.Contains(string(b), want) {
+			missing = append(missing, p.Path)
+		}
+	}
+	if len(missing) > 0 {
+		r.add("path.profile", "prereqs", Warn, "the shell profile does not load "+filepath.Join(stack, "env")+": "+strings.Join(missing, ", "), "makeit setup")
+		return
+	}
+	r.add("path.profile", "prereqs", OK, "the shell profile loads "+filepath.Join(stack, "env"), "")
 }
 
 // offPath returns the folder where one of p's toolchain routes put its program, when the program

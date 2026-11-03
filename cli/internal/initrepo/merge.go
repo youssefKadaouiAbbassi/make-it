@@ -6,16 +6,11 @@ import (
 	"strings"
 
 	"makeit/internal/jsonx"
+	"makeit/internal/mergefile"
 )
 
-// Merged is the result of an additive merge. Added and Conflicts are JSON pointers (or lines);
-// a conflict is a value the repository has that differs from ours, and theirs is kept.
-type Merged struct {
-	Body      []byte
-	Added     []string
-	Conflicts []string
-	Changed   bool
-}
+// Merged is mergefile.Merged: the result of an additive merge.
+type Merged = mergefile.Merged
 
 // MergeJSON adds what ours has and theirs lacks: object keys at any depth, and, for the arrays
 // named in match (pointer -> identity field), the elements whose identity theirs does not have.
@@ -69,35 +64,6 @@ func PackageScripts(theirs []byte, scripts [][2]string, skip map[string]bool) (M
 		return Merged{}, err
 	}
 	return MergeJSON(theirs, b, nil, skip)
-}
-
-// MergeLines appends the lines theirs lacks (compared without surrounding spaces) and skip does
-// not name, keeping its line endings and ending with a newline.
-func MergeLines(theirs []byte, lines []string, skip map[string]bool) Merged {
-	m := Merged{Body: theirs}
-	eol := "\n"
-	if bytes.Contains(theirs, []byte("\r\n")) {
-		eol = "\r\n"
-	}
-	have := map[string]bool{}
-	for _, l := range strings.Split(strings.ReplaceAll(string(theirs), "\r\n", "\n"), "\n") {
-		have[strings.TrimSpace(l)] = true
-	}
-	var add []string
-	for _, l := range lines {
-		if !have[l] && !skip[l] {
-			add, have[l] = append(add, l), true
-		}
-	}
-	if len(add) == 0 {
-		return m
-	}
-	out := string(theirs)
-	if out != "" && !strings.HasSuffix(out, "\n") {
-		out += eol
-	}
-	m.Body, m.Added, m.Changed = []byte(out+strings.Join(add, eol)+eol), add, true
-	return m
 }
 
 var bom = []byte("\xef\xbb\xbf")

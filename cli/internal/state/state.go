@@ -94,12 +94,14 @@ type Settings struct {
 
 // File is a file makeit wrote.
 type File struct {
-	Class      string         `json:"class"` // owned or seeded
-	Source     string         `json:"source,omitempty"`
-	Sha256     string         `json:"sha256"`
-	PreExisted bool           `json:"preExisted"`
-	Generation int            `json:"generation"`
-	Extra      jsontext.Value `json:",embed"`
+	Class      string `json:"class"` // owned or seeded
+	Source     string `json:"source,omitempty"`
+	Sha256     string `json:"sha256"`
+	PreExisted bool   `json:"preExisted"`
+	Generation int    `json:"generation"`
+	// Added are the lines makeit added to a file it merges into (class merge), for removal.
+	Added []string       `json:"added,omitempty"`
+	Extra jsontext.Value `json:",embed"`
 }
 
 // Dir is a directory makeit may have created.

@@ -86,7 +86,8 @@ func (e *env) setupSteps(global []plan.Step) []plan.Step {
 	steps = append(steps, e.claudeStep())
 	steps = append(steps, e.stackSteps()...)
 	steps = append(steps, e.settingsStep())
-	return append(steps, global...)
+	steps = append(steps, global...)
+	return append(steps, e.pathSteps()...)
 }
 
 // execute is the run every modifying command shares: the lock, state, one dry pass over every

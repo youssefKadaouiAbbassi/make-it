@@ -3,6 +3,7 @@ package doctor
 import (
 	"context"
 	"errors"
+	"makeit/internal/pathenv"
 	"os"
 	"path/filepath"
 	"slices"
@@ -362,11 +363,37 @@ func TestPrereqOffPath(t *testing.T) {
 	checks := Run(context.Background(), m)
 	for id, dir := range map[string]string{"prereq.gopls": filepath.Join(home, "go", "bin"), "prereq.rust-analyzer": filepath.Join(home, ".cargo", "bin")} {
 		got := byID(t, checks, id)
-		if got.Level != Warn || !strings.Contains(got.Message, "is installed in "+dir+", which is not on PATH") || got.Fix != `export PATH="`+dir+`:$PATH"  (in your shell profile)` {
+		if got.Level != Warn || !strings.Contains(got.Message, "is installed in "+dir+", which is not on PATH") || got.Fix != "makeit setup" {
 			t.Errorf("%s = %+v", id, got)
 		}
 	}
 	if got := byID(t, checks, "prereq.pyright"); !strings.Contains(got.Message, "is missing") || got.Fix != "npm install -g pyright" {
 		t.Errorf("a program not on disk anywhere: %+v", got)
+	}
+}
+
+// The shell profile must load ~/.makeit/env, or nothing makeit installed is on PATH.
+func TestDoctorProfileCheck(t *testing.T) {
+	m, _ := healthy(t)
+	home := t.TempDir()
+	m.Getenv = func(k string) string {
+		switch k {
+		case "HOME":
+			return home
+		case "SHELL":
+			return "/bin/bash"
+		}
+		return ""
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != Warn || got.Fix != "makeit setup" {
+		t.Errorf("no block: %+v", got)
+	}
+	envPath := filepath.Join(filepath.Dir(m.StatePath), "env")
+	block := strings.Join(pathenv.Block(envPath, home), "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(block), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != OK {
+		t.Errorf("with the block: %+v", got)
 	}
 }
