@@ -82,12 +82,9 @@ var verbs = map[string]string{"setup": "Ready", "update": "Updated", "uninstall"
 // printNotesLive shows a run's notes as rows above its result: the optional programs left out on
 // one line (makeit doctor prints how to install each), each file kept, each hint.
 func printNotesLive(u *ui.UI, rep setup.Report) {
-	if len(rep.Skipped) > 0 {
-		ids := make([]string, len(rep.Skipped))
-		for i, s := range rep.Skipped {
-			ids[i] = s.ID
-		}
-		u.Row(ui.GWarn, "Optional", strings.Join(ids, ", "), "see makeit doctor")
+	// A tool with no route on this machine: the one thing makeit leaves to the user.
+	for _, n := range rep.NeedsYou {
+		u.Row(ui.GWarn, n.ID, "needs you", n.Manual)
 	}
 	for _, k := range rep.Kept {
 		u.Row(ui.GWarn, "Kept", k.Item, k.Reason)

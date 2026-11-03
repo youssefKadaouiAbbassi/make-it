@@ -30,7 +30,7 @@ func handInstalled(t *testing.T, edit func(*jsonx.Object)) (claudeDir, stack str
 	write(t, filepath.Join(repo, ".claude-plugin", "marketplace.json"), `{"name": "makeit", "plugins": [
 		{"name": "makeit-bundle", "source": "./plugins/makeit-bundle"},
 		{"name": "superpowers", "source": {"source": "github", "repo": "obra/superpowers", "sha": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b"}}]}`)
-	for _, tool := range []string{"git", "node", "jq"} {
+	for _, tool := range []string{"git", "node", "jq", "gh", "google-chrome", "prek", "deja", "grype", "typescript-language-server", "pyright-langserver"} {
 		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
 	}
 	write(t, filepath.Join(bin, "claude"), `#!/bin/sh

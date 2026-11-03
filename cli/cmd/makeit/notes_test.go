@@ -19,20 +19,20 @@ func TestNotesLive(t *testing.T) {
 	u := ui.NewFromReader(nil, &out, false)
 	u.Mode = ui.Live
 	printNotesLive(u, setup.Report{
-		Skipped: []setup.Skipped{{ID: "gh", Manual: "https://cli.github.com"}, {ID: "pyright", Manual: "npm install -g pyright"}},
-		Kept:    []setup.Kept{{Item: "~/.claude/CLAUDE.md", Reason: "you changed it"}},
-		Hints:   []setup.Hint{{ID: "makeit@makeit", Rule: "in-place", Text: "loads in place from /c/plugins/makeit"}},
+		NeedsYou: []setup.NeedsYou{{ID: "chrome", Manual: "Google Chrome or Chrome for Testing: https://www.google.com/chrome/"}},
+		Kept:     []setup.Kept{{Item: "~/.claude/CLAUDE.md", Reason: "you changed it"}},
+		Hints:    []setup.Hint{{ID: "makeit@makeit", Rule: "in-place", Text: "loads in place from /c/plugins/makeit"}},
 	})
 	s := out.String()
 	if strings.Contains(s, "loads in place") {
 		t.Errorf("a hint is background, not a warning row:\n%s", s)
 	}
-	for _, want := range []string{"! Optional", "gh, pyright", "see makeit doctor", "! Kept", "~/.claude/CLAUDE.md"} {
+	for _, want := range []string{"! chrome", "needs you", "https://www.google.com/chrome/", "! Kept", "~/.claude/CLAUDE.md"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("no %q in:\n%s", want, s)
 		}
 	}
-	if strings.Contains(s, "install by hand") || strings.Contains(s, "cli.github.com") {
+	if strings.Contains(s, "install by hand") || strings.Contains(s, "Optional") {
 		t.Errorf("the plain lines leaked into the live view:\n%s", s)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -45,6 +46,7 @@ var setupEnv = func(context.Context) (setup.Env, error) {
 		// Geteuid is -1 on Windows, where there is no sudo.
 		Root:   os.Geteuid() == 0,
 		Getenv: os.Getenv,
+		Client: &http.Client{Timeout: 10 * time.Minute},
 	}, nil
 }
 
@@ -155,6 +157,12 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	asJSON := p.Bool["json"]
 	e.Interactive = isTTY(os.Stdin) && isTTY(stderr) && !p.Bool["no-input"] && !asJSON
 	e.Yes = p.Bool["yes"]
+	e.Background = p.Bool["auto"]
+	for _, id := range strings.Split(p.String["reinstall"], ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			e.Reinstall = append(e.Reinstall, id)
+		}
+	}
 	mode := plan.Decide(e.Interactive, e.Yes, p.Bool["dry-run"])
 	u := ui.New(os.Stdin, stderr, e.Interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
@@ -186,14 +194,13 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 			if asJSON {
 				// The normal report's shape, with nothing planned.
 				return emit(stdout, stderr, struct {
-					Version    string          `json:"version"`
-					Plan       []plan.Outcome  `json:"plan"`
-					Skipped    []setup.Skipped `json:"skipped"`
-					Self       *selfMove       `json:"self,omitempty"`
-					Generation int             `json:"generation"`
-					Summary    string          `json:"summary"`
-					Error      string          `json:"error"`
-				}{buildinfo.Version, []plan.Outcome{}, []setup.Skipped{}, m.self, 0, "nothing applied", err.Error()}, 1)
+					Version    string         `json:"version"`
+					Plan       []plan.Outcome `json:"plan"`
+					Self       *selfMove      `json:"self,omitempty"`
+					Generation int            `json:"generation"`
+					Summary    string         `json:"summary"`
+					Error      string         `json:"error"`
+				}{buildinfo.Version, []plan.Outcome{}, m.self, 0, "nothing applied", err.Error()}, 1)
 			}
 			fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 			return 1
@@ -238,17 +245,17 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	}
 	if asJSON {
 		out := struct {
-			Version    string          `json:"version"`
-			Plan       []plan.Outcome  `json:"plan"`
-			Skipped    []setup.Skipped `json:"skipped"`
-			Hints      []setup.Hint    `json:"hints,omitempty"`
-			Kept       []setup.Kept    `json:"kept,omitempty"`
-			Notice     string          `json:"notice,omitempty"`
-			Self       *selfMove       `json:"self,omitempty"`
-			Generation int             `json:"generation"`
-			Summary    string          `json:"summary"`
-			Error      string          `json:"error,omitempty"`
-		}{buildinfo.Version, rep.Plan.Outcomes, rep.Skipped, rep.Hints, rep.Kept, notice, m.self, rep.Generation, rep.Plan.Summary(), errText(err)}
+			Version    string           `json:"version"`
+			Plan       []plan.Outcome   `json:"plan"`
+			Hints      []setup.Hint     `json:"hints,omitempty"`
+			NeedsYou   []setup.NeedsYou `json:"needsYou,omitempty"`
+			Kept       []setup.Kept     `json:"kept,omitempty"`
+			Notice     string           `json:"notice,omitempty"`
+			Self       *selfMove        `json:"self,omitempty"`
+			Generation int              `json:"generation"`
+			Summary    string           `json:"summary"`
+			Error      string           `json:"error,omitempty"`
+		}{buildinfo.Version, rep.Plan.Outcomes, rep.Hints, rep.NeedsYou, rep.Kept, notice, m.self, rep.Generation, rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
 	if live == nil && (!shown || rep.Generation > 0) {
@@ -262,8 +269,8 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 		finishLive(u, m.name, rep, m.self, time.Since(started))
 	} else {
 		fmt.Fprintln(stderr, rep.Plan.Summary())
-		for _, s := range rep.Skipped {
-			fmt.Fprintf(stderr, "install by hand: %s (%s)\n", s.ID, s.Manual)
+		for _, n := range rep.NeedsYou {
+			fmt.Fprintf(stderr, "%s needs you: %s\n", n.ID, n.Manual)
 		}
 		for _, k := range rep.Kept {
 			fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)

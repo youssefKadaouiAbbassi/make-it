@@ -41,7 +41,7 @@ func newCatMachine(t *testing.T, extra map[string]string) catMachine {
 		t.Skip("a shell script stands in for claude")
 	}
 	home, bin, stack, fake := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tool := range []string{"node", "jq"} {
+	for _, tool := range []string{"node", "jq", "gh", "google-chrome", "prek", "deja", "grype", "typescript-language-server", "pyright-langserver"} {
 		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
 	}
 	write(t, filepath.Join(bin, "claude"), fakeClaude)
@@ -241,7 +241,7 @@ func TestCatalogPrepareErrorJSON(t *testing.T) {
 		t.Errorf("exit %d, not one JSON document with the error: %v\n%s", code, err, out)
 	}
 	// The same shape as the normal report, so a consumer reads the same keys.
-	for _, k := range []string{"version", "plan", "skipped", "generation", "summary"} {
+	for _, k := range []string{"version", "plan", "generation", "summary"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("no %q key: %s", k, out)
 		}

@@ -70,61 +70,50 @@ func stepIDs(e *env) []string {
 	return ids
 }
 
-// Every prerequisite but git present: git is installed, optional rows go to skipped.
-func TestPrereqStepsRequiredOnly(t *testing.T) {
+// Nothing is optional: every missing tool that applies here gets a step, by its route.
+func TestPrereqStepsEveryMissingTool(t *testing.T) {
 	e, _ := newEnv(t, "apt-get", "node", "jq")
 	steps := e.prereqSteps()
-	if len(steps) != 1 || steps[0].ID != "prereq.git" {
-		t.Fatalf("steps %v, want prereq.git only", stepIDs(e))
+	if len(steps) == 0 || steps[0].ID != "prereq.git" {
+		t.Fatalf("steps %v, want prereq.git first", stepIDs(e))
 	}
 	if want := []string{"sudo", "-n", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "git"}; !slices.Equal(steps[0].Command, want) {
 		t.Errorf("command %v, want %v", steps[0].Command, want)
 	}
-	var skipped []string
-	for _, r := range e.skipped {
-		skipped = append(skipped, r.ID)
-	}
-	for _, id := range []string{"gh", "prek", "grype"} {
-		if !slices.Contains(skipped, id) {
-			t.Errorf("optional %s not in skipped %v", id, skipped)
+	ids := stepIDs(e)
+	for _, id := range []string{"prereq.gh", "prereq.chrome", "prereq.prek", "prereq.deja-vu", "prereq.grype"} {
+		if !slices.Contains(ids, id) {
+			t.Errorf("%s not planned: %v", id, ids)
 		}
 	}
 }
 
-// The LSP rows are optional: never an install step, skipped when missing, and the toolchain-bound
-// ones only on a machine with that toolchain (LSP-ROWS.md).
-func TestPrereqLSPRowsSkipped(t *testing.T) {
-	for _, c := range []struct {
-		bins      []string
-		in, notIn []string
-	}{
-		{[]string{"cargo"}, []string{"typescript-language-server", "pyright", "rust-analyzer"}, []string{"gopls"}},
-		{nil, []string{"typescript-language-server", "pyright"}, []string{"rust-analyzer", "gopls"}},
-		{[]string{"go", "gopls"}, nil, []string{"gopls", "rust-analyzer"}},
-	} {
-		e, _ := newEnv(t, append([]string{"apt-get", "git", "node", "jq"}, c.bins...)...)
-		if ids := stepIDs(e); len(ids) != 0 {
-			t.Errorf("%v: install steps %v", c.bins, ids)
+// The LSP rows: the toolchain-bound ones only on a machine with that toolchain (LSP-ROWS.md);
+// the npm ones through npm; one with neither a package nor its toolchain route here needs you.
+func TestPrereqLSPRows(t *testing.T) {
+	core := []string{"apt-get", "git", "node", "jq"}
+	for _, id := range []string{"prereq.gopls", "prereq.rust-analyzer"} {
+		e, _ := newEnv(t, core...)
+		if slices.Contains(stepIDs(e), id) {
+			t.Errorf("%s planned without its toolchain", id)
 		}
-		var skipped []string
-		for _, r := range e.skipped {
-			skipped = append(skipped, r.ID)
+	}
+	e, _ := newEnv(t, append(core, "npm")...)
+	ids := stepIDs(e)
+	for _, id := range []string{"prereq.typescript-language-server", "prereq.pyright"} {
+		if !slices.Contains(ids, id) {
+			t.Errorf("%s not planned with npm: %v", id, ids)
 		}
-		for _, id := range c.in {
-			if !slices.Contains(skipped, id) {
-				t.Errorf("%v: %s not skipped: %v", c.bins, id, skipped)
-			}
-		}
-		for _, id := range c.notIn {
-			if slices.Contains(skipped, id) {
-				t.Errorf("%v: %s skipped: %v", c.bins, id, skipped)
-			}
-		}
+	}
+	e, _ = newEnv(t, append(core, "cargo")...)
+	if ids := stepIDs(e); slices.Contains(ids, "prereq.rust-analyzer") || !slices.ContainsFunc(e.needsYou, func(n NeedsYou) bool { return n.ID == "rust-analyzer" }) {
+		t.Errorf("cargo without rustup on apt: steps %v, needs you %+v; want rust-analyzer left to the user", ids, e.needsYou)
 	}
 }
 
 func TestPrereqAptUpdateOnce(t *testing.T) {
-	e, f := newEnv(t, "apt-get", "node")
+	// Only git and jq are missing: the other tools are present by their program names.
+	e, f := newEnv(t, "apt-get", "node", "gh", "google-chrome", "prek", "deja", "grype", "typescript-language-server", "pyright-langserver")
 	for _, s := range e.prereqSteps() {
 		if _, err := s.Run(context.Background()); err != nil {
 			t.Fatal(err)
@@ -151,11 +140,8 @@ func TestPrereqRequiredWithoutRouteFails(t *testing.T) {
 	e, _ := newEnv(t, "git", "node", "jq")
 	e.Platform.PM = platform.None
 	e.Present = only("git", "jq")
-	steps := e.prereqSteps()
-	if len(steps) != 1 || steps[0].ID != "prereq.node" {
-		t.Fatalf("steps %v", stepIDs(e))
-	}
-	if _, err := steps[0].Run(context.Background()); err == nil || !strings.Contains(err.Error(), "nodejs.org") {
+	node := stepByID(t, e, "prereq.node")
+	if _, err := node.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "nodejs.org") {
 		t.Errorf("err = %v, want the manual route", err)
 	}
 }

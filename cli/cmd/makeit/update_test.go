@@ -219,7 +219,7 @@ esac
 
 func TestSetupUpdateUninstallRoundTrip(t *testing.T) {
 	home, bin, stack, fake := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tool := range []string{"git", "node", "jq"} {
+	for _, tool := range []string{"git", "node", "jq", "gh", "google-chrome", "prek", "deja", "grype", "typescript-language-server", "pyright-langserver"} {
 		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
 	}
 	write(t, filepath.Join(bin, "claude"), fakeClaude)

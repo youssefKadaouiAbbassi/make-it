@@ -46,7 +46,9 @@ var commands = []cli.Command{
 	{Name: "self", Hidden: true, Args: "install", Summary: "install this makeit binary", Flags: []cli.Flag{
 		{Name: "prefix", Value: "dir", Help: "where to put makeit (default ~/.local/bin)"},
 	}},
-	{Name: "setup", Summary: "set up this machine: prerequisites, Claude Code, the plugin set, settings and global files", Flags: catalogFlags},
+	{Name: "setup", Summary: "set up this machine: prerequisites, Claude Code, the plugin set, settings and global files", Flags: append([]cli.Flag{
+		{Name: "reinstall", Value: "tool", Help: "install this tool again although you removed it (comma-separated for several)"},
+	}, catalogFlags...)},
 	{Name: "uninstall", Summary: "remove what makeit put on this machine and nobody changed since", Flags: []cli.Flag{
 		{Name: "keep-settings", Help: "leave settings.json as it is"},
 		{Name: "purge", Help: "also delete the data of the plugins makeit installed, and the makeit directory with every backup; cannot be undone"},

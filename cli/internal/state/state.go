@@ -133,10 +133,12 @@ type Marketplace struct {
 
 // Prereq is a prerequisite makeit installed.
 type Prereq struct {
-	InstalledBy string         `json:"installedBy"`
-	Route       string         `json:"route"`
-	Argv        []string       `json:"argv,omitempty"`
-	Extra       jsontext.Value `json:",embed"`
+	InstalledBy string   `json:"installedBy"`
+	Route       string   `json:"route"`
+	Argv        []string `json:"argv,omitempty"`
+	// Sha256 is the installed file's, for a release binary makeit downloaded.
+	Sha256 string         `json:"sha256,omitempty"`
+	Extra  jsontext.Value `json:",embed"`
 }
 
 // StepRecord is the outcome of one plan step, journaled after each step.
