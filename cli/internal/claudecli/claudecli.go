@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"makeit/internal/execx"
@@ -36,6 +37,17 @@ type CLI struct {
 	Run  execx.Runner
 	// Env is added to every child's environment.
 	Env []string
+	// listings keeps each listing's stdout by its arguments for the process: the two listings
+	// cost 0.6 s each and doctor, setup and update ask for them several times. Action clears it.
+	mu       sync.Mutex
+	listings map[string]string
+}
+
+// forget drops the cached listings: something may have changed.
+func (c *CLI) forget() {
+	c.mu.Lock()
+	c.listings = nil
+	c.mu.Unlock()
 }
 
 // Timeouts: list and version are local reads; actions may clone a git repository.
@@ -174,16 +186,29 @@ func (c *CLI) Marketplaces(ctx context.Context) ([]Marketplace, error) {
 }
 
 func (c *CLI) list(ctx context.Context, out any, args ...string) error {
-	r, err := c.run(ctx, readTimeout, nil, args...)
-	if err != nil {
-		return fmt.Errorf("claude %s: %w", strings.Join(args, " "), err)
+	key := strings.Join(args, " ")
+	c.mu.Lock()
+	stdout, cached := c.listings[key]
+	c.mu.Unlock()
+	if !cached {
+		r, err := c.run(ctx, readTimeout, nil, args...)
+		if err != nil {
+			return fmt.Errorf("claude %s: %w", key, err)
+		}
+		if r.Code != 0 {
+			return fmt.Errorf("claude %s exited %d: %s", key, r.Code, r.Text())
+		}
+		stdout = r.Stdout
 	}
-	if r.Code != 0 {
-		return fmt.Errorf("claude %s exited %d: %s", strings.Join(args, " "), r.Code, r.Text())
+	if err := json.Unmarshal([]byte(stdout), out); err != nil {
+		return fmt.Errorf("claude %s printed no JSON array: %w", key, err)
 	}
-	if err := json.Unmarshal([]byte(r.Stdout), out); err != nil {
-		return fmt.Errorf("claude %s printed no JSON array: %w", strings.Join(args, " "), err)
+	c.mu.Lock()
+	if c.listings == nil {
+		c.listings = map[string]string{}
 	}
+	c.listings[key] = stdout
+	c.mu.Unlock()
 	return nil
 }
 
@@ -233,6 +258,7 @@ func (c *CLI) Action(ctx context.Context, args ...string) (Result, error) {
 	args = append(append([]string{"plugin"}, args...), "--json")
 	name := "claude " + strings.Join(args, " ")
 	r, err := c.run(ctx, actionTimeout, nil, args...)
+	c.forget()
 	if err != nil {
 		return Result{}, fmt.Errorf("%s: %w", name, err)
 	}

@@ -233,3 +233,41 @@ func TestCommandsRunOutsideAnyProject(t *testing.T) {
 		}
 	}
 }
+
+// The two listings run once per process, makeit's own mutating verb clears them, and a failed
+// listing is not kept.
+func TestListingsCachedUntilAction(t *testing.T) {
+	calls := map[string]int{}
+	fail := false
+	c := &CLI{Path: "claude", Run: func(_ context.Context, cmd execx.Cmd) (execx.Result, error) {
+		key := strings.Join(cmd.Argv[1:], " ")
+		calls[key]++
+		switch {
+		case fail && key == "plugin list --json":
+			return execx.Result{Code: 1, Stderr: "boom"}, nil
+		case key == "plugin list --json", key == "plugin marketplace list --json":
+			return execx.Result{Stdout: "[]\n"}, nil
+		}
+		return execx.Result{Stdout: `{"command":"install","outcome":"ok"}` + "\n"}, nil
+	}}
+	ctx := context.Background()
+	for range 2 {
+		_, _ = c.Plugins(ctx)
+		_, _ = c.Marketplaces(ctx)
+	}
+	if calls["plugin list --json"] != 1 || calls["plugin marketplace list --json"] != 1 {
+		t.Errorf("runs %v, want one of each", calls)
+	}
+	_, _ = c.Action(ctx, "install", "x@m", "--scope", "user")
+	_, _ = c.Plugins(ctx)
+	if calls["plugin list --json"] != 2 {
+		t.Errorf("after an action %v, want a fresh listing", calls)
+	}
+	fail = true
+	_, _ = c.Action(ctx, "uninstall", "x@m")
+	_, _ = c.Plugins(ctx)
+	_, _ = c.Plugins(ctx)
+	if calls["plugin list --json"] != 4 {
+		t.Errorf("a failed listing was kept: %v", calls)
+	}
+}

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"makeit/internal/catalog"
 	"makeit/internal/execx"
@@ -205,5 +208,32 @@ func TestApplyNoCurrent(t *testing.T) {
 	got, _, _ := Apply(context.Background(), nil, tree(t), nil, nil)
 	if got == nil {
 		t.Fatal("no tree")
+	}
+}
+
+// The git probes are all in flight at once: a runner that releases each git call only once both
+// have arrived; a sequential implementation waits out the deadline and keeps a pin.
+func TestApplyProbesConcurrently(t *testing.T) {
+	const gitProbes = 2
+	var arrived atomic.Int32
+	open := make(chan struct{})
+	var once sync.Once
+	base := fakeRun(nil)
+	run := func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if c.Argv[0] == "git" {
+			if arrived.Add(1) == gitProbes {
+				once.Do(func() { close(open) })
+			}
+			select {
+			case <-open:
+			case <-time.After(2 * time.Second):
+				return execx.Result{Code: 1}, errors.New("deadline: the probes did not run together")
+			}
+		}
+		return base(ctx, c)
+	}
+	_, moves, notes := Apply(context.Background(), run, tree(t), tree(t), nil)
+	if len(moves) != 2 {
+		t.Errorf("moves %+v, notes %v: a probe waited for the one before it", moves, notes)
 	}
 }
