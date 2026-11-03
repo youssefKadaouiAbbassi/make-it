@@ -51,7 +51,7 @@ bundle has no content of its own: installing it installs these plugins.
 
 | plugin | version | what it does | tested |
 |---|---|---|---|
-| makeit | 0.2.0 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
+| makeit | 0.2.1 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
 | superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review | yes: on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost; a tie on a second hard test |
 | ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` | yes: the cheapest and fastest option on the UI tasks, chosen over Caveman |
 | chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) | yes: compared with other browser tools; the only one with traces, Lighthouse and device emulation |
@@ -75,7 +75,7 @@ One more bundle is enabled per project, not per machine:
 
 | plugin | version | what it does | tested |
 |---|---|---|---|
-| makeit-ui | 0.2.0 | a bundle for projects with a web frontend: it installs impeccable | |
+| makeit-ui | 0.2.1 | a bundle for projects with a web frontend: it installs impeccable | |
 | impeccable | 4.8.0 | design skills for user interfaces | yes: won every blind comparison against seven other design skills |
 
 `makeit init` enables `makeit-ui` in a project's `.claude/settings.json` when it finds a web

@@ -1,9 +1,9 @@
 # Commands
 
-Every command and flag, as `makeit help` prints them in makeit 0.2.0. Run `makeit help <command>` for the same text in your terminal.
+Every command and flag, as `makeit help` prints them in makeit 0.2.1. Run `makeit help <command>` for the same text in your terminal.
 
 ```
-makeit 0.2.0: a tested Claude Code setup for serious coding.
+makeit 0.2.1: a tested Claude Code setup for serious coding.
 
 Usage: makeit [command] [flags]   (no command: status and what to do next)
 
@@ -214,6 +214,10 @@ Environment variables makeit reads:
   GIT_SSH             used for a --catalog git source over ssh when set, as is core.sshCommand; makeit then leaves ssh as you set it
   HOME                the home directory (USERPROFILE on Windows)
   PATH                where claude, npm, git and the package managers are looked up
+  USERPROFILE         the home directory on Windows
+  GOBIN               where doctor looks for gopls that go install put off PATH (then GOPATH/bin, then ~/go/bin)
+  GOPATH              its first entry's bin is where doctor looks for gopls when GOBIN is not set
+  CARGO_HOME          its bin is where doctor looks for rust-analyzer off PATH (default ~/.cargo/bin)
   NO_COLOR            when set, no colour
   FORCE_COLOR         when set, colour even without a terminal (NO_COLOR, TERM=dumb and ACCESSIBLE win)
   TERM                dumb turns colour off

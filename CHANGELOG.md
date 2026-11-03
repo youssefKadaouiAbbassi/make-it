@@ -3,6 +3,16 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.2.1
+
+Fixes:
+
+- `makeit doctor` finds gopls or rust-analyzer when `go install` or rustup put it in a folder
+  that is not on PATH, says which folder, and gives the line to add instead of the install again.
+- `makeit doctor` shows the version a plugin loaded from the plugin set actually runs; Claude Code
+  kept listing the version it first installed.
+- A setting you hold reads as its name, for example `settings.json: model`, with what happens to it.
+
 ## 0.2.0
 
 Breaking:
