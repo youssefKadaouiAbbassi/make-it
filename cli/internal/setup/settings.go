@@ -130,7 +130,9 @@ func (e *env) restore(path string, old []byte) error {
 func (e *env) keepHeld(changes []settings.Change) {
 	for _, c := range changes {
 		if c.Action == settings.Held || c.Action == settings.KeptTheirs {
-			e.keep(c.Path, "yours (held)")
+			// "/permissions/defaultMode" reads as "settings.json: permissions.defaultMode".
+			name := strings.ReplaceAll(strings.TrimPrefix(c.Path, "/"), "/", ".")
+			e.keep("settings.json: "+name, "your value stays; makeit's is not applied")
 		}
 	}
 }
