@@ -79,6 +79,11 @@ sys.exit(1 if bad else 0)
 PY
 then echo "ok public docs: links resolve, none to INSTALL.md or cli/, no emoji"; else echo "FAIL public docs"; fail=1; fi
 
+echo "== changelog"
+# Every version of the plugin set has its CHANGELOG.md section: the release notes come from it.
+v=$(python3 -c "import json; print(json.load(open('../.claude-plugin/marketplace.json'))['metadata']['version'])")
+if bash ../cli/scripts/release-notes.sh "$v" >/dev/null; then echo "ok CHANGELOG.md has $v"; else echo "FAIL changelog"; fail=1; fi
+
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
   zizmor --no-progress --min-severity low --persona auditor .github/workflows ../.github/workflows || fail=1

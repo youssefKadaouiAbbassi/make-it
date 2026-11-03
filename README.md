@@ -113,6 +113,7 @@ You do nothing: once a day, when Claude Code starts, makeit updates itself to th
 release and each plugin to its newest release. The next session says what changed in one line.
 `makeit update` does the same now, `makeit rollback` undoes the last update, and
 `"autoUpdate": false` in `~/.makeit/config.json` turns the daily run off.
+On makeit 0.1.x, which has no daily run, run `makeit self update` once to get here.
 
 ## Check your machine
 

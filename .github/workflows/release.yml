@@ -59,4 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes "makeit $TAG (beta)" dist/*
+        # The notes are CHANGELOG.md's section for this version; no section, no release.
+        run: |
+          bash cli/scripts/release-notes.sh "${TAG#v}" > notes.md
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file notes.md dist/*

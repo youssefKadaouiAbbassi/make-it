@@ -64,11 +64,14 @@ each part.
 $ makeit doctor
 ```
 
-`doctor` changes nothing. It prints one line per check (`ok`, `!!` for a warning, `xx` for an
-error) and, under each problem, the command that fixes it. It exits 1 when it finds an error.
+`doctor` changes nothing. At a terminal it counts the checks that passed and lists each problem
+with the command that fixes it; `--verbose` lists every check. It exits 1 when it finds an error.
+`makeit` on its own shows the same status in short, with what to do next.
 
 Optional tools that setup does not install, such as `gopls`, show up here as warnings with the
-command to install them by hand.
+command to install them by hand. When the tool is installed but its folder is not on `PATH`
+(`go install` puts gopls in `~/go/bin`), doctor names the folder and gives the line to add to your
+shell profile.
 
 ## Set up a project
 
@@ -98,6 +101,9 @@ $ makeit update
 You do not need to run it: once a day, when Claude Code starts, makeit runs `makeit update --auto`
 in the background. It writes to `~/.makeit/update.log`, and the next session shows one line naming
 what moved. Run `makeit update` yourself to update now.
+
+Coming from makeit 0.1.x, which has no daily run: run `makeit self update` once (0.1's name for
+it), then `makeit update`. From then on the daily run keeps you current.
 
 `update` first replaces makeit with the newest signed release, when makeit was installed by the
 install script. Then it moves each plugin to its newest release and brings the settings and the
