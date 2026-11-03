@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -31,6 +32,19 @@ type Manifest struct {
 	Plugins    PluginOps `json:"plugins"`
 	// StateBackup is "state.pre-migration.json" when the run migrated state.json.
 	StateBackup *string `json:"stateBackup"`
+	// Pins are the plugin release moves the run made in the local plugin set (update's latest step).
+	Pins []PinMove `json:"pins,omitempty"`
+	// RolledBack is set once makeit rollback has undone this run, so the next rollback goes further back.
+	RolledBack bool `json:"rolledBack,omitempty"`
+}
+
+// PinMove is one plugin moved from one release to another.
+type PinMove struct {
+	ID      string `json:"id"`
+	FromTag string `json:"fromTag"`
+	FromSHA string `json:"fromSha"`
+	ToTag   string `json:"toTag"`
+	ToSHA   string `json:"toSha"`
 }
 
 // Op is one change to a file.
@@ -130,6 +144,26 @@ func Prune(stackDir string) error {
 		ns = ns[1:]
 	}
 	return nil
+}
+
+// LoadGenerations reads every generation's manifest, newest first. A folder without a readable
+// manifest is left out.
+func LoadGenerations(stackDir string) ([]*Generation, error) {
+	ns, err := generations(stackDir)
+	if err != nil {
+		return nil, err
+	}
+	var out []*Generation
+	for i := len(ns) - 1; i >= 0; i-- {
+		dir := filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[i]))
+		var m Manifest
+		data, found, err := fsx.ReadOptional(filepath.Join(dir, "manifest.json"))
+		if err != nil || !found || json.Unmarshal(data, &m) != nil {
+			continue
+		}
+		out = append(out, &Generation{Dir: dir, Manifest: m})
+	}
+	return out, nil
 }
 
 // generations lists the generation numbers on disk, ascending.

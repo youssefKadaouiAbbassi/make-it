@@ -43,7 +43,9 @@ for site in site tampered signed12 unsigned; do
   cat "/tmp/ca-$site.pem" >>/tmp/bundle.pem
   port=$((port + 1))
 done
-run() { HOME=$1 CURL_CA_BUNDLE=/tmp/bundle.pem MAKEIT_RELEASES_URL=https://127.0.0.1:${3:-8443} sh "$2"; }
+run() { HOME=$1 CURL_CA_BUNDLE=/tmp/bundle.pem MAKEIT_RELEASES_URL=https://127.0.0.1:${3:-8443} MAKEIT_NO_SETUP=1 sh "$2"; }
+# runsetup: install.sh going on to setup, with its flags (curl | sh -s -- <flags>); no terminal here.
+runsetup() { h=$1; shift; HOME=$h CURL_CA_BUNDLE=/tmp/bundle.pem MAKEIT_RELEASES_URL=https://127.0.0.1:8443 sh -s -- "$@" </rel/install.sh; }
 same() { [ "$(sha256sum <"$1")" = "$(sha256sum </rel/makeit-1.1.0)" ]; }
 mkdir -p /tmp/h1 /tmp/h2 /tmp/h3 /tmp/h4 /tmp/h5 /tmp/h6
 out=$(run /tmp/h1 /rel/install.sh 2>&1); echo "$out"
@@ -71,4 +73,17 @@ if out=$(run /tmp/h5 /rel/install.sh 8445 2>&1); then echo "a signature for 1.2.
 grep -q "signed for another release" <<<"$out"
 [ ! -e /tmp/h5/.local/bin/makeit ]
 echo "install.sh with a signature for another release: refused, nothing installed: ok"
+mkdir -p /tmp/h7 /tmp/h8 /tmp/h9
+out=$(runsetup /tmp/h7 2>&1); echo "$out"
+grep -q "next: makeit setup  (no terminal to ask on" <<<"$out"
+same /tmp/h7/.local/bin/makeit
+echo "install.sh with no terminal: installs, then says how to set up: ok"
+out=$(runsetup /tmp/h8 --yes --dry-run 2>&1); echo "$out"
+grep -qE "^[0-9]+ would-change$" <<<"$out"
+if ls -d /tmp/tmp.* >/dev/null 2>&1; then echo "the download folder was left behind: $(ls -d /tmp/tmp.*)"; exit 1; fi
+echo "install.sh --yes --dry-run: setup ran with the flags: ok"
+out=$(runsetup /tmp/h9 --no-setup 2>&1)
+grep -q "^next: makeit setup$" <<<"$out"
+same /tmp/h9/.local/bin/makeit
+echo "install.sh --no-setup: installs only: ok"
 INNER

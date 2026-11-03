@@ -108,3 +108,11 @@ func TestConsentMatrix(t *testing.T) {
 		}
 	}
 }
+
+func TestBeforeCalledPerStep(t *testing.T) {
+	var log, seen []string
+	Execute(context.Background(), steps(&log), Options{DryRun: true, Before: func(s Step) { seen = append(seen, s.ID) }})
+	if len(seen) != 4 || seen[0] != "a" || seen[3] != "d" {
+		t.Errorf("Before saw %v, want a b c d", seen)
+	}
+}

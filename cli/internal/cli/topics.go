@@ -75,6 +75,7 @@ var Environment = []EnvVar{
 	{"NO_COLOR", "when set, no colour"},
 	{"FORCE_COLOR", "when set, colour even without a terminal (NO_COLOR, TERM=dumb and ACCESSIBLE win)"},
 	{"TERM", "dumb turns colour off"},
+	{"CI", "when set, plain output: no spinner, progress bars or prompts"},
 	{"ACCESSIBLE", "when set, no colour"},
 	{"WSL_DISTRO_NAME", "when set, the machine is taken as WSL"},
 	{"WSL_INTEROP", "when set, the machine is taken as WSL"},

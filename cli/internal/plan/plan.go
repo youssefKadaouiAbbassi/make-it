@@ -55,6 +55,14 @@ type Options struct {
 	KeepGoing bool
 	// After is called after each step, for the state journal and progress lines.
 	After func(Outcome)
+	// Before is called as each step starts, before its check, for the live view.
+	Before func(Step)
+}
+
+// Event is one step starting (Outcome nil) or finishing, for a live view of a run.
+type Event struct {
+	Step    Step
+	Outcome *Outcome
 }
 
 // Report is the result of Execute.
@@ -100,6 +108,9 @@ func Execute(ctx context.Context, steps []Step, opts Options) Report {
 	}
 	for i, s := range steps {
 		o := Outcome{ID: s.ID, Title: s.Title, Command: s.Command}
+		if opts.Before != nil && ctx.Err() == nil {
+			opts.Before(s)
+		}
 		if ctx.Err() != nil {
 			for _, rest := range steps[i:] {
 				emit(Outcome{ID: rest.ID, Title: rest.Title, Status: Interrupted, Detail: "not started: interrupted"})

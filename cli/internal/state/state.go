@@ -43,7 +43,10 @@ type State struct {
 	Marketplaces  map[string]*Marketplace `json:"marketplaces,omitempty"`
 	Prereqs       map[string]*Prereq      `json:"prereqs,omitempty"`
 	Steps         map[string]*StepRecord  `json:"steps,omitempty"`
-	Migrations    []MigrationRun          `json:"migrations,omitempty"`
+	// PluginSkips are the releases makeit rollback undid, per plugin id; update leaves them until a
+	// newer release exists, or until an update run by hand clears them.
+	PluginSkips map[string][]string `json:"pluginSkips,omitempty"`
+	Migrations  []MigrationRun      `json:"migrations,omitempty"`
 	// Extra, here and in every record, holds members written by a newer revision, so they
 	// survive a round trip.
 	Extra jsontext.Value `json:",embed"`

@@ -25,13 +25,26 @@ type UI struct {
 	Color       bool
 	Quiet       bool
 	Verbose     bool
-	in          *bufio.Reader
-	fd          int
+	// Mode is Plain (today's lines) unless the command decided Live; Light picks the accent for
+	// a light terminal background.
+	Mode  Mode
+	Light bool
+	// Width is the terminal's width in cells, 0 when unknown: live lines are cut to it.
+	Width int
+	in    *bufio.Reader
+	fd    int
+	file  *os.File // the terminal for Huh, which needs the file itself to read keys raw
 }
 
 // New builds a UI. in is read only when Interactive is set.
 func New(in *os.File, out io.Writer, interactive, color bool) *UI {
-	return &UI{Out: out, Interactive: interactive, Color: color, in: bufio.NewReader(in), fd: int(in.Fd())}
+	u := &UI{Out: out, Interactive: interactive, Color: color, in: bufio.NewReader(in), fd: int(in.Fd()), file: in}
+	if f, ok := out.(*os.File); ok {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil {
+			u.Width = w
+		}
+	}
+	return u
 }
 
 // NewFromReader is New for tests: prompts read from r.
@@ -138,6 +151,9 @@ func (u *UI) Confirm(q string, def bool) (bool, error) {
 	if err := u.need(); err != nil {
 		return false, err
 	}
+	if u.Mode == Live {
+		return u.confirmLive(q, def)
+	}
 	hint := "[y/N]"
 	if def {
 		hint = "[Y/n]"
@@ -164,6 +180,9 @@ func (u *UI) Confirm(q string, def bool) (bool, error) {
 func (u *UI) Select(q string, opts []string, def int) (int, error) {
 	if err := u.need(); err != nil {
 		return 0, err
+	}
+	if u.Mode == Live {
+		return u.selectLive(q, opts, def)
 	}
 	_, _ = fmt.Fprintf(u.Out, "? %s\n", q)
 	for i, o := range opts {

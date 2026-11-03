@@ -3,6 +3,39 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.2.0
+
+Breaking:
+
+- `makeit self update` is now `makeit update` (it already updated makeit first); `--to` and
+  `--allow-downgrade` moved with it.
+- `makeit self rollback` is now `makeit rollback`, which undoes the whole last update.
+- `makeit self` and `makeit docs` are no longer listed; `makeit self update` and
+  `makeit self rollback` exit 2 and name the new command.
+
+New:
+
+- A new look at the terminal: one header, a row per area with a status mark, a live spinner and
+  progress bar while it works, one result line and the next step. Pipes, CI, `NO_COLOR`, `--json`,
+  `--plain` and `--verbose` keep plain lines.
+- `makeit` with no command shows this machine's status and offers what to do next.
+- The install script runs `makeit setup` right away (`--yes` to skip the question, `--no-setup`
+  to install makeit only).
+- Daily update: when Claude Code starts, makeit updates itself and every plugin to its newest
+  release, at most once a day, in the background. The next session shows one line naming what
+  moved. Off with `"autoUpdate": false` in `~/.makeit/config.json`.
+- `makeit update` moves each plugin pinned to a release to the newest stable release of the same
+  tag family, and the MCP servers' npm packages to their newest versions.
+- `makeit rollback` undoes the last update: the files it wrote and nobody changed since, the plugin
+  releases, and makeit itself when that update installed it. Never below 0.2.0.
+- `makeit doctor` at a terminal counts the passing checks and spells out each problem with its fix;
+  `--verbose` lists every check.
+
+Fixes:
+
+- Plugins from other GitHub repositories (superpowers, ponytail, security-audit) are fetched over
+  HTTPS, so they update on a machine with no GitHub SSH key, such as a fresh install or CI.
+
 ## 0.1.1
 
 Fixes:

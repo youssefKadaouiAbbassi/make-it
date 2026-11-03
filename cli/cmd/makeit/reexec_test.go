@@ -149,7 +149,7 @@ func TestUpdateSkipLine(t *testing.T) {
 	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: e.Roots.Portable(e.Exe), Version: "1.1.0", Skipped: "1.2.0"})
 	code, out, errOut := call(t, noGather(t), "update", "--dry-run")
 	if code != 0 || strings.Contains(out, "child") ||
-		!strings.Contains(errOut, "makeit 1.2.0 is skipped (you rolled back from it): `makeit self update --to 1.2.0` takes it") {
+		!strings.Contains(errOut, "makeit 1.2.0 is skipped (you rolled back from it): `makeit update --to 1.2.0` takes it") {
 		t.Errorf("exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 	if got := srv.Requests(); len(got) != 1 {

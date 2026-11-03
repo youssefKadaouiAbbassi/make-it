@@ -8,23 +8,12 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Catalog entries pinned to a tag: github source (repo + ref + sha)",
+      "description": "Catalog entries pinned to a branch: url source (https://github.com/<repo>.git + ref main + sha)",
       "managerFilePatterns": [
         "/^\\.claude-plugin/marketplace\\.json$/"
       ],
       "matchStrings": [
-        "\"repo\":\\s*\"(?<packageName>[^\"]+)\",\\s*\"ref\":\\s*\"(?<currentValue>[^\"]*?v?[0-9][^\"]*)\",\\s*\"sha\":\\s*\"(?<currentDigest>[0-9a-f]{40})\""
-      ],
-      "datasourceTemplate": "github-tags"
-    },
-    {
-      "customType": "regex",
-      "description": "Catalog entries pinned to a branch: github source (repo + ref main + sha)",
-      "managerFilePatterns": [
-        "/^\\.claude-plugin/marketplace\\.json$/"
-      ],
-      "matchStrings": [
-        "\"repo\":\\s*\"(?<packageName>[^\"]+)\",\\s*\"ref\":\\s*\"(?<currentValue>main|master)\",\\s*\"sha\":\\s*\"(?<currentDigest>[0-9a-f]{40})\""
+        "\"url\":\\s*\"https://github\\.com/(?<packageName>[^\"]+?)(?:\\.git)?\",\\s*\"ref\":\\s*\"(?<currentValue>main|master)\",\\s*\"sha\":\\s*\"(?<currentDigest>[0-9a-f]{40})\""
       ],
       "datasourceTemplate": "git-refs",
       "packageNameTemplate": "https://github.com/{{packageName}}"

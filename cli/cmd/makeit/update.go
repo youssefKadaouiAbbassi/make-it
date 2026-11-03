@@ -7,11 +7,15 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/cli"
+	"makeit/internal/fsx"
+	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/release"
 	"makeit/internal/selfupdate"
@@ -26,6 +30,38 @@ var stackUpdate = setup.Update
 var releaseBase = "https://github.com"
 
 func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr io.Writer) int {
+	if p.Bool["allow-downgrade"] && p.String["to"] == "" {
+		fmt.Fprintf(stderr, "%s: --allow-downgrade needs --to <version>\n", prog)
+		return 2
+	}
+	auto := p.Bool["auto"]
+	var stack string
+	if auto {
+		roots, err := paths.Current()
+		if err != nil {
+			return 0 // the daily run never fails a Claude Code start
+		}
+		stack = roots.Stack
+		// A re-executed new makeit runs under its parent's lock and gate.
+		if os.Getenv("MAKEIT_REEXEC") == "" {
+			if due, _ := autoDue(stack, time.Now()); !due {
+				return 0
+			}
+			lock, err := fsx.Acquire(filepath.Join(stack, "auto.lock"), time.Now())
+			if err != nil {
+				return 0
+			}
+			defer lock.Release()
+		}
+		logw, err := openAutoLog(stack)
+		if err != nil {
+			return 0
+		}
+		defer logw.Close()
+		fmt.Fprintf(logw, "\n== %s makeit %s update --auto\n", time.Now().UTC().Format(time.RFC3339), buildinfo.Version)
+		stdout, stderr = logw, logw
+		p.Bool["yes"], p.Bool["plain"] = true, true
+	}
 	var moved *selfMove
 	notice, needConsent := "", false
 	if from := os.Getenv("MAKEIT_REEXEC"); from != "" {
@@ -43,8 +79,14 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 			return stackUpdate(ctx, e, mode, confirm, args)
 		},
 		notice: func(context.Context) string { return notice },
-		after: func(w io.Writer, rep setup.Report) {
-			if rep.Reload {
+		after: func(w io.Writer, rep setup.Report, live bool) {
+			if auto {
+				if err := finishAuto(stack, rep, moved); err != nil {
+					fmt.Fprintf(w, "%s: %v\n", prog, err)
+				}
+				return
+			}
+			if rep.Reload && !live { // the live result already says it
 				fmt.Fprintln(w, "restart Claude Code or run /reload-plugins to load the changes")
 			}
 		}})
@@ -68,7 +110,7 @@ func runUninstall(ctx context.Context, p cli.Parsed, args []string, stdout, stde
 		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
 			return setup.Uninstall(ctx, e, mode, confirm, args, opts)
 		},
-		after: func(w io.Writer, rep setup.Report) {
+		after: func(w io.Writer, rep setup.Report, live bool) {
 			if exe, err := os.Executable(); err == nil && rep.Generation > 0 && !rep.Plan.Failed() {
 				fmt.Fprintf(w, "makeit itself is still at %s: delete it, or remove it the way you installed it\n", exe)
 			}
@@ -112,18 +154,22 @@ func selfStep(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 		}
 		return selfOutcome{notice: notice}
 	}
-	pick, err := e.Pick(ctx, rec, "", false)
+	pick, err := e.Pick(ctx, rec, p.String["to"], p.Bool["allow-downgrade"])
 	switch {
+	case errors.Is(err, selfupdate.ErrDowngrade):
+		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
+		return selfOutcome{exited: true, code: 2}
 	case err != nil:
 		return selfOutcome{notice: "could not check for a newer makeit: " + err.Error()}
 	case pick.Skipped:
-		return selfOutcome{notice: fmt.Sprintf("makeit %s is skipped (you rolled back from it): `makeit self update --to %s` takes it", pick.Latest, pick.Latest)}
+		return selfOutcome{notice: fmt.Sprintf("makeit %s is skipped (you rolled back from it): `makeit update --to %s` takes it", pick.Latest, pick.Latest)}
 	case pick.To == "":
 		return selfOutcome{}
 	}
 	asJSON := p.Bool["json"]
 	interactive := isTTY(os.Stdin) && isTTY(stderr) && !p.Bool["no-input"] && !asJSON
 	u := ui.New(os.Stdin, stderr, interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
+	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, asJSON, p.Bool["plain"] || p.Bool["verbose"])
 	stop, need, err := consent(plan.Decide(interactive, p.Bool["yes"], p.Bool["dry-run"]), u,
 		fmt.Sprintf("Update makeit %s → %s first?", e.Version, pick.To))
 	switch {

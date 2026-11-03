@@ -24,6 +24,8 @@ type Command struct {
 	Summary  string
 	Flags    []Flag
 	Modifies bool
+	// Hidden commands run but are left out of the command list (hooks and install scripts call them).
+	Hidden bool
 }
 
 // Parsed is the result of Parse.
@@ -43,6 +45,7 @@ var Global = []Flag{
 	{Name: "quiet", Short: "q", Help: "print only warnings and errors"},
 	{Name: "verbose", Help: "print the commands run and their output"},
 	{Name: "color", Value: "auto|always|never", Help: "colour output (default auto; NO_COLOR is honoured)"},
+	{Name: "plain", Help: "plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)"},
 	{Name: "offline", Help: "makeit itself makes no network request"},
 }
 
@@ -135,9 +138,12 @@ func flagLines(flags []Flag) []string {
 // Usage is the top-level help text.
 func Usage(prog, version string, cmds []Command) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s: set up Claude Code the same way on every machine and every project.\n\n", prog, version)
-	fmt.Fprintf(&b, "Usage: %s <command> [flags]\n\nCommands:\n", prog)
+	fmt.Fprintf(&b, "%s %s: a tested Claude Code setup for serious coding.\n\n", prog, version)
+	fmt.Fprintf(&b, "Usage: %s [command] [flags]   (no command: status and what to do next)\n\nCommands:\n", prog)
 	for _, c := range cmds {
+		if c.Hidden {
+			continue
+		}
 		fmt.Fprintf(&b, "  %-22s %s\n", strings.TrimSpace(c.Name+" "+c.Args), c.Summary)
 	}
 	b.WriteString("\nFlags for every command:\n")

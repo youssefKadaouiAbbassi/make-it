@@ -1,21 +1,20 @@
 # Commands
 
-Every command and flag, as `makeit help` prints them in makeit 0.1.1. Run `makeit help <command>` for the same text in your terminal.
+Every command and flag, as `makeit help` prints them in makeit 0.2.0. Run `makeit help <command>` for the same text in your terminal.
 
 ```
-makeit 0.1.1: set up Claude Code the same way on every machine and every project.
+makeit 0.2.0: a tested Claude Code setup for serious coding.
 
-Usage: makeit <command> [flags]
+Usage: makeit [command] [flags]   (no command: status and what to do next)
 
 Commands:
-  docs sync [dir]        index the docs of a project's dependencies for the docs MCP server
   doctor                 check this machine against what makeit sets up; changes nothing
   help [command|exit-codes|environment] show help for a command or a topic
   init [dir]             set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index
-  self install|update|rollback install, update or roll back makeit itself
+  rollback               undo the last update that changed something
   setup                  set up this machine: prerequisites, Claude Code, the plugin set, settings and global files
   uninstall              remove what makeit put on this machine and nobody changed since
-  update                 bring this machine to what this makeit carries: the plugin set, plugins, settings and global files
+  update                 update everything: makeit itself, the plugins, settings and global files (also runs daily on its own)
   version                print the version
 
 Flags for every command:
@@ -25,6 +24,7 @@ Flags for every command:
   --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
   --no-input                         never ask; a missing answer exits 2 naming its flag
   --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
   --quiet, -q                        print only warnings and errors
   --verbose                          print the commands run and their output
   --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
@@ -50,25 +50,7 @@ Flags for every command:
   --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
   --no-input                         never ask; a missing answer exits 2 naming its flag
   --offline                          makeit itself makes no network request
-  --quiet, -q                        print only warnings and errors
-  --verbose                          print the commands run and their output
-  --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
-```
-
-## makeit doctor
-
-```
-Usage: makeit doctor [flags]
-
-check this machine against what makeit sets up; changes nothing
-
-Flags for every command:
-  --color <auto|always|never>        colour output (default auto; NO_COLOR is honoured)
-  --dry-run, -n                      print the plan and the diffs; write nothing, ask nothing
-  --help, -h                         show help for the command
-  --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
-  --no-input                         never ask; a missing answer exits 2 naming its flag
-  --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
   --quiet, -q                        print only warnings and errors
   --verbose                          print the commands run and their output
   --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
@@ -92,6 +74,7 @@ Flags for every command:
   --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
   --no-input                         never ask; a missing answer exits 2 naming its flag
   --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
   --quiet, -q                        print only warnings and errors
   --verbose                          print the commands run and their output
   --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
@@ -102,11 +85,14 @@ Flags for every command:
 ```
 Usage: makeit update [flags]
 
-bring this machine to what this makeit carries: the plugin set, plugins, settings and global files
+update everything: makeit itself, the plugins, settings and global files (also runs daily on its own)
 
 Flags:
   --allow-branch                     let --catalog follow a #<branch>: each update takes its newest commit
+  --allow-downgrade                  allow --to an older version
+  --auto                             the daily run Claude Code starts: at most once a day, no questions, output to ~/.makeit/update.log
   --catalog <src>                    where the plugin set comes from: embedded (the one in this makeit), a directory, owner/repo or a git URL, with #<tag or branch> or @<commit>; kept for later runs
+  --to <version>                     move makeit to this version instead of the latest; clears a skip
 
 Flags for every command:
   --color <auto|always|never>        colour output (default auto; NO_COLOR is honoured)
@@ -115,6 +101,47 @@ Flags for every command:
   --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
   --no-input                         never ask; a missing answer exits 2 naming its flag
   --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
+  --quiet, -q                        print only warnings and errors
+  --verbose                          print the commands run and their output
+  --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
+```
+
+## makeit doctor
+
+```
+Usage: makeit doctor [flags]
+
+check this machine against what makeit sets up; changes nothing
+
+Flags for every command:
+  --color <auto|always|never>        colour output (default auto; NO_COLOR is honoured)
+  --dry-run, -n                      print the plan and the diffs; write nothing, ask nothing
+  --help, -h                         show help for the command
+  --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
+  --no-input                         never ask; a missing answer exits 2 naming its flag
+  --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
+  --quiet, -q                        print only warnings and errors
+  --verbose                          print the commands run and their output
+  --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
+```
+
+## makeit rollback
+
+```
+Usage: makeit rollback [flags]
+
+undo the last update that changed something
+
+Flags for every command:
+  --color <auto|always|never>        colour output (default auto; NO_COLOR is honoured)
+  --dry-run, -n                      print the plan and the diffs; write nothing, ask nothing
+  --help, -h                         show help for the command
+  --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
+  --no-input                         never ask; a missing answer exits 2 naming its flag
+  --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
   --quiet, -q                        print only warnings and errors
   --verbose                          print the commands run and their output
   --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
@@ -138,52 +165,7 @@ Flags for every command:
   --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
   --no-input                         never ask; a missing answer exits 2 naming its flag
   --offline                          makeit itself makes no network request
-  --quiet, -q                        print only warnings and errors
-  --verbose                          print the commands run and their output
-  --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
-```
-
-## makeit self
-
-```
-Usage: makeit self install|update|rollback [flags]
-
-install, update or roll back makeit itself
-
-Flags:
-  --allow-downgrade                  self update: allow --to an older version
-  --prefix <dir>                     self install: where to put makeit (default ~/.local/bin)
-  --to <version>                     self update: this version instead of the latest; clears a skip
-
-Flags for every command:
-  --color <auto|always|never>        colour output (default auto; NO_COLOR is honoured)
-  --dry-run, -n                      print the plan and the diffs; write nothing, ask nothing
-  --help, -h                         show help for the command
-  --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
-  --no-input                         never ask; a missing answer exits 2 naming its flag
-  --offline                          makeit itself makes no network request
-  --quiet, -q                        print only warnings and errors
-  --verbose                          print the commands run and their output
-  --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
-```
-
-## makeit docs
-
-```
-Usage: makeit docs sync [dir] [flags]
-
-index the docs of a project's dependencies for the docs MCP server
-
-Flags:
-  --if-changed                       only when a manifest or lockfile changed since the last sync (the hooks use it)
-
-Flags for every command:
-  --color <auto|always|never>        colour output (default auto; NO_COLOR is honoured)
-  --dry-run, -n                      print the plan and the diffs; write nothing, ask nothing
-  --help, -h                         show help for the command
-  --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
-  --no-input                         never ask; a missing answer exits 2 naming its flag
-  --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
   --quiet, -q                        print only warnings and errors
   --verbose                          print the commands run and their output
   --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
@@ -203,6 +185,7 @@ Flags for every command:
   --json                             print one JSON report on stdout (implies --no-input); progress stays on stderr
   --no-input                         never ask; a missing answer exits 2 naming its flag
   --offline                          makeit itself makes no network request
+  --plain                            plain lines: no spinner, progress bars or menus (also when CI is set or output is not a terminal)
   --quiet, -q                        print only warnings and errors
   --verbose                          print the commands run and their output
   --yes, -y                          apply the printed plan and take the recommended answer to every question; the only way to apply without a terminal
@@ -234,6 +217,7 @@ Environment variables makeit reads:
   NO_COLOR            when set, no colour
   FORCE_COLOR         when set, colour even without a terminal (NO_COLOR, TERM=dumb and ACCESSIBLE win)
   TERM                dumb turns colour off
+  CI                  when set, plain output: no spinner, progress bars or prompts
   ACCESSIBLE          when set, no colour
   WSL_DISTRO_NAME     when set, the machine is taken as WSL
   WSL_INTEROP         when set, the machine is taken as WSL

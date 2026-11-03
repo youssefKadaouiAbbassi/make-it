@@ -20,20 +20,25 @@ project. [What was tested](docs/included.md#the-plugin-set).
 
 ```console
 $ makeit setup
-  will: Install git
-  will: Install node
-  will: Install Claude Code
-  will: Write the plugin set to /home/dev/.makeit/catalog
-  will: Install makeit-bundle@makeit
-  will: Merge makeit's settings into /home/dev/.claude/settings.json
-  will: Write /home/dev/.claude/CLAUDE.md
-? Apply this plan? [Y/n]
-ok Install git
-ok Install node
-ok Install Claude Code
-ok Install makeit-bundle@makeit
-ok Merge makeit's settings into /home/dev/.claude/settings.json
-17 done
+
+>_ makeit  setup
+
+  ● Machine        4 changes
+  ● Claude Code    install Claude Code
+  ● Plugins        5 changes
+  ● Settings       merge makeit's settings into /home/u/.claude/settings.json
+  ● Files          7 changes
+
+  Apply this plan? Yes
+
+  ✓ Machine        4 changed
+  ✓ Claude Code    1 changed
+  ✓ Plugins        4 changed
+  ✓ Settings       1 changed
+  ✓ Files          7 changed
+
+  ✓ Ready in 124s · 17 changed · 1 already
+    Open Claude Code to start.  undo: makeit rollback
 ```
 
 <p align="center"><sub>makeit setup on a fresh Ubuntu 24.04: the plan, one question, the result. Lines cut from the real output; nothing retyped.</sub></p>
@@ -47,7 +52,8 @@ ok Merge makeit's settings into /home/dev/.claude/settings.json
   inside Claude Code.
 - Every change is shown as a plan first; `--dry-run` writes nothing.
 - Never overwrites your edits: a file you changed is kept and reported.
-- Signed releases; makeit updates itself and rolls back.
+- Stays current on its own: once a day makeit and its plugins move to their newest releases, and
+  `makeit rollback` undoes the last update. Releases are signed.
 - `makeit uninstall` removes what makeit added and you did not change.
 - Builds for Linux, macOS and Windows (tested on Linux).
 
@@ -65,8 +71,10 @@ Windows (PowerShell):
 irm https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.ps1 | iex
 ```
 
-Then run `makeit setup`. The installer checks the release's checksums, and its signature too when
-[minisign](https://jedisct1.github.io/minisign/) is installed; see [Security](#security).
+The installer checks the release's checksums, and its signature too when
+[minisign](https://jedisct1.github.io/minisign/) is installed (see [Security](#security)), then runs
+`makeit setup`, which shows its plan and asks once. `| sh -s -- --yes` sets up without asking;
+`| sh -s -- --no-setup` installs makeit only.
 
 ## Set up a project
 
@@ -101,9 +109,10 @@ See [Projects](docs/projects.md) for what each file is and how re-runs behave.
 
 ## Keep it current
 
-`makeit update` brings the plugin set, plugins, settings and global files to what your makeit
-carries. `makeit self update` installs the newest signed makeit, and `makeit self rollback` goes back
-one version.
+You do nothing: once a day, when Claude Code starts, makeit updates itself to the newest signed
+release and each plugin to its newest release. The next session says what changed in one line.
+`makeit update` does the same now, `makeit rollback` undoes the last update, and
+`"autoUpdate": false` in `~/.makeit/config.json` turns the daily run off.
 
 ## Check your machine
 
@@ -111,14 +120,17 @@ one version.
 
 ```console
 $ makeit doctor
-ok git found
-ok node found
-!! pyright is missing: the pyright-lsp plugin runs it for .py files
-   fix: npm install -g pyright
-ok Claude Code 2.1.316
-ok settings.json has every makeit value
-ok makeit-bundle@makeit 0.1.0
-0 errors, 7 warnings
+
+>_ makeit  doctor
+
+  ✓ 32 checks passed
+  ! deja-vu is missing: the memory plugin's local search binary
+    fix go install github.com/vshulcz/deja-vu/cmd/deja@latest, or a release binary from
+        github.com/vshulcz/deja-vu
+  ! pyright is missing: the pyright-lsp plugin runs it for .py files
+    fix npm install -g pyright
+
+  ✓ Healthy · 7 warnings · every check: makeit doctor --verbose
 ```
 
 ## Commands
@@ -128,9 +140,10 @@ ok makeit-bundle@makeit 0.1.0
 | `makeit setup` | installs the missing prerequisites, Claude Code, the plugin set, settings and global files |
 | `makeit init [dir]` | writes a project's CLAUDE.md, CONSTRAINTS.md, check tasks, hook config and CI caller |
 | `makeit doctor` | nothing; it reports each problem with a fix |
-| `makeit update` | brings the plugin set, plugins, settings and global files to what this makeit carries |
-| `makeit self update` | replaces makeit with the newest signed release (`makeit self rollback` undoes it) |
+| `makeit update` | moves makeit and the plugins to their newest releases, then the settings and global files (also runs daily on its own) |
+| `makeit rollback` | undoes the last update: files, plugin versions and makeit itself |
 | `makeit uninstall` | removes what makeit added and you did not change since |
+| `makeit` | shows this machine's status and what to do next |
 
 Every command that changes something prints its plan first and asks once. `--dry-run` prints the
 plan and writes nothing, `--yes` applies it without asking, and `--json` prints one report.

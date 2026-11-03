@@ -45,10 +45,14 @@ upkeep=$(cat <<'UPKEEP'
 cat > /tmp/upkeep.sh <<"EOS"
 set -e
 PATH="$HOME/.local/bin:$PATH"
+# The first update may move plugins to releases newer than the tested pins; a second one changes nothing.
+makeit update --yes --json > /tmp/update1.json || { cat /tmp/update1.json; exit 1; }
+cat /tmp/update1.json
+if grep -q "\"status\": \"failed\"" /tmp/update1.json; then echo "update failed a step"; exit 1; fi
 makeit update --yes --json > /tmp/update.json || { cat /tmp/update.json; exit 1; }
 cat /tmp/update.json
 if grep -q "\"status\": \"failed\"" /tmp/update.json; then echo "update failed a step"; exit 1; fi
-if grep -q "\"status\": \"done\"" /tmp/update.json; then echo "update right after setup changed something"; exit 1; fi
+if grep -q "\"status\": \"done\"" /tmp/update.json; then echo "a second update changed something"; exit 1; fi
 makeit uninstall --yes --json > /tmp/uninstall.json || { cat /tmp/uninstall.json; exit 1; }
 cat /tmp/uninstall.json
 if claude plugin list --json | grep -q "@makeit\""; then echo "a makeit plugin is still installed"; exit 1; fi
@@ -88,16 +92,16 @@ m() { SSL_CERT_FILE=/tmp/selfchain-bundle.pem MAKEIT_RELEASES_URL=https://127.0.
 same() { [ "$(sha256sum < "$1")" = "$(sha256sum < "$2")" ]; }
 m "$R/makeit-1.0.0" self install --yes
 same "$bin" "$R/makeit-1.0.0"
-m "$bin" self update --yes
+m "$bin" update --yes > /tmp/selfchain-update0.log 2>&1 || { cat /tmp/selfchain-update0.log; exit 1; }
 same "$bin" "$R/makeit-1.1.0"
 grep -q "\"version\": \"1.1.0\"" "$receipt"
 grep -q "\"previous\": \"1.0.0\"" "$receipt"
-echo "self update: ok"
-m "$bin" self rollback --yes
+echo "update to 1.1.0: ok"
+m "$bin" rollback --yes > /tmp/selfchain-rollback.log 2>&1 || { cat /tmp/selfchain-rollback.log; exit 1; }
 same "$bin" "$R/makeit-1.0.0"
 grep -q "\"version\": \"1.0.0\"" "$receipt"
 grep -q "\"skipped\": \"1.1.0\"" "$receipt"
-echo "self rollback: ok"
+echo "rollback to 1.0.0: ok"
 m "$bin" update --yes > /tmp/selfchain-update1.log 2>&1 || { cat /tmp/selfchain-update1.log; exit 1; }
 cat /tmp/selfchain-update1.log
 grep -q "makeit 1.1.0 is skipped (you rolled back from it)" /tmp/selfchain-update1.log

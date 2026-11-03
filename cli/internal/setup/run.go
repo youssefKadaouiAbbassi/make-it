@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"makeit/internal/catalog"
@@ -145,7 +146,14 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	// The apply pass checks every step again, so it reports what it keeps afresh.
 	en.hints, en.kept = nil, nil
 	var saveErr error
-	rep.Plan = runPhases(ctx, phases, plan.Options{After: func(o plan.Outcome) {
+	rep.Plan = runPhases(ctx, phases, plan.Options{Before: func(s plan.Step) {
+		if e.Progress != nil {
+			e.Progress(plan.Event{Step: s})
+		}
+	}, After: func(o plan.Outcome) {
+		if e.Progress != nil {
+			e.Progress(plan.Event{Step: plan.Step{ID: o.ID, Title: o.Title}, Outcome: &o})
+		}
 		r := &state.StepRecord{Status: string(o.Status), At: time.Now().UTC()}
 		if o.Status == plan.Failed || o.Status == plan.Interrupted {
 			r.Error = o.Detail
@@ -159,6 +167,8 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	}})
 	rep.Hints, rep.Kept, rep.Reload = en.hints, en.kept, en.reload
 	rep.Generation = gen.Manifest.Generation
+	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
+	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())
@@ -203,4 +213,15 @@ func nothingToDo(r plan.Report) bool {
 		}
 	}
 	return true
+}
+
+// updatedPins keeps the pin moves whose plugin is in updated.
+func updatedPins(pins []state.PinMove, updated []string) []state.PinMove {
+	var out []state.PinMove
+	for _, p := range pins {
+		if slices.Contains(updated, p.ID) {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -46,6 +46,9 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	mode := plan.Decide(interactive, p.Bool["yes"], p.Bool["dry-run"])
 	u := ui.New(os.Stdin, stderr, interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
+	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, asJSON, p.Bool["plain"] || p.Bool["verbose"])
+	started := time.Now()
+	u.Header("init")
 
 	e, err := initEnv(roots.Stack, dir)
 	if err != nil {
@@ -90,7 +93,15 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 	}
-	fmt.Fprintln(stderr, rep.Plan.Summary())
+	if u.Mode == ui.Live {
+		applied := setup.Report{Plan: rep.Plan}
+		if mode != plan.DryRunOnly && err == nil {
+			applied.Generation = 1 // init keeps no generations; 1 means "it ran"
+		}
+		finishLive(u, "init", applied, time.Since(started))
+	} else {
+		fmt.Fprintln(stderr, rep.Plan.Summary())
+	}
 	for _, k := range rep.Kept {
 		fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)
 	}

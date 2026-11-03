@@ -152,6 +152,20 @@ if [ -z "$out" ] && [ "$rc" = 0 ]; then ok "docs without makeit: silent, exit 0"
 mkdir -p "$tmp/empty"
 expect_empty "docs silent without manifests" "$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$tmp/empty" | docs_hook "$nomakeit")"
 
+# --- autoupdate.sh -------------------------------------------------------------------------------
+au_stack="$tmp/austack"; mkdir -p "$au_stack"
+au_hook() { PATH="$1" MAKEIT_DIR="$au_stack" bash "$here/autoupdate.sh"; }
+out=$(printf '{"hook_event_name":"SessionStart","source":"startup"}' | au_hook "$tmp/mbin:$nomakeit")
+expect_empty "autoupdate with nothing to report prints nothing" "$out"
+expect "autoupdate starts the daily run" "update --auto" "$(waitlog)"
+printf 'makeit updated: superpowers 7.1.0 · undo: makeit rollback\n' >"$au_stack/pending-note"
+out=$(printf '{"hook_event_name":"SessionStart","source":"startup"}' | au_hook "$tmp/mbin:$nomakeit")
+expect "autoupdate shows the pending note to the user" 'makeit updated: superpowers 7.1.0 · undo: makeit rollback' "$(jq -r '.systemMessage' <<<"$out" 2>/dev/null)"
+expect "autoupdate tells Claude too" 'superpowers 7.1.0' "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" 2>/dev/null)"
+[ ! -e "$au_stack/pending-note" ] && ok "autoupdate shows a note once" || bad "autoupdate shows a note once: the file is still there"
+waitlog >/dev/null
+out=$(printf '{"hook_event_name":"SessionStart","source":"startup"}' | au_hook "$nomakeit"); rc=$?
+if [ -z "$out" ] && [ "$rc" = 0 ]; then ok "autoupdate without makeit: silent, exit 0"; else bad "autoupdate without makeit: rc $rc out [$out]"; fi
 
 # --- check-task-stop.sh (optional) -------------------------------------------------------------
 cts="$tmp/cts"; mkdir -p "$cts/src"; git -C "$cts" init -q; git -C "$cts" config user.email t@e; git -C "$cts" config user.name t

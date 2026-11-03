@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/catalog"
@@ -16,6 +17,7 @@ import (
 	"makeit/internal/claudecli"
 	"makeit/internal/cli"
 	"makeit/internal/execx"
+	"makeit/internal/latest"
 	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
@@ -63,7 +65,7 @@ type modifying struct {
 	// notice is update's newer-release line, asked before the run; nil for the others.
 	notice func(ctx context.Context) string
 	// after prints the command's own closing lines, in text mode, after a run without error.
-	after func(w io.Writer, rep setup.Report)
+	after func(w io.Writer, rep setup.Report, live bool)
 	// self is the swap update's parent made before running this binary; nil otherwise.
 	self *selfMove
 	// prepare picks the catalog the run plans with (setup and update); its lines join the notice.
@@ -96,8 +98,50 @@ func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, 
 			return nil, err
 		}
 		e.Catalog, e.CatalogTree, e.CatalogRecord = prep.Source, prep.Tree, prep.Record
-		return prep.Notices, nil
+		notices := prep.Notices
+		if followsReleases(prep.Record) {
+			tree := prep.Tree
+			if tree == nil {
+				if tree, err = catalog.EmbeddedTree(); err != nil {
+					return nil, err
+				}
+			}
+			current, _ := catalog.DirTree(filepath.Join(e.Roots.Stack, "catalog"))
+			// The daily run leaves releases a rollback undid; an update run by hand takes the latest.
+			var skips map[string][]string
+			if p.Bool["auto"] {
+				skips = st.PluginSkips
+			}
+			// setup and an offline update fetch nothing: they keep the releases on disk (a nil runner)
+			// instead of writing the older pins makeit ships over them.
+			var run execx.Runner
+			if command == "update" && !p.Bool["offline"] {
+				run = execx.Run
+			}
+			moved, pins, notes := latestApply(ctx, run, tree, current, skips)
+			if moved != tree {
+				e.Catalog, e.CatalogTree = moved, moved
+			}
+			e.Pins = pins
+			notices = append(notices, notes...)
+		}
+		return notices, nil
 	}
+}
+
+// latestApply moves plugins to their newest releases; tests replace it to stay off the network.
+var latestApply = latest.Apply
+
+// followsReleases is true for a plugin set that is not pinned: makeit's own, or a git one that
+// follows its newest tag or a branch. A directory or a tag or commit pin stays exactly as given.
+func followsReleases(rec state.Catalog) bool {
+	switch rec.Kind {
+	case "", "embedded":
+		return true
+	case "git":
+		return rec.RefKind == "latest" || rec.RefKind == "branch"
+	}
+	return false
 }
 
 // runModifying is what setup, update and uninstall share: the consent rule, the plan shown before
@@ -114,6 +158,28 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	mode := plan.Decide(e.Interactive, e.Yes, p.Bool["dry-run"])
 	u := ui.New(os.Stdin, stderr, e.Interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
+	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, asJSON, p.Bool["plain"] || p.Bool["verbose"])
+	started := time.Now()
+	// The live view starts once the run applies: after the question, or at once with --yes.
+	var live *ui.LiveView
+	startLive := func(outs []plan.Outcome) {
+		if u.Mode == ui.Live && live == nil && !p.Bool["dry-run"] {
+			live = ui.NewLive(u, outs)
+		}
+	}
+	e.Run = liveRun(e.Run, func() holder {
+		if live == nil {
+			return nil // a nil *LiveView in the interface would not compare to nil
+		}
+		return live
+	})
+	e.Progress = func(ev plan.Event) {
+		startLive(nil)
+		if live != nil {
+			live.Event(ev)
+		}
+	}
+	u.Header(m.name)
 	var catalogNotices []string
 	if m.prepare != nil {
 		if catalogNotices, err = m.prepare(ctx, p, &e); err != nil {
@@ -145,9 +211,19 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	confirm := func(outs []plan.Outcome) (bool, error) {
 		printOutcomes(u, outs)
 		shown = true
-		return u.Confirm(m.question, m.yesFirst)
+		yes, err := u.Confirm(m.question, m.yesFirst)
+		if yes && err == nil {
+			if u.Mode == ui.Live {
+				_, _ = fmt.Fprintln(stderr)
+			}
+			startLive(outs)
+		}
+		return yes, err
 	}
 	rep, err := m.run(ctx, e, mode, confirm)
+	if live != nil {
+		live.Stop(ctx.Err() != nil)
+	}
 	if ctx.Err() != nil {
 		fmt.Fprintf(stderr, "%s: %s interrupted\n", prog, m.name)
 		return 1
@@ -175,27 +251,32 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 		}{buildinfo.Version, rep.Plan.Outcomes, rep.Skipped, rep.Hints, rep.Kept, notice, m.self, rep.Generation, rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
-	if !shown || rep.Generation > 0 {
+	if live == nil && (!shown || rep.Generation > 0) {
 		printOutcomes(u, rep.Plan.Outcomes)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 	}
-	fmt.Fprintln(stderr, rep.Plan.Summary())
-	for _, s := range rep.Skipped {
-		fmt.Fprintf(stderr, "install by hand: %s (%s)\n", s.ID, s.Manual)
-	}
-	for _, k := range rep.Kept {
-		fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)
-	}
-	for _, h := range rep.Hints {
-		fmt.Fprintf(stderr, "%s: %s\n", h.ID, h.Text)
+	if u.Mode == ui.Live {
+		printNotesLive(u, rep)
+		finishLive(u, m.name, rep, time.Since(started))
+	} else {
+		fmt.Fprintln(stderr, rep.Plan.Summary())
+		for _, s := range rep.Skipped {
+			fmt.Fprintf(stderr, "install by hand: %s (%s)\n", s.ID, s.Manual)
+		}
+		for _, k := range rep.Kept {
+			fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)
+		}
+		for _, h := range rep.Hints {
+			fmt.Fprintf(stderr, "%s: %s\n", h.ID, h.Text)
+		}
 	}
 	if notice != "" {
 		fmt.Fprintln(stderr, notice)
 	}
 	if m.after != nil && err == nil {
-		m.after(stderr, rep)
+		m.after(stderr, rep, u.Mode == ui.Live)
 	}
 	return code
 }
@@ -210,6 +291,10 @@ func errText(err error) string {
 // printOutcomes shows a plan or what a run did: one line per step, the commands and diffs of
 // steps that would change under it.
 func printOutcomes(u *ui.UI, outs []plan.Outcome) {
+	if u.Mode == ui.Live {
+		printAreas(u, outs)
+		return
+	}
 	for _, o := range outs {
 		switch o.Status {
 		case plan.Done:
