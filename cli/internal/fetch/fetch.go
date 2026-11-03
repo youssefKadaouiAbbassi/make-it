@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"time"
 )
@@ -43,11 +44,19 @@ func BundlePaths(getenv func(string) string) []string {
 	return append(out, systemBundles...)
 }
 
+// platformVerifier is true where Go verifies through the operating system (macOS Keychain, the
+// Windows store) rather than from bundle files; a var for the tests.
+var platformVerifier = runtime.GOOS == "darwin" || runtime.GOOS == "ios" || runtime.GOOS == "windows"
+
 // Client is an HTTP client whose roots are read from the bundle files now, not from Go's pool,
 // which loads once per process: a run that installs ca-certificates and then downloads something
-// makes a client after the install and sees the new bundle. Where no file holds a certificate
-// (macOS and Windows keep theirs in a store), the platform's own verifier is used.
+// makes a client after the install and sees the new bundle. Where the platform verifies, it keeps
+// doing so: macOS ships /etc/ssl/cert.pem too, and reading it would drop the Keychain's roots.
 func Client(timeout time.Duration, bundles []string) *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	if platformVerifier {
+		return &http.Client{Timeout: timeout, Transport: t}
+	}
 	pool := x509.NewCertPool()
 	found := false
 	for _, p := range bundles {
@@ -55,7 +64,6 @@ func Client(timeout time.Duration, bundles []string) *http.Client {
 			found = true
 		}
 	}
-	t := http.DefaultTransport.(*http.Transport).Clone()
 	if found {
 		t.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	}

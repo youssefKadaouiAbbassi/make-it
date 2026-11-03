@@ -3,6 +3,7 @@ package fetch
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -92,5 +93,33 @@ func TestBundlePaths(t *testing.T) {
 	}
 	if got := BundlePaths(func(string) string { return "" }); len(got) == 0 || got[0] != "/etc/ssl/certs/ca-certificates.crt" {
 		t.Errorf("default paths %v", got)
+	}
+}
+
+// Where the platform verifies certificates (macOS Keychain, the Windows store), the bundle files
+// never replace it: a file there would drop the roots an administrator installed.
+func TestClientKeepsPlatformVerifier(t *testing.T) {
+	saved := platformVerifier
+	t.Cleanup(func() { platformVerifier = saved })
+	s, _ := server(t, "hello")
+	bundle := filepath.Join(t.TempDir(), "ca.crt")
+	if err := os.WriteFile(bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.Certificate().Raw}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A cloned DefaultTransport always carries a TLS config (the h2 protocol list); the roots are
+	// what the platform branch must leave alone.
+	roots := func(c *http.Client) *x509.CertPool {
+		if cfg := c.Transport.(*http.Transport).TLSClientConfig; cfg != nil {
+			return cfg.RootCAs
+		}
+		return nil
+	}
+	platformVerifier = true
+	if roots(Client(time.Minute, []string{bundle})) != nil {
+		t.Error("the bundle file replaced the platform verifier")
+	}
+	platformVerifier = false
+	if roots(Client(time.Minute, []string{bundle})) == nil {
+		t.Error("the bundle file was not used where Go reads files")
 	}
 }
