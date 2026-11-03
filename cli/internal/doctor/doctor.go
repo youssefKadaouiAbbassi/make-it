@@ -242,12 +242,11 @@ func profileState(m Machine) (envPath string, missing []string) {
 	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
 	for _, p := range pathenv.Profiles(home, envPath, m.Getenv("SHELL"), m.Getenv, exists) {
 		b, _ := os.ReadFile(p.Path)
-		want := p.Lines[len(p.Lines)-1]
-		if !p.Fish {
-			want = p.Lines[1]
-		}
-		if !strings.Contains(string(b), want) {
-			missing = append(missing, p.Path)
+		for _, want := range p.Lines[1 : len(p.Lines)-1] { // the lines inside the markers
+			if !strings.Contains(string(b), want) {
+				missing = append(missing, p.Path)
+				break
+			}
 		}
 	}
 	return envPath, missing

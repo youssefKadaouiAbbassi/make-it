@@ -155,3 +155,27 @@ func TestUninstallKeepsHandWrittenLoaderLine(t *testing.T) {
 		t.Errorf("profile after uninstall %q", b)
 	}
 }
+
+// The fish file is a block between the same markers: when a folder appears later, setup rewrites
+// the block in place instead of adding a second header.
+func TestProfileStepFishGrowsInPlace(t *testing.T) {
+	e := pathEnvFixture(t, "/usr/bin/fish")
+	fishDir := filepath.Join(e.Roots.Home, ".config", "fish")
+	if err := os.MkdirAll(fishDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runStep(t, e.envStep())
+	runStep(t, e.profileStep())
+	goBin := filepath.Join(e.Roots.Home, "go", "bin")
+	if err := os.MkdirAll(goBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runStep(t, e.envStep())
+	runStep(t, e.profileStep())
+	b, _ := os.ReadFile(filepath.Join(fishDir, "conf.d", "makeit.fish"))
+	s := string(b)
+	if strings.Count(s, "# >>> makeit >>>") != 1 || strings.Count(s, "# <<< makeit <<<") != 1 ||
+		!strings.Contains(s, `fish_add_path -g "`+goBin+`"`) || !strings.Contains(s, `fish_add_path -g "`+filepath.Join(e.Roots.Home, ".local", "bin")+`"`) {
+		t.Errorf("fish file after a folder appeared:\n%s", s)
+	}
+}

@@ -477,3 +477,42 @@ func TestPrereqOffPathLoadsInANewTerminal(t *testing.T) {
 		t.Errorf("after setup, same terminal: %+v", got)
 	}
 }
+
+// For fish the check wants the fish_add_path lines inside the markers; the markers alone are a
+// block with nothing in it.
+func TestDoctorProfileCheckFish(t *testing.T) {
+	m, _ := healthy(t)
+	home := t.TempDir()
+	m.Getenv = func(k string) string {
+		switch k {
+		case "HOME":
+			return home
+		case "SHELL":
+			return "/usr/bin/fish"
+		}
+		return ""
+	}
+	confd := filepath.Join(home, ".config", "fish", "conf.d")
+	if err := os.MkdirAll(confd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(filepath.Dir(m.StatePath), "env")
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(strings.Join(pathenv.Block(envPath, home), "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fishFile := filepath.Join(confd, "makeit.fish")
+	if err := os.WriteFile(fishFile, []byte("# >>> makeit >>>\n# <<< makeit <<<\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != Warn || !strings.Contains(got.Message, "makeit.fish") {
+		t.Errorf("markers alone: %+v", got)
+	}
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	ps := pathenv.Profiles(home, envPath, "/usr/bin/fish", m.Getenv, exists)
+	if err := os.WriteFile(fishFile, []byte(strings.Join(ps[len(ps)-1].Lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != OK {
+		t.Errorf("with the lines: %+v", got)
+	}
+}

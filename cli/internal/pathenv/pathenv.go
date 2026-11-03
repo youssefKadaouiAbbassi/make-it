@@ -49,7 +49,6 @@ func EnvFile(dirs []string, home string) []byte {
 type Profile struct {
 	Path  string
 	Lines []string
-	Fish  bool
 }
 
 // Block is the managed block for an sh-style profile: it loads the env file at envPath when it
@@ -79,11 +78,11 @@ func Profiles(home, envPath, shell string, getenv func(string) string, exists fu
 		out = append(out, Profile{Path: zshenv, Lines: block})
 	}
 	if fish := filepath.Join(home, ".config", "fish"); exists(fish) {
-		lines := []string{"# written by makeit: folders where it installs programs"}
+		lines := []string{block[0]} // the same markers, so the block is found and rewritten as one
 		for _, d := range Dirs(home, getenv, exists) {
 			lines = append(lines, `fish_add_path -g "`+d+`"`)
 		}
-		out = append(out, Profile{Path: filepath.Join(fish, "conf.d", "makeit.fish"), Lines: lines, Fish: true})
+		out = append(out, Profile{Path: filepath.Join(fish, "conf.d", "makeit.fish"), Lines: append(lines, block[len(block)-1])})
 	}
 	return out
 }

@@ -66,7 +66,8 @@ func TestProfiles(t *testing.T) {
 	if sh := ps[0].Lines; !slices.Equal(sh, []string{"# >>> makeit >>>", `[ -r "$HOME/.makeit/env" ] && . "$HOME/.makeit/env"`, "# <<< makeit <<<"}) {
 		t.Errorf("sh lines %v", sh)
 	}
-	if fish := ps[1].Lines; len(fish) == 0 || fish[len(fish)-1] != `fish_add_path -g "/h/.local/bin"` {
-		t.Errorf("fish lines %v, want the folder quoted", fish)
+	// The fish file is a block between the same markers, the folders quoted inside.
+	if want := []string{"# >>> makeit >>>", `fish_add_path -g "/h/.local/bin"`, "# <<< makeit <<<"}; !slices.Equal(ps[1].Lines, want) {
+		t.Errorf("fish lines %v, want %v", ps[1].Lines, want)
 	}
 }
