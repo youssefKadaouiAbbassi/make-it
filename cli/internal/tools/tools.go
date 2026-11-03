@@ -1,0 +1,165 @@
+// Package tools installs third-party programs makeit needs: a binary from a project's GitHub
+// release, verified against the checksum file published beside it, or a package file a vendor
+// publishes for the package manager.
+package tools
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"makeit/internal/fetch"
+	"makeit/internal/fsx"
+	"makeit/internal/platform"
+)
+
+var (
+	// ErrNoAsset: the project ships nothing for this machine.
+	ErrNoAsset = errors.New("no release asset for this machine")
+	// ErrChecksum: the download does not match the project's checksum file, or the file has no
+	// line for it.
+	ErrChecksum = errors.New("checksum mismatch")
+	// ErrNoBinary: the archive holds no file by the program's name.
+	ErrNoBinary = errors.New("the archive has no such program")
+)
+
+const (
+	archiveLimit = 200 << 20
+	sumsLimit    = 1 << 20
+)
+
+var hexLine = regexp.MustCompile(`^([0-9a-fA-F]{64})(?:\s+\*?(\S+))?\s*$`)
+
+// VerifyChecksum checks sha256hex against sums, a checksum file in either common form: lines of
+// `<hex>  <name>` (one per asset, a `*` before the name allowed), or one bare `<hex>` for a file
+// that covers one asset.
+func VerifyChecksum(sums []byte, asset, sha256hex string) error {
+	lines := strings.Split(strings.TrimSpace(string(sums)), "\n")
+	for _, l := range lines {
+		m := hexLine.FindStringSubmatch(strings.TrimSpace(l))
+		if m == nil {
+			continue
+		}
+		if (m[2] == "" && len(lines) == 1) || path.Base(m[2]) == asset {
+			if strings.EqualFold(m[1], sha256hex) {
+				return nil
+			}
+			return fmt.Errorf("%w: %s", ErrChecksum, asset)
+		}
+	}
+	return fmt.Errorf("%w: no line for %s in the checksum file", ErrChecksum, asset)
+}
+
+// InstallRelease downloads r's archive for the target from base, verifies it against the
+// project's checksum file, and writes the program to dir/<bin> (0755). It returns the path.
+func InstallRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, goos, goarch, dir string) (string, error) {
+	asset, sums := r.Asset(r.Version, goos, goarch)
+	if asset == "" {
+		return "", fmt.Errorf("%w: %s on %s/%s", ErrNoAsset, r.Repo, goos, goarch)
+	}
+	var archive, list bytes.Buffer
+	if err := fetch.Get(ctx, c, ua, r.URL(base, asset), archiveLimit, &archive); err != nil {
+		return "", err
+	}
+	if err := fetch.Get(ctx, c, ua, r.URL(base, sums), sumsLimit, &list); err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(archive.Bytes())
+	if err := VerifyChecksum(list.Bytes(), asset, hex.EncodeToString(h[:])); err != nil {
+		return "", err
+	}
+	name := r.Bin
+	if goos == "windows" {
+		name += ".exe"
+	}
+	var data []byte
+	var err error
+	if strings.HasSuffix(asset, ".zip") {
+		data, err = fromZip(archive.Bytes(), name)
+	} else {
+		data, err = fromTarGz(archive.Bytes(), name)
+	}
+	if err != nil {
+		return "", err
+	}
+	dst := filepath.Join(dir, name)
+	if err := fsx.WriteAtomic(dst, data, 0o755); err != nil {
+		return "", err
+	}
+	return dst, nil
+}
+
+func fromTarGz(b []byte, name string) ([]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("%w: %s", ErrNoBinary, name)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if h.Typeflag == tar.TypeReg && path.Base(h.Name) == name {
+			return io.ReadAll(io.LimitReader(tr, archiveLimit))
+		}
+	}
+}
+
+func fromZip(b []byte, name string) ([]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range zr.File {
+		if path.Base(f.Name) != name || f.FileInfo().IsDir() {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = rc.Close() }()
+		return io.ReadAll(io.LimitReader(rc, archiveLimit))
+	}
+	return nil, fmt.Errorf("%w: %s", ErrNoBinary, name)
+}
+
+// FetchPackageFile downloads a vendor's .deb or .rpm into a fresh directory under the system
+// temporary directory (so apt's sandboxed user can read it) and returns its path.
+func FetchPackageFile(ctx context.Context, c *http.Client, ua, url string) (string, error) {
+	dir, err := os.MkdirTemp("", "makeit-pkg-")
+	if err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return "", err
+	}
+	var b bytes.Buffer
+	if err := fetch.Get(ctx, c, ua, url, archiveLimit, &b); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", err
+	}
+	dst := filepath.Join(dir, path.Base(url))
+	if err := fsx.WriteAtomic(dst, b.Bytes(), 0o644); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", err
+	}
+	return dst, nil
+}
