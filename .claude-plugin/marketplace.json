@@ -6,7 +6,7 @@
     "name": "Youssef Kadaoui Abbassi"
   },
   "metadata": {
-    "version": "0.2.1"
+    "version": "0.3.0"
   },
   "allowCrossMarketplaceDependenciesOn": [
     "claude-plugins-official"
@@ -15,21 +15,21 @@
     {
       "name": "makeit-bundle",
       "description": "Bundle: the day-to-day layer for every developer (makeit, superpowers, ponytail, chrome-devtools-mcp, deja-vu, security-audit, the four LSP plugins). Install at user scope.",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "license": "MIT",
       "source": "./plugins/makeit-bundle"
     },
     {
       "name": "makeit-ui",
       "description": "Bundle: what a UI repository adds (impeccable). Enable per project.",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "license": "MIT",
       "source": "./plugins/makeit-ui"
     },
     {
       "name": "makeit",
       "description": "makeit's own plugin: hooks (handoff, docs index, reply checks, notifications), the /makeit:init and expand-contract skills, and two MCP servers with telemetry off (chrome-devtools, docs-mcp-server read-only).",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "license": "MIT",
       "source": "./plugins/makeit"
     },

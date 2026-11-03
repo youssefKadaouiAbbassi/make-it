@@ -30,6 +30,13 @@ func (e *env) prereqSteps() []plan.Step {
 	}
 	var steps []plan.Step
 	refreshed := false
+	// npm arrives with node, which setup installs before the rows that need it (table order), so
+	// the npm route applies even where node is still to be installed.
+	nodePlanned := !e.Present("node")
+	avail := func(bin string) bool { return e.Present(bin) || (bin == "npm" && nodePlanned) }
+	// Package routes need root. Without it a required row still tries (and fails, as today); any
+	// other row takes a route that needs no root, or is left to the user.
+	canPackages := e.Root || e.Present("sudo")
 	for _, s := range platform.Status(e.Platform, e.Present) {
 		r := s.Prereq
 		if s.Present {
@@ -39,7 +46,7 @@ func (e *env) prereqSteps() []plan.Step {
 			e.keep(r.ID, "removed by you")
 			continue
 		}
-		rt := e.toolRoute(r, &refreshed)
+		rt := e.toolRoute(r, &refreshed, avail, canPackages)
 		if rt.run == nil {
 			e.needsYou = append(e.needsYou, NeedsYou{ID: r.ID, Manual: r.Manual})
 			continue
@@ -57,7 +64,7 @@ type toolRoute struct {
 	run          func(ctx context.Context) (string, error)
 }
 
-func (e *env) toolRoute(r platform.Prereq, refreshed *bool) toolRoute {
+func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) bool, canPackages bool) toolRoute {
 	record := func(route string, argv []string, sha string) {
 		e.st.Prereqs = initMap(e.st.Prereqs)
 		e.st.Prereqs[r.ID] = &state.Prereq{InstalledBy: "makeit", Route: route, Argv: argv, Sha256: sha}
@@ -76,7 +83,8 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool) toolRoute {
 		}
 		return nil
 	}
-	if cmd, ok := platform.InstallCommand(r, e.Platform.PM, e.prompting(), e.Root); ok {
+	packages := canPackages || r.Required
+	if cmd, ok := platform.InstallCommand(r, e.Platform.PM, e.prompting(), e.Root); ok && packages {
 		name := string(e.Platform.PM)
 		cmds := append(refresh(), cmd)
 		return toolRoute{name: name, detail: name, argv: cmd.Argv, run: func(ctx context.Context) (string, error) {
@@ -87,7 +95,7 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool) toolRoute {
 			return "", nil
 		}}
 	}
-	if i := slices.IndexFunc(r.Via, func(v platform.Via) bool { return e.Present(v.Bin) }); i >= 0 {
+	if i := slices.IndexFunc(r.Via, func(v platform.Via) bool { return avail(v.Bin) }); i >= 0 {
 		v := r.Via[i]
 		cmd := v.Cmd(e.Roots.Home)
 		cmd.Timeout = installTimeout
@@ -99,7 +107,7 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool) toolRoute {
 			return "", nil
 		}}
 	}
-	if url, ok := r.PkgFile[e.Platform.PM]; ok && e.Platform.Arch == "amd64" {
+	if url, ok := r.PkgFile[e.Platform.PM]; ok && e.Platform.Arch == "amd64" && packages {
 		kind := "deb"
 		if e.Platform.PM == platform.DNF {
 			kind = "rpm"

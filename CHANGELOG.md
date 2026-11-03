@@ -3,6 +3,35 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.0
+
+Breaking:
+
+- `makeit setup` and `update` also install prek, deja-vu, grype, the two npm language servers and
+  Chrome, no longer leaving them for you to install by hand; a tool you remove afterward stays
+  removed, `makeit setup --reinstall <tool>` brings it back.
+- `makeit setup` and `update` add one block to your shell profile that loads `~/.makeit/env`, which
+  keeps the folders they install into on `PATH`. `makeit uninstall` removes it.
+
+New:
+
+- `makeit doctor` at a terminal asks "Fix N problems now?" for whatever `makeit setup` or
+  `makeit update` can resolve, and runs it on yes.
+- `makeit update`'s result names what moved: makeit's own version change, the plugins it moved by
+  name (a count past two), and a count of the rest.
+
+Fixes:
+
+- `makeit rollback` undoes an update the daily run made: `update` now records when it swapped
+  makeit in, which rollback reads; before, it only looked back 15 minutes from the run that wrote
+  files, so an update from hours earlier was never undone.
+- A clean live run of `setup` or `update` shows no note rows; how an adopted plugin gets its
+  updates stays in `--verbose` and the log, as it already did for plain mode.
+- "gopls is missing" when it is only off `PATH` now gives the line to put it there, instead of the
+  same install command that already ran once.
+- "Settings.json: a value you hold" reads as the setting's name and what happens to it, not a
+  JSON pointer.
+
 ## 0.2.1
 
 Fixes:

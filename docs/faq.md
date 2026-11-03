@@ -84,6 +84,18 @@ such as `check:api`, are shell commands and need a POSIX shell.
 If something fails on Windows or macOS, please [open an issue](https://github.com/youssefKadaouiAbbassi/make-it/issues)
 with the output of `makeit doctor`.
 
+## I removed a tool makeit installed
+
+It stays removed: makeit never reinstalls a tool it put on your machine once you take it away.
+To get it back, `makeit setup --reinstall <tool>`, naming the tool as [What makeit installs](included.md)
+does (for example `prek`, `gopls`).
+
+## I don't want Chrome
+
+`setup` installs it once, since chrome-devtools-mcp needs a real Chrome. Remove it the normal way
+afterward (`sudo apt remove google-chrome-stable`, for example) and makeit leaves it alone from
+then on, the same as any tool you take away after it installs one.
+
 ## What does beta mean here?
 
 makeit is at 0.x. Commands, flags and the files it writes may still change between releases. A

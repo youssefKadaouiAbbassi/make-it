@@ -145,7 +145,9 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 		st.Steps = map[string]*state.StepRecord{}
 	}
 	// The apply pass checks every step again, so it reports what it keeps afresh.
-	en.hints, en.kept, en.needsYou = nil, nil, nil
+	// needsYou is decided when the plan is built, once; hints and kept come from the steps,
+	// which run again now.
+	en.hints, en.kept = nil, nil
 	var saveErr error
 	rep.Plan = runPhases(ctx, phases, plan.Options{Before: func(s plan.Step) {
 		if e.Progress != nil {

@@ -33,7 +33,7 @@ func stepByID(t *testing.T, e *env, id string) plan.Step {
 
 // Every tool is installed by the first route the machine has.
 func TestRouteOrder(t *testing.T) {
-	core := []string{"apt-get", "git", "node", "jq"}
+	core := []string{"apt-get", "sudo", "git", "node", "jq"}
 	t.Run("package manager", func(t *testing.T) {
 		e, _ := newEnv(t, core...)
 		s := stepByID(t, e, "prereq.gh")
@@ -154,7 +154,7 @@ func TestReleaseRouteInstalls(t *testing.T) {
 
 // A tool makeit installed and the user removed stays removed, unless asked for again.
 func TestRemovedByYouStaysRemoved(t *testing.T) {
-	e, _ := newEnv(t, "apt-get", "git", "node", "jq")
+	e, _ := newEnv(t, "apt-get", "sudo", "git", "node", "jq")
 	e.st.Prereqs = map[string]*state.Prereq{"gh": {InstalledBy: "makeit", Route: "apt"}}
 	if ids := stepIDs(e); slices.Contains(ids, "prereq.gh") {
 		t.Errorf("gh planned again: %v", ids)
@@ -175,5 +175,50 @@ func TestBackgroundRunSkipsTools(t *testing.T) {
 	e.Background = true
 	if ids := stepIDs(e); len(ids) != 0 {
 		t.Errorf("background run plans %v", ids)
+	}
+}
+
+// npm arrives with node, which setup installs first: the npm route applies on a machine where
+// node is still to be installed, and its step comes after node's.
+func TestNpmRouteWhenNodeIsPlanned(t *testing.T) {
+	e, _ := newEnv(t, "apt-get", "sudo", "git", "jq")
+	ids := stepIDs(e)
+	node, ts := slices.Index(ids, "prereq.node"), slices.Index(ids, "prereq.typescript-language-server")
+	if node < 0 || ts < 0 || ts < node {
+		t.Fatalf("steps %v: want node before typescript-language-server", ids)
+	}
+	s := stepByID(t, e, "prereq.typescript-language-server")
+	if len(s.Command) == 0 || s.Command[0] != "npm" {
+		t.Errorf("command %v, want npm", s.Command)
+	}
+	if slices.ContainsFunc(e.needsYou, func(n NeedsYou) bool { return n.ID == "typescript-language-server" }) {
+		t.Errorf("typescript-language-server left to the user although node is planned: %+v", e.needsYou)
+	}
+}
+
+// Without sudo (and not root), a tool whose only route needs the package manager is left to the
+// user; the routes that need no root still run.
+func TestNoSudoLeavesPackageToolsToYou(t *testing.T) {
+	e, _ := newEnv(t, "apt-get", "git", "node", "jq", "npm")
+	ids := stepIDs(e)
+	for _, id := range []string{"prereq.gh", "prereq.chrome"} {
+		if slices.Contains(ids, id) {
+			t.Errorf("%s planned without sudo: %v", id, ids)
+		}
+	}
+	for _, id := range []string{"gh", "chrome"} {
+		if !slices.ContainsFunc(e.needsYou, func(n NeedsYou) bool { return n.ID == id }) {
+			t.Errorf("%s not left to the user: %+v", id, e.needsYou)
+		}
+	}
+	for _, id := range []string{"prereq.prek", "prereq.typescript-language-server"} {
+		if !slices.Contains(ids, id) {
+			t.Errorf("%s not planned (needs no root): %v", id, ids)
+		}
+	}
+	e.Root = true
+	e.needsYou = nil
+	if ids := stepIDs(e); !slices.Contains(ids, "prereq.gh") {
+		t.Errorf("as root, gh not planned: %v", ids)
 	}
 }

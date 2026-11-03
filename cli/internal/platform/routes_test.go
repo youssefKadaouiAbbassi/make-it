@@ -2,6 +2,7 @@ package platform
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -80,5 +81,33 @@ func TestChromeRoutes(t *testing.T) {
 	}
 	if !strings.Contains(c.Manual, "https://www.google.com/chrome/") || strings.Contains(c.Manual, "chromium") {
 		t.Errorf("manual %q", c.Manual)
+	}
+}
+
+// The CA bundle check reads the files: x509.SystemCertPool would load Go's pool once for the
+// whole process, and a probe before ca-certificates is installed would cache an empty pool for
+// every download the same run makes afterward.
+func TestCABundleDetection(t *testing.T) {
+	dir := t.TempDir()
+	full := filepath.Join(dir, "full.crt")
+	empty := filepath.Join(dir, "empty.crt")
+	if err := os.WriteFile(full, []byte("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(empty, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		paths []string
+		want  bool
+	}{
+		{[]string{filepath.Join(dir, "missing.crt"), full}, true},
+		{[]string{empty}, false},
+		{[]string{filepath.Join(dir, "missing.crt")}, false},
+		{nil, false},
+	} {
+		if got := caBundleIn(tc.paths); got != tc.want {
+			t.Errorf("caBundleIn(%v) = %v, want %v", tc.paths, got, tc.want)
+		}
 	}
 }

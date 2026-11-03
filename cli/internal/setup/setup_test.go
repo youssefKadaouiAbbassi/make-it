@@ -72,7 +72,7 @@ func stepIDs(e *env) []string {
 
 // Nothing is optional: every missing tool that applies here gets a step, by its route.
 func TestPrereqStepsEveryMissingTool(t *testing.T) {
-	e, _ := newEnv(t, "apt-get", "node", "jq")
+	e, _ := newEnv(t, "apt-get", "sudo", "node", "jq")
 	steps := e.prereqSteps()
 	if len(steps) == 0 || steps[0].ID != "prereq.git" {
 		t.Fatalf("steps %v, want prereq.git first", stepIDs(e))
@@ -91,7 +91,7 @@ func TestPrereqStepsEveryMissingTool(t *testing.T) {
 // The LSP rows: the toolchain-bound ones only on a machine with that toolchain (LSP-ROWS.md);
 // the npm ones through npm; one with neither a package nor its toolchain route here needs you.
 func TestPrereqLSPRows(t *testing.T) {
-	core := []string{"apt-get", "git", "node", "jq"}
+	core := []string{"apt-get", "sudo", "git", "node", "jq"}
 	for _, id := range []string{"prereq.gopls", "prereq.rust-analyzer"} {
 		e, _ := newEnv(t, core...)
 		if slices.Contains(stepIDs(e), id) {

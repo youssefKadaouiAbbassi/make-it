@@ -117,21 +117,21 @@ On makeit 0.1.x, which has no daily run, run `makeit self update` once to get he
 
 ## Check your machine
 
-`makeit doctor` changes nothing; it checks this machine and prints a fix for each problem:
+`makeit doctor` changes nothing; it checks this machine, lists each problem with a fix, and, at a
+terminal, offers to run the fix for anything `makeit setup` or `makeit update` can reach. setup
+installs almost every tool makeit uses itself; Chrome, where neither your package manager nor
+Google ships one for it, is the one doctor still leaves to you:
 
 ```console
 $ makeit doctor
 
 >_ makeit  doctor
 
-  ✓ 32 checks passed
-  ! deja-vu is missing: the memory plugin's local search binary
-    fix go install github.com/vshulcz/deja-vu/cmd/deja@latest, or a release binary from
-        github.com/vshulcz/deja-vu
-  ! pyright is missing: the pyright-lsp plugin runs it for .py files
-    fix npm install -g pyright
+  ✓ 11 checks passed
+  ! chrome is missing: chrome-devtools-mcp drives an installed Chrome (also used by sitespeed.io)
+    fix Google Chrome or Chrome for Testing: https://www.google.com/chrome/
 
-  ✓ Healthy · 7 warnings · every check: makeit doctor --verbose
+  ✓ Healthy · 1 warning · every check: makeit doctor --verbose
 ```
 
 ## Commands
@@ -140,7 +140,7 @@ $ makeit doctor
 |---|---|
 | `makeit setup` | installs the missing prerequisites, Claude Code, the plugin set, settings and global files |
 | `makeit init [dir]` | writes a project's CLAUDE.md, CONSTRAINTS.md, check tasks, hook config and CI caller |
-| `makeit doctor` | nothing; it reports each problem with a fix |
+| `makeit doctor` | nothing by itself; lists each problem and, at a terminal, offers to fix them |
 | `makeit update` | moves makeit and the plugins to their newest releases, then the settings and global files (also runs daily on its own) |
 | `makeit rollback` | undoes the last update: files, plugin versions and makeit itself |
 | `makeit uninstall` | removes what makeit added and you did not change since |

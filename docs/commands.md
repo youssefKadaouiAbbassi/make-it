@@ -1,9 +1,9 @@
 # Commands
 
-Every command and flag, as `makeit help` prints them in makeit 0.2.1. Run `makeit help <command>` for the same text in your terminal.
+Every command and flag, as `makeit help` prints them in makeit 0.3.0. Run `makeit help <command>` for the same text in your terminal.
 
 ```
-makeit 0.2.1: a tested Claude Code setup for serious coding.
+makeit 0.3.0: a tested Claude Code setup for serious coding.
 
 Usage: makeit [command] [flags]   (no command: status and what to do next)
 
@@ -42,6 +42,7 @@ set up this machine: prerequisites, Claude Code, the plugin set, settings and gl
 Flags:
   --allow-branch                     let --catalog follow a #<branch>: each update takes its newest commit
   --catalog <src>                    where the plugin set comes from: embedded (the one in this makeit), a directory, owner/repo or a git URL, with #<tag or branch> or @<commit>; kept for later runs
+  --reinstall <tool>                 install this tool again although you removed it (comma-separated for several)
 
 Flags for every command:
   --color <auto|always|never>        colour output (default auto; NO_COLOR is honoured)
@@ -213,6 +214,8 @@ Environment variables makeit reads:
   GIT_SSH_COMMAND     used for a --catalog git source over ssh when set; otherwise ssh runs in batch mode
   GIT_SSH             used for a --catalog git source over ssh when set, as is core.sshCommand; makeit then leaves ssh as you set it
   HOME                the home directory (USERPROFILE on Windows)
+  SHELL               picks .zshenv for the PATH line when it names zsh; empty means not zsh
+  ZDOTDIR             where .zshenv goes when zsh reads it from here instead of HOME
   PATH                where claude, npm, git and the package managers are looked up
   USERPROFILE         the home directory on Windows
   GOBIN               where doctor looks for gopls that go install put off PATH (then GOPATH/bin, then ~/go/bin)

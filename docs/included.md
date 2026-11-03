@@ -9,27 +9,40 @@ Anything already installed is kept as yours. setup adds only what is missing, an
 
 ## Prerequisites
 
-setup installs the required rows with your package manager (apt, dnf, apk or pacman on Linux,
-Homebrew on macOS, winget on Windows). The plan shows each install command, `sudo` included,
-before anything runs. It does not install the
-optional rows: a missing optional tool is a warning, and setup ends by listing the skipped ones
-with the command to install each by hand. `makeit doctor` shows the same.
+setup installs every tool below that applies to your machine, by the first route it has: your
+package manager, a toolchain already on `PATH` (npm, go, rustup), the vendor's own package
+(Chrome), or the project's signed GitHub release, checksum verified, into `~/.local/bin`. The plan
+shows each command, `sudo` included, before anything runs. A tool makeit installed and you remove
+afterward stays removed; `makeit setup --reinstall <tool>` brings it back. Only a tool with
+nothing to install from on this machine (Chrome where neither your package manager nor Google
+ships one for it) is left to you, listed with the one line to do it by hand; `makeit doctor` shows
+the same and, at a terminal, can run the fix for you.
 
-| tool | required | what it is for |
+| tool | how setup installs it | what it is for |
 |---|---|---|
-| CA certificates | yes (Linux only) | TLS for makeit, git and Claude Code's plugin installs |
-| git | yes | every repository, the HANDOFF hook, the commit hooks |
-| Node.js | yes | the two MCP servers start with `npx` (chrome-devtools-mcp, docs-mcp-server) |
-| jq | yes | the hooks read Claude Code's JSON with it |
-| gh | no | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
-| Chrome or Chromium | no | chrome-devtools-mcp drives an installed browser |
-| prek | no | runs the commit hooks in `.pre-commit-config.yaml` |
-| deja | no | the local search binary of the deja-vu plugin |
-| grype | no | the vulnerability scan, run locally (the CI checks run it too) |
-| typescript-language-server | no | the typescript-lsp plugin runs it for `.ts` and `.js` files |
-| pyright | no | the pyright-lsp plugin runs it for `.py` files |
-| rust-analyzer | no, checked only when `cargo` or `rustup` is on `PATH` | the rust-analyzer-lsp plugin runs it for `.rs` files |
-| gopls | no, checked only when `go` is on `PATH` | the gopls-lsp plugin runs it for `.go` files |
+| CA certificates | your package manager (Linux only) | TLS for makeit, git and Claude Code's plugin installs |
+| git | your package manager | every repository, the HANDOFF hook, the commit hooks |
+| Node.js | your package manager | the two MCP servers start with `npx` (chrome-devtools-mcp, docs-mcp-server) |
+| jq | your package manager | the hooks read Claude Code's JSON with it |
+| gh | your package manager | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
+| Chrome | Homebrew, winget, or Google's own `.deb`/`.rpm` on apt or dnf (x86-64); left to you elsewhere | chrome-devtools-mcp drives an installed Chrome (it supports Chrome and Chrome for Testing, not Chromium) |
+| prek | Homebrew, winget, or a release binary from github.com/j178/prek | runs the commit hooks in `.pre-commit-config.yaml` |
+| deja | Homebrew, or a release binary from github.com/vshulcz/deja-vu | the local search binary of the deja-vu plugin |
+| grype | Homebrew, winget, or a release binary from github.com/anchore/grype | the vulnerability scan, run locally (the CI checks run it too) |
+| typescript-language-server | Homebrew, or `npm install -g --prefix ~/.local` | the typescript-lsp plugin runs it for `.ts` and `.js` files |
+| pyright | Homebrew, or `npm install -g --prefix ~/.local` | the pyright-lsp plugin runs it for `.py` files |
+| rust-analyzer | checked only when `cargo` or `rustup` is on `PATH`: Homebrew, apk, dnf, or `rustup component add` | the rust-analyzer-lsp plugin runs it for `.rs` files |
+| gopls | checked only when `go` is on `PATH`: Homebrew, apt, apk, or `go install` into `~/.local/bin` | the gopls-lsp plugin runs it for `.go` files |
+
+### PATH
+
+setup keeps the folders it installs into on `PATH`: `~/.makeit/env` lists them (`~/.local/bin`
+always, plus `~/go/bin` or `~/.cargo/bin` when a tool landed there through a toolchain you already
+had), and one block, between `# >>> makeit >>>` and `# <<< makeit <<<`, loads it from your shell's
+profile (`~/.profile`, `~/.bashrc` when you have one, `.zshenv` for zsh, a fish `conf.d` file for
+fish). Lines you had in that file stay. `makeit uninstall` removes exactly what it added. A run
+that just added the block says to open a new terminal; your current one keeps its own `PATH` until
+then.
 
 ## Claude Code
 
@@ -51,7 +64,7 @@ bundle has no content of its own: installing it installs these plugins.
 
 | plugin | version | what it does | tested |
 |---|---|---|---|
-| makeit | 0.2.1 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
+| makeit | 0.3.0 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
 | superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review | yes: on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost; a tie on a second hard test |
 | ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` | yes: the cheapest and fastest option on the UI tasks, chosen over Caveman |
 | chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) | yes: compared with other browser tools; the only one with traces, Lighthouse and device emulation |
@@ -75,7 +88,7 @@ One more bundle is enabled per project, not per machine:
 
 | plugin | version | what it does | tested |
 |---|---|---|---|
-| makeit-ui | 0.2.1 | a bundle for projects with a web frontend: it installs impeccable | |
+| makeit-ui | 0.3.0 | a bundle for projects with a web frontend: it installs impeccable | |
 | impeccable | 4.8.0 | design skills for user interfaces | yes: won every blind comparison against seven other design skills |
 
 `makeit init` enables `makeit-ui` in a project's `.claude/settings.json` when it finds a web

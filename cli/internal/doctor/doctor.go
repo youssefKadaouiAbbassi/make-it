@@ -199,12 +199,22 @@ func (r *report) prereqs(m Machine) {
 			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why), "makeit setup")
 			continue
 		}
+		// The fix is for a person at a terminal, so sudo may prompt (no -n). A literal command
+		// (Via, InstallCommand) is still useful by hand; every other route setup also has just
+		// points there, like any other check setup resolves.
 		fix := s.Prereq.Manual
-		// The fix is for a person at a terminal, so sudo may prompt (no -n).
-		if s.Via != nil {
+		cmd, pkgOK := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false)
+		var asset string
+		if s.Prereq.Release != nil {
+			asset, _ = s.Prereq.Release.Asset(s.Prereq.Release.Version, m.Platform.OS, m.Platform.Arch)
+		}
+		switch {
+		case s.Via != nil:
 			fix = execx.Quote(s.Via)
-		} else if cmd, ok := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false); ok {
+		case pkgOK:
 			fix = execx.Quote(cmd.Argv)
+		case s.Prereq.PkgFile[m.Platform.PM] != "" && m.Platform.Arch == "amd64", asset != "":
+			fix = "makeit setup"
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)
 	}

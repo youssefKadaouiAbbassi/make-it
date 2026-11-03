@@ -268,3 +268,16 @@ func TestRunLockedPlansNothing(t *testing.T) {
 		t.Errorf("planned while another run held the lock: %v", m.calls)
 	}
 }
+
+// What setup cannot install here is reported after the apply pass too, not only in the plan.
+func TestNeedsYouSurvivesTheApplyPass(t *testing.T) {
+	m := newMachine(t)
+	m.env.Platform.PM = platform.APK
+	m.env.Present = func(bin string) bool {
+		return !slices.Contains([]string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "Google Chrome"}, bin)
+	}
+	rep := apply(t, m)
+	if !slices.ContainsFunc(rep.NeedsYou, func(n NeedsYou) bool { return n.ID == "chrome" }) {
+		t.Errorf("needs you %+v, want chrome", rep.NeedsYou)
+	}
+}

@@ -4,7 +4,7 @@ package platform
 
 import (
 	"cmp"
-	"crypto/x509"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -299,9 +299,25 @@ func Find(id string) Prereq {
 
 // hasCABundle reports whether Go found any system root. A missing bundle gives an empty pool,
 // and TLS then fails with "certificate signed by unknown authority" (measured on slim images).
+// hasCABundle reports a CA bundle on disk, read from the files Go's crypto/x509 reads on Linux.
+// It must not call x509.SystemCertPool: Go loads that pool once per process, and this probe runs
+// before setup installs ca-certificates, so it would cache an empty pool for every download the
+// same run makes afterward (seen on ubuntu:24.04, 2026-11-03).
 func hasCABundle() bool {
-	pool, err := x509.SystemCertPool()
-	return err == nil && !pool.Equal(x509.NewCertPool())
+	return caBundleIn([]string{
+		"/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/ca-bundle.pem",
+		"/etc/pki/tls/cacert.pem", "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", "/etc/ssl/cert.pem",
+	})
+}
+
+// caBundleIn reports whether one of paths holds a certificate.
+func caBundleIn(paths []string) bool {
+	for _, p := range paths {
+		if b, err := os.ReadFile(p); err == nil && strings.Contains(string(b), "BEGIN CERTIFICATE") {
+			return true
+		}
+	}
+	return false
 }
 
 // State is one row checked on this machine.

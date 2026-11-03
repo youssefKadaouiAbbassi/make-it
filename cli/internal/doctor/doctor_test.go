@@ -397,3 +397,24 @@ func TestDoctorProfileCheck(t *testing.T) {
 		t.Errorf("with the block: %+v", got)
 	}
 }
+
+// A tool missing here but routed (its package file or release binary applies to this machine)
+// gets "makeit setup" as its fix, like every other check setup resolves; one truly left to the
+// user (chrome where neither works) keeps its manual line.
+func TestPrereqRoutedFixIsSetup(t *testing.T) {
+	m, _ := healthy(t)
+	m.Prereqs = []platform.State{
+		{Prereq: platform.Find("prek")},   // release binary, no package on apt
+		{Prereq: platform.Find("chrome")}, // Google's .deb on apt
+	}
+	checks := Run(context.Background(), m)
+	for _, id := range []string{"prereq.prek", "prereq.chrome"} {
+		if got := byID(t, checks, id); got.Fix != "makeit setup" {
+			t.Errorf("%s fix = %q, want makeit setup", id, got.Fix)
+		}
+	}
+	m.Platform.PM = platform.APK
+	if got := byID(t, Run(context.Background(), m), "prereq.chrome"); got.Fix == "makeit setup" || !strings.Contains(got.Fix, "https://www.google.com/chrome/") {
+		t.Errorf("chrome on apk fix = %q, want the manual line", got.Fix)
+	}
+}
