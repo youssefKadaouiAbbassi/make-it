@@ -34,6 +34,8 @@ type Report struct {
 	Reload bool
 	// Generation is the run's generation, 0 when nothing was applied.
 	Generation int
+	// Pins are the plugin release moves the run recorded (the plugin really updated).
+	Pins []state.PinMove
 }
 
 // Skipped is an optional prerequisite setup did not install.
@@ -169,6 +171,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	rep.Generation = gen.Manifest.Generation
 	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
 	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
+	rep.Pins = gen.Manifest.Pins
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())

@@ -259,7 +259,7 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	}
 	if u.Mode == ui.Live {
 		printNotesLive(u, rep)
-		finishLive(u, m.name, rep, time.Since(started))
+		finishLive(u, m.name, rep, m.self, time.Since(started))
 	} else {
 		fmt.Fprintln(stderr, rep.Plan.Summary())
 		for _, s := range rep.Skipped {

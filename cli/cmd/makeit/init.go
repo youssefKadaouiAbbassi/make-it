@@ -98,7 +98,7 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 		if mode != plan.DryRunOnly && err == nil {
 			applied.Generation = 1 // init keeps no generations; 1 means "it ran"
 		}
-		finishLive(u, "init", applied, time.Since(started))
+		finishLive(u, "init", applied, nil, time.Since(started))
 	} else {
 		fmt.Fprintln(stderr, rep.Plan.Summary())
 	}
