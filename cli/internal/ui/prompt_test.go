@@ -86,7 +86,9 @@ func TestFormInputPipeWrapped(t *testing.T) {
 }
 
 func TestEscLeavesAQuestion(t *testing.T) {
-	if !slices.Contains(keymap().Quit.Keys(), "esc") {
-		t.Error("Esc does not leave a question")
+	for _, k := range []string{"esc", "q"} {
+		if !slices.Contains(keymap().Quit.Keys(), k) {
+			t.Errorf("%s does not leave a question", k)
+		}
 	}
 }

@@ -57,10 +57,10 @@ func (u *UI) formInput() io.Reader {
 	return &abortOnEOF{r: u.in}
 }
 
-// keymap is Huh's, with Esc leaving a question like Ctrl-C (Huh's own quits on Ctrl-C only).
+// keymap is Huh's, with Esc and q leaving a question like Ctrl-C (Huh's own quits on Ctrl-C only).
 func keymap() *huh.KeyMap {
 	km := huh.NewDefaultKeyMap()
-	km.Quit = key.NewBinding(key.WithKeys("ctrl+c", "esc"))
+	km.Quit = key.NewBinding(key.WithKeys("ctrl+c", "esc", "q"))
 	return km
 }
 
