@@ -13,7 +13,6 @@ import (
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
-	"makeit/internal/execx"
 	"makeit/internal/fsx"
 	"makeit/internal/platform"
 	"makeit/internal/selfupdate"
@@ -60,6 +59,9 @@ type Machine struct {
 	Globals   []string
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
+	// Root and HasSudo say whether setup could use the package manager here (brew and winget
+	// need neither).
+	Root, HasSudo bool
 	// Exe is this makeit, symlinks resolved; Self is what its receipt says; Dev is a development
 	// build, which never updates itself.
 	Exe  string
@@ -199,21 +201,17 @@ func (r *report) prereqs(m Machine) {
 			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why), "makeit setup")
 			continue
 		}
-		// The fix is for a person at a terminal, so sudo may prompt (no -n). A literal command
-		// (Via, InstallCommand) is still useful by hand; every other route setup also has just
-		// points there, like any other check setup resolves.
-		fix := s.Prereq.Manual
-		cmd, pkgOK := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false)
+		// The fix is "makeit setup" whenever setup has a route here, by setup's own rule (package
+		// routes need root, except brew and winget); only a tool setup would leave to the user
+		// keeps its manual line.
+		packages := s.Prereq.Required || m.Root || m.HasSudo || m.Platform.PM == platform.Brew || m.Platform.PM == platform.WinGet
+		_, pkgOK := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false)
 		var asset string
 		if s.Prereq.Release != nil {
 			asset, _ = s.Prereq.Release.Asset(s.Prereq.Release.Version, m.Platform.OS, m.Platform.Arch)
 		}
-		switch {
-		case s.Via != nil:
-			fix = execx.Quote(s.Via)
-		case pkgOK:
-			fix = execx.Quote(cmd.Argv)
-		case s.Prereq.PkgFile[m.Platform.PM] != "" && m.Platform.Arch == "amd64", asset != "":
+		fix := s.Prereq.Manual
+		if s.Via != nil || (pkgOK && packages) || (s.Prereq.PkgFile[m.Platform.PM] != "" && m.Platform.Arch == "amd64" && packages) || asset != "" {
 			fix = "makeit setup"
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)
@@ -253,17 +251,18 @@ func (r *report) profile(m Machine) {
 	r.add("path.profile", "prereqs", OK, "the shell profile loads "+filepath.Join(stack, "env"), "")
 }
 
-// offPath returns the folder where one of p's toolchain routes put its program, when the program
-// is there but not on PATH; "" otherwise.
+// offPath returns the folder makeit's env file puts on PATH (~/.local/bin, the go and cargo
+// folders) that holds p's program, when it is there but not on PATH; "" otherwise.
 func offPath(p platform.Prereq, getenv func(string) string) string {
 	if getenv == nil {
 		return ""
 	}
-	for _, v := range p.Via {
-		dir := v.Into(getenv)
-		if dir == "" {
-			continue
-		}
+	home := cmp.Or(getenv("HOME"), getenv("USERPROFILE"))
+	if home == "" {
+		return ""
+	}
+	exists := func(d string) bool { _, err := os.Stat(d); return err == nil }
+	for _, dir := range pathenv.Dirs(home, getenv, exists) {
 		for _, b := range p.Bins {
 			for _, name := range []string{b, b + ".exe"} {
 				if fi, err := os.Stat(filepath.Join(dir, name)); err == nil && fi.Mode().IsRegular() {

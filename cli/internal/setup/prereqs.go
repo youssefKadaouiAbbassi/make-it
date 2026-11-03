@@ -13,6 +13,7 @@ import (
 	"makeit/internal/buildinfo"
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
+	"makeit/internal/pathenv"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
 	"makeit/internal/state"
@@ -34,10 +35,26 @@ func (e *env) prereqSteps() []plan.Step {
 	// the npm route applies even where node is still to be installed.
 	nodePlanned := !e.Present("node")
 	avail := func(bin string) bool { return e.Present(bin) || (bin == "npm" && nodePlanned) }
-	// Package routes need root. Without it a required row still tries (and fails, as today); any
-	// other row takes a route that needs no root, or is left to the user.
-	canPackages := e.Root || e.Present("sudo")
-	for _, s := range platform.Status(e.Platform, e.Present) {
+	// Package routes need root, except brew and winget. Without it a required row still tries
+	// (and fails, as today); any other row takes a route that needs no root, or is left to the user.
+	canPackages := e.Root || e.Present("sudo") || e.Platform.PM == platform.Brew || e.Platform.PM == platform.WinGet
+	// A tool already on disk in a folder makeit puts on PATH is present even before a new terminal
+	// sees it: never installed twice, never taken for one the user removed.
+	dirs := pathenv.Dirs(e.Roots.Home, e.getenv, e.exists)
+	present := func(bin string) bool {
+		if e.Present(bin) {
+			return true
+		}
+		for _, d := range dirs {
+			for _, name := range []string{bin, bin + ".exe"} {
+				if fi, err := os.Stat(filepath.Join(d, name)); err == nil && fi.Mode().IsRegular() {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	for _, s := range platform.Status(e.Platform, present) {
 		r := s.Prereq
 		if s.Present {
 			continue
@@ -86,9 +103,9 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 	packages := canPackages || r.Required
 	if cmd, ok := platform.InstallCommand(r, e.Platform.PM, e.prompting(), e.Root); ok && packages {
 		name := string(e.Platform.PM)
-		cmds := append(refresh(), cmd)
 		return toolRoute{name: name, detail: name, argv: cmd.Argv, run: func(ctx context.Context) (string, error) {
-			if err := e.runAll(ctx, cmds); err != nil {
+			// The index refresh goes to the first install that runs, whichever row that is.
+			if err := e.runAll(ctx, append(refresh(), cmd)); err != nil {
 				return "", err
 			}
 			record(name, cmd.Argv, "")
@@ -134,16 +151,15 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 	if rel := r.Release; rel != nil {
 		if asset, _ := rel.Asset(rel.Version, e.Platform.OS, e.Platform.Arch); asset != "" {
 			return toolRoute{name: "release", detail: "release v" + rel.Version + " from github.com/" + rel.Repo, run: func(ctx context.Context) (string, error) {
-				path, err := tools.InstallRelease(ctx, e.client(), userAgent(), cmp.Or(e.ReleaseBase, "https://github.com"), *rel,
-					e.Platform.OS, e.Platform.Arch, filepath.Join(e.Roots.Home, ".local", "bin"))
+				name, data, err := tools.FetchRelease(ctx, e.client(), userAgent(), cmp.Or(e.ReleaseBase, "https://github.com"), *rel, e.Platform.OS, e.Platform.Arch)
 				if err != nil {
 					return "", err
 				}
-				sha, err := fsx.FileSha256(path)
-				if err != nil {
+				// Through the generation, like every file setup writes: rollback removes it again.
+				if err := e.write("prereq."+r.ID, filepath.Join(e.Roots.Home, ".local", "bin", name), data, 0o755); err != nil {
 					return "", err
 				}
-				record("release", nil, sha)
+				record("release", nil, fsx.Sha256(data))
 				return "", nil
 			}}
 		}

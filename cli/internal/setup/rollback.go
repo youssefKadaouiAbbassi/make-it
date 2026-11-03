@@ -117,7 +117,13 @@ func (e *env) restoreStep(g *state.Generation, op state.Op) plan.Step {
 			if err != nil {
 				return "", err
 			}
-			return "", fsx.WriteAtomic(path, old, 0o600)
+			// The write went through the link to its target (landing); so does the restore, and
+			// the file keeps the mode it has (a profile is 0644, a global file 0600).
+			dst, perm, err := landing(path, 0o600)
+			if err != nil {
+				return "", err
+			}
+			return "", fsx.WriteAtomic(dst, old, perm)
 		}}
 }
 

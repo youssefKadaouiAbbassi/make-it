@@ -146,6 +146,14 @@ func followsReleases(rec state.Catalog) bool {
 	return false
 }
 
+// decideRun is the consent rule: --yes applies unattended (and sudo runs with -n); "consented"
+// (doctor's fix, after its own question) applies without asking the plan question again but keeps
+// sudo able to ask for a password at the terminal, since Yes stays false.
+func decideRun(p cli.Parsed, interactive bool) (yes bool, mode plan.Mode) {
+	yes = p.Bool["yes"]
+	return yes, plan.Decide(interactive, yes || p.Bool["consented"], p.Bool["dry-run"])
+}
+
 // runModifying is what setup, update and uninstall share: the consent rule, the plan shown before
 // the prompt, the outcomes, the exit code and the JSON report.
 func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m modifying) int {
@@ -156,14 +164,14 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	}
 	asJSON := p.Bool["json"]
 	e.Interactive = isTTY(os.Stdin) && isTTY(stderr) && !p.Bool["no-input"] && !asJSON
-	e.Yes = p.Bool["yes"]
+	var mode plan.Mode
+	e.Yes, mode = decideRun(p, e.Interactive)
 	e.Background = p.Bool["auto"]
 	for _, id := range strings.Split(p.String["reinstall"], ",") {
 		if id = strings.TrimSpace(id); id != "" {
 			e.Reinstall = append(e.Reinstall, id)
 		}
 	}
-	mode := plan.Decide(e.Interactive, e.Yes, p.Bool["dry-run"])
 	u := ui.New(os.Stdin, stderr, e.Interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
 	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, asJSON, p.Bool["plain"] || p.Bool["verbose"])

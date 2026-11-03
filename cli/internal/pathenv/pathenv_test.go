@@ -61,7 +61,8 @@ func TestProfiles(t *testing.T) {
 		}
 	}
 	ps := Profiles(h, "/h/.makeit/env", "/usr/bin/fish", env(nil), exists("/h/.config/fish"))
-	if sh := ps[0].Lines; !slices.Equal(sh, []string{"# >>> makeit >>>", `. "$HOME/.makeit/env"`, "# <<< makeit <<<"}) {
+	// Guarded: a profile must never fail (dash would exit a login shell) once the env file is gone.
+	if sh := ps[0].Lines; !slices.Equal(sh, []string{"# >>> makeit >>>", `[ -r "$HOME/.makeit/env" ] && . "$HOME/.makeit/env"`, "# <<< makeit <<<"}) {
 		t.Errorf("sh lines %v", sh)
 	}
 	if fish := ps[1].Lines; len(fish) == 0 || !strings.HasPrefix(fish[len(fish)-1], "fish_add_path") {

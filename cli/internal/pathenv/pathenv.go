@@ -52,9 +52,12 @@ type Profile struct {
 	Fish  bool
 }
 
-// Block is the managed block for an sh-style profile: it loads the env file at envPath.
+// Block is the managed block for an sh-style profile: it loads the env file at envPath when it
+// is there. Guarded, because a profile must never fail: dash exits a login shell whose `.` fails,
+// and the env file can be gone (a rollback, a deleted ~/.makeit) while the block stays.
 func Block(envPath, home string) []string {
-	return []string{"# >>> makeit >>>", `. "` + homeRef(envPath, home) + `"`, "# <<< makeit <<<"}
+	ref := homeRef(envPath, home)
+	return []string{"# >>> makeit >>>", `[ -r "` + ref + `" ] && . "` + ref + `"`, "# <<< makeit <<<"}
 }
 
 // Profiles are the shell files to load the env file from: ~/.profile always; ~/.bashrc when it

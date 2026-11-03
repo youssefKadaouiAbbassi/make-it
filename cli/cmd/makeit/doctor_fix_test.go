@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"makeit/internal/cli"
 	"makeit/internal/doctor"
+	"makeit/internal/plan"
 )
 
 func TestFixCommand(t *testing.T) {
@@ -34,19 +36,21 @@ func TestFixCommand(t *testing.T) {
 	}
 }
 
-// fakeTTYPrompt arranges the plain-mode prompt the way the existing uninstall tests do: a faked
-// TTY, CI=1 (so the plain prompt runs, not the live one, which has its own tests), and stdin piped.
+// fakeTTYPrompt arranges the live prompt: a faked TTY, no CI, and stdin piped with the keys
+// (Enter takes the default, n is No), which the live form reads through its EOF wrapper.
 func fakeTTYPrompt(t *testing.T, answer string) {
 	t.Helper()
 	savedTTY, savedStdin := isTTY, os.Stdin
 	t.Cleanup(func() { isTTY, os.Stdin = savedTTY, savedStdin })
 	isTTY = func(io.Writer) bool { return true }
-	t.Setenv("CI", "1")
+	t.Setenv("CI", "")
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm")
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.WriteString(answer + "\n"); err != nil {
+	if _, err := w.WriteString(answer); err != nil {
 		t.Fatal(err)
 	}
 	_ = w.Close()
@@ -58,7 +62,7 @@ func realGather(context.Context) (doctor.Machine, error) { return gather(context
 
 func TestDoctorFixRunsSetup(t *testing.T) {
 	m := newCatMachine(t, nil)
-	fakeTTYPrompt(t, "y")
+	fakeTTYPrompt(t, "\r")
 	code, _, errOut := call(t, realGather, "doctor")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, errOut)
@@ -89,5 +93,39 @@ func TestDoctorNoTTYNoQuestion(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(m.home, ".claude", "settings.json")); err == nil {
 		t.Error("settings.json was written without a terminal")
+	}
+}
+
+// The consent rule: --yes applies unattended (sudo -n); doctor's own yes applies without asking
+// the plan question again but keeps sudo able to ask for a password at the terminal.
+func TestDecideRun(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		bools map[string]bool
+		yes   bool
+		mode  plan.Mode
+	}{
+		{"consented", map[string]bool{"consented": true}, false, plan.Apply},
+		{"--yes", map[string]bool{"yes": true}, true, plan.Apply},
+		{"a terminal", map[string]bool{}, false, plan.Prompt},
+		{"consented dry run", map[string]bool{"consented": true, "dry-run": true}, false, plan.DryRunOnly},
+	} {
+		yes, mode := decideRun(cli.Parsed{Bool: tc.bools}, true)
+		if yes != tc.yes || mode != tc.mode {
+			t.Errorf("%s: yes %v mode %v, want %v %v", tc.name, yes, mode, tc.yes, tc.mode)
+		}
+	}
+}
+
+// Doctor asks only in the live view; in plain mode (a pipe, CI, --plain, --verbose) it is read-only.
+func TestDoctorPlainModeNeverAsks(t *testing.T) {
+	m := newCatMachine(t, nil)
+	fakeTTYPrompt(t, "\r")
+	t.Setenv("CI", "1")
+	if _, _, errOut := call(t, realGather, "doctor"); strings.Contains(errOut, "problems now?") {
+		t.Errorf("plain mode asked:\n%s", errOut)
+	}
+	if _, err := os.Stat(filepath.Join(m.home, ".claude", "settings.json")); err == nil {
+		t.Error("settings.json was written in plain mode")
 	}
 }

@@ -63,35 +63,42 @@ func VerifyChecksum(sums []byte, asset, sha256hex string) error {
 	return fmt.Errorf("%w: no line for %s in the checksum file", ErrChecksum, asset)
 }
 
-// InstallRelease downloads r's archive for the target from base, verifies it against the
-// project's checksum file, and writes the program to dir/<bin> (0755). It returns the path.
-func InstallRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, goos, goarch, dir string) (string, error) {
+// FetchRelease downloads r's archive for the target from base, verifies it against the project's
+// checksum file, and returns the program's file name (bin, .exe on Windows) and bytes.
+func FetchRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, goos, goarch string) (name string, data []byte, err error) {
 	asset, sums := r.Asset(r.Version, goos, goarch)
 	if asset == "" {
-		return "", fmt.Errorf("%w: %s on %s/%s", ErrNoAsset, r.Repo, goos, goarch)
+		return "", nil, fmt.Errorf("%w: %s on %s/%s", ErrNoAsset, r.Repo, goos, goarch)
 	}
 	var archive, list bytes.Buffer
 	if err := fetch.Get(ctx, c, ua, r.URL(base, asset), archiveLimit, &archive); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if err := fetch.Get(ctx, c, ua, r.URL(base, sums), sumsLimit, &list); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	h := sha256.Sum256(archive.Bytes())
 	if err := VerifyChecksum(list.Bytes(), asset, hex.EncodeToString(h[:])); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	name := r.Bin
+	name = r.Bin
 	if goos == "windows" {
 		name += ".exe"
 	}
-	var data []byte
-	var err error
 	if strings.HasSuffix(asset, ".zip") {
 		data, err = fromZip(archive.Bytes(), name)
 	} else {
 		data, err = fromTarGz(archive.Bytes(), name)
 	}
+	if err != nil {
+		return "", nil, err
+	}
+	return name, data, nil
+}
+
+// InstallRelease is FetchRelease then a write of dir/<name> (0755); it returns the path.
+func InstallRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, goos, goarch, dir string) (string, error) {
+	name, data, err := FetchRelease(ctx, c, ua, base, r, goos, goarch)
 	if err != nil {
 		return "", err
 	}

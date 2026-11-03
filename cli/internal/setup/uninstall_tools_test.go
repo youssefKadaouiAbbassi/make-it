@@ -71,15 +71,22 @@ func TestUninstallRemovesReleaseBinaries(t *testing.T) {
 func TestUninstallNamesPackageTools(t *testing.T) {
 	e := toolEnv(t)
 	e.st.Prereqs = map[string]*state.Prereq{
-		"gh":      {InstalledBy: "makeit", Route: "apt", Argv: []string{"sudo", "apt-get", "install", "-y", "gh"}},
-		"gopls":   {InstalledBy: "makeit", Route: "go"},
-		"pyright": {InstalledBy: "makeit", Route: "npm"},
+		"gh":                         {InstalledBy: "makeit", Route: "apk"},
+		"chrome":                     {InstalledBy: "makeit", Route: "deb"},
+		"gopls":                      {InstalledBy: "makeit", Route: "go"},
+		"typescript-language-server": {InstalledBy: "makeit", Route: "npm"},
+		"prek":                       {InstalledBy: "makeit", Route: "winget"},
+		"deja-vu":                    {InstalledBy: "makeit", Route: "brew"},
 	}
 	e.toolSteps()
+	// The package names, not makeit's tool ids.
 	for id, want := range map[string]string{
-		"gh":      "sudo apt-get remove gh",
-		"gopls":   "rm ~/.local/bin/gopls",
-		"pyright": "npm uninstall -g --prefix ~/.local pyright",
+		"gh":                         "sudo apk del github-cli",
+		"chrome":                     "sudo apt-get remove google-chrome-stable",
+		"gopls":                      "rm ~/.local/bin/gopls",
+		"typescript-language-server": "npm uninstall -g --prefix ~/.local typescript-language-server typescript",
+		"prek":                       "winget uninstall --id j178.prek",
+		"deja-vu":                    "brew uninstall deja-vu",
 	} {
 		r := keptReason(e, id)
 		if r == "" {

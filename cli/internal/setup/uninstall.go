@@ -1,12 +1,14 @@
 package setup
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"makeit/internal/platform"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -714,26 +716,65 @@ func (e *env) toolSteps() []plan.Step {
 }
 
 // removeCommand is the line to remove a tool makeit installed through a route other than a
-// release download.
+// release download: the package names the route installed, from the tool table.
 func removeCommand(route, id string) string {
+	var r platform.Prereq
+	if i := slices.IndexFunc(platform.Prereqs, func(p platform.Prereq) bool { return p.ID == id }); i >= 0 {
+		r = platform.Prereqs[i]
+	}
+	pkgs := func(pm platform.PM) string {
+		if len(r.Pkgs[pm]) > 0 {
+			return strings.Join(r.Pkgs[pm], " ")
+		}
+		return id
+	}
+	// Google's package file: the package it installs is the file's name before the version.
+	pkgFile := func(pm platform.PM) string {
+		name, _, _ := strings.Cut(path.Base(r.PkgFile[pm]), "_")
+		return cmp.Or(name, id)
+	}
+	via := func(bin string) []string {
+		for _, v := range r.Via {
+			if v.Bin == bin {
+				return v.Argv
+			}
+		}
+		return nil
+	}
 	switch route {
-	case "apt", "deb":
-		return "sudo apt-get remove " + id
-	case "dnf", "rpm":
-		return "sudo dnf remove " + id
+	case "apt":
+		return "sudo apt-get remove " + pkgs(platform.APT)
+	case "deb":
+		return "sudo apt-get remove " + pkgFile(platform.APT)
+	case "dnf":
+		return "sudo dnf remove " + pkgs(platform.DNF)
+	case "rpm":
+		return "sudo dnf remove " + pkgFile(platform.DNF)
 	case "apk":
-		return "sudo apk del " + id
+		return "sudo apk del " + pkgs(platform.APK)
 	case "pacman":
-		return "sudo pacman -R " + id
+		return "sudo pacman -R " + pkgs(platform.Pacman)
 	case "brew":
-		return "brew uninstall " + id
+		return "brew uninstall " + pkgs(platform.Brew)
 	case "winget":
-		return "winget uninstall " + id
+		return "winget uninstall --id " + pkgs(platform.WinGet)
 	case "npm":
+		// The packages after `--prefix <dir>` in the install command.
+		argv := via("npm")
+		if i := slices.Index(argv, "--prefix"); i >= 0 && i+2 <= len(argv) {
+			return "npm uninstall -g --prefix ~/.local " + strings.Join(argv[i+2:], " ")
+		}
 		return "npm uninstall -g --prefix ~/.local " + id
 	case "go":
-		return "rm ~/.local/bin/" + id
+		bin := id
+		if len(r.Bins) > 0 {
+			bin = r.Bins[0]
+		}
+		return "rm ~/.local/bin/" + bin
 	case "rustup":
+		if argv := via("rustup"); len(argv) > 0 {
+			return "rustup component remove " + argv[len(argv)-1]
+		}
 		return "rustup component remove " + id
 	}
 	return "remove it the way you installed it"

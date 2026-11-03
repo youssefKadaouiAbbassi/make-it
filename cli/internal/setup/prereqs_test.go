@@ -136,9 +136,18 @@ func TestReleaseRouteInstalls(t *testing.T) {
 	t.Cleanup(srv.Close)
 	e, _ := newEnv(t, "apt-get", "git", "node", "jq")
 	e.Client, e.ReleaseBase = srv.Client(), srv.URL
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
 	s := stepByID(t, e, "prereq.prek")
 	if _, err := s.Run(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	// Written through the generation, like every other file setup writes: rollback can undo it.
+	if ops := g.Manifest.Ops; len(ops) != 1 || ops[0].Kind != "write" || ops[0].PreSha256 != nil || ops[0].PostSha256 == nil {
+		t.Errorf("ops %+v, want one write of a new file", ops)
 	}
 	path := filepath.Join(e.Roots.Home, ".local", "bin", "prek")
 	got, err := os.ReadFile(path)
@@ -220,5 +229,79 @@ func TestNoSudoLeavesPackageToolsToYou(t *testing.T) {
 	e.needsYou = nil
 	if ids := stepIDs(e); !slices.Contains(ids, "prereq.gh") {
 		t.Errorf("as root, gh not planned: %v", ids)
+	}
+}
+
+// A tool already on disk in a folder makeit puts on PATH (~/.local/bin, ~/go/bin, ~/.cargo/bin)
+// is present even when the shell cannot see it yet: never reinstalled, never "removed by you".
+func TestPresentOffPathInMakeitDirs(t *testing.T) {
+	e, _ := newEnv(t, "apt-get", "sudo", "git", "node", "jq", "go")
+	e.Getenv = func(k string) string {
+		if k == "HOME" {
+			return e.Roots.Home
+		}
+		return ""
+	}
+	for _, p := range []string{".local/bin/prek", "go/bin/gopls"} {
+		f := filepath.Join(e.Roots.Home, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.st.Prereqs = map[string]*state.Prereq{"prek": {InstalledBy: "makeit", Route: "release"}}
+	ids := stepIDs(e)
+	for _, id := range []string{"prereq.prek", "prereq.gopls"} {
+		if slices.Contains(ids, id) {
+			t.Errorf("%s planned although it is on disk: %v", id, ids)
+		}
+	}
+	if r := keptReason(e, "prek"); r != "" {
+		t.Errorf("prek kept as %q", r)
+	}
+}
+
+// The package index is refreshed by the first install that runs, whichever row that is.
+func TestRefreshBeforeTheFirstInstallThatRuns(t *testing.T) {
+	e, f := newEnv(t, "apt-get", "sudo", "git", "node", "jq", "go", "npm", "google-chrome", "prek", "deja", "grype", "typescript-language-server", "pyright-langserver")
+	steps := e.prereqSteps()
+	find := func(id string) plan.Step {
+		for _, s := range steps {
+			if s.ID == id {
+				return s
+			}
+		}
+		t.Fatalf("no %s in %v", id, stepIDs(e))
+		return plan.Step{}
+	}
+	// gh is an earlier row than gopls; run gopls first, as a failed earlier row and a rerun could.
+	if _, err := find("prereq.gopls").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls := f.argvs(); len(calls) < 2 || calls[0] != "sudo -n apt-get update" {
+		t.Errorf("calls %v, want apt-get update before the first install that runs", calls)
+	}
+	if _, err := find("prereq.gh").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(strings.Join(f.argvs(), "\n"), "apt-get update"); n != 1 {
+		t.Errorf("%d refreshes, want one", n)
+	}
+}
+
+// brew and winget need no root: without sudo the package route still applies for them.
+func TestBrewAndWingetNeedNoSudo(t *testing.T) {
+	for _, tc := range []struct {
+		os  string
+		pm  platform.PM
+		bin string
+	}{{"darwin", platform.Brew, "brew"}, {"windows", platform.WinGet, "winget"}} {
+		e, _ := newEnv(t, tc.bin, "git", "node", "jq")
+		e.Platform = platform.Platform{OS: tc.os, Arch: "amd64", PM: tc.pm}
+		if ids := stepIDs(e); !slices.Contains(ids, "prereq.gh") {
+			t.Errorf("%s: gh not planned without sudo: %v", tc.pm, ids)
+		}
 	}
 }

@@ -12,6 +12,8 @@ Breaking:
   removed, `makeit setup --reinstall <tool>` brings it back.
 - `makeit setup` and `update` add one block to your shell profile that loads `~/.makeit/env`, which
   keeps the folders they install into on `PATH`. `makeit uninstall` removes it.
+- In the `--json` reports of `setup` and `update`, `skipped` (the optional tools) is gone; `needsYou`
+  lists the tools makeit cannot install on this machine, each with its manual route.
 
 New:
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"runtime"
@@ -339,9 +340,6 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 		}
 	}
 	fmt.Fprintf(stderr, "%d errors, %d warnings\n", errs, warns)
-	if interactive && fix != "" {
-		return doctorFix(ctx, p, stdout, stderr, fix, n, u, code)
-	}
 	return code
 }
 
@@ -367,14 +365,16 @@ func fixCommand(checks []doctor.Check) (cmd string, n int) {
 	return cmd, n
 }
 
-// doctorFix asks once, at a terminal, whether to run the fixing command now; Yes runs it with
-// --yes and returns its exit code, No or EOF leaves doctor's own code.
+// doctorFix asks once, in the live view, whether to run the fixing command now; Yes runs it as
+// consented (no plan question, sudo may still ask) and returns its exit code, No or EOF leaves
+// doctor's own code. Plain mode (a pipe, CI, --plain, --verbose) never asks.
 func doctorFix(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, cmd string, n int, u *ui.UI, code int) int {
 	yes, err := u.Confirm(fmt.Sprintf("Fix %s now?", plural(n, "problem", "problems")), true)
 	if err != nil || !yes {
 		return code
 	}
-	fp := cli.Parsed{Bool: map[string]bool{"yes": true}, String: p.String}
+	fp := cli.Parsed{Bool: maps.Clone(p.Bool), String: p.String}
+	fp.Bool["consented"] = true
 	if cmd == "update" {
 		return runUpdate(ctx, fp, nil, stdout, stderr)
 	}

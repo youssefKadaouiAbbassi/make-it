@@ -128,24 +128,35 @@ func TestRunOrder(t *testing.T) {
 	}
 }
 
-func TestPrereqMissing(t *testing.T) {
+// A missing tool's fix is "makeit setup" whenever setup has a route for it here, with the same
+// root rule setup applies; only a tool setup would leave to the user keeps its manual line.
+func TestPrereqFixFollowsSetupsRoutes(t *testing.T) {
 	m, _ := healthy(t)
+	m.HasSudo = true
 	m.Prereqs = []platform.State{
-		{Prereq: platform.Prereq{ID: "git", Required: true, Pkgs: map[platform.PM][]string{platform.APT: {"git"}}}},
-		{Prereq: platform.Prereq{ID: "gh", Pkgs: map[platform.PM][]string{platform.APT: {"gh"}}}},
-		{Prereq: platform.Prereq{ID: "chrome", Manual: "https://www.google.com/chrome/"}},
-		// A toolchain route Status found on PATH comes before the package manager.
-		{Prereq: platform.Prereq{ID: "rust-analyzer", Pkgs: map[platform.PM][]string{platform.APT: {"rust-analyzer"}}}, Via: []string{"rustup", "component", "add", "rust-analyzer"}},
+		{Prereq: platform.Find("git")}, {Prereq: platform.Find("gh")}, {Prereq: platform.Find("chrome")}, {Prereq: platform.Find("prek")},
+		{Prereq: platform.Find("rust-analyzer"), Via: []string{"rustup", "component", "add", "rust-analyzer"}},
 	}
 	checks := Run(context.Background(), m)
-	for id, want := range map[string]Check{
-		"prereq.git":           {Level: Error, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y git"},
-		"prereq.gh":            {Level: Warn, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y gh"},
-		"prereq.chrome":        {Level: Warn, Fix: "https://www.google.com/chrome/"},
-		"prereq.rust-analyzer": {Level: Warn, Fix: "rustup component add rust-analyzer"},
+	for _, id := range []string{"prereq.git", "prereq.gh", "prereq.chrome", "prereq.prek", "prereq.rust-analyzer"} {
+		if got := byID(t, checks, id); got.Fix != "makeit setup" || got.Group != "prereqs" {
+			t.Errorf("with sudo, %s = %+v, want fix makeit setup", id, got)
+		}
+	}
+	if got := byID(t, checks, "prereq.git"); got.Level != Error {
+		t.Errorf("git is required: %+v", got)
+	}
+	m.HasSudo = false
+	checks = Run(context.Background(), m)
+	for id, want := range map[string]string{
+		"prereq.git":           "makeit setup", // required: setup still tries, and fails, as before
+		"prereq.gh":            "https://cli.github.com",
+		"prereq.chrome":        "Google Chrome or Chrome for Testing: https://www.google.com/chrome/",
+		"prereq.prek":          "makeit setup",
+		"prereq.rust-analyzer": "makeit setup",
 	} {
-		if got := byID(t, checks, id); got.Level != want.Level || got.Fix != want.Fix || got.Group != "prereqs" {
-			t.Errorf("%s = %+v, want level %s fix %q", id, got, want.Level, want.Fix)
+		if got := byID(t, checks, id); got.Fix != want {
+			t.Errorf("without sudo, %s fix = %q, want %q", id, got.Fix, want)
 		}
 	}
 }
@@ -340,7 +351,7 @@ func TestRunOrderGitCatalog(t *testing.T) {
 func TestPrereqOffPath(t *testing.T) {
 	m, _ := healthy(t)
 	home := t.TempDir()
-	for _, p := range []string{"go/bin/gopls", ".cargo/bin/rust-analyzer"} {
+	for _, p := range []string{"go/bin/gopls", ".cargo/bin/rust-analyzer", ".local/bin/grype"} {
 		f := filepath.Join(home, filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
 			t.Fatal(err)
@@ -358,16 +369,18 @@ func TestPrereqOffPath(t *testing.T) {
 	m.Prereqs = []platform.State{
 		{Prereq: platform.Prereq{ID: "gopls", Bins: []string{"gopls"}, Via: []platform.Via{{Bin: "go"}}}, Via: []string{"go", "install", "golang.org/x/tools/gopls@latest"}},
 		{Prereq: platform.Prereq{ID: "rust-analyzer", Bins: []string{"rust-analyzer"}, Via: []platform.Via{{Bin: "rustup"}}}},
+		{Prereq: platform.Prereq{ID: "grype", Bins: []string{"grype"}}},
 		{Prereq: platform.Prereq{ID: "pyright", Bins: []string{"pyright"}, Via: []platform.Via{{Bin: "go"}}}, Via: []string{"npm", "install", "-g", "pyright"}},
 	}
 	checks := Run(context.Background(), m)
-	for id, dir := range map[string]string{"prereq.gopls": filepath.Join(home, "go", "bin"), "prereq.rust-analyzer": filepath.Join(home, ".cargo", "bin")} {
+	for id, dir := range map[string]string{"prereq.gopls": filepath.Join(home, "go", "bin"), "prereq.rust-analyzer": filepath.Join(home, ".cargo", "bin"), "prereq.grype": filepath.Join(home, ".local", "bin")} {
 		got := byID(t, checks, id)
 		if got.Level != Warn || !strings.Contains(got.Message, "is installed in "+dir+", which is not on PATH") || got.Fix != "makeit setup" {
 			t.Errorf("%s = %+v", id, got)
 		}
 	}
-	if got := byID(t, checks, "prereq.pyright"); !strings.Contains(got.Message, "is missing") || got.Fix != "npm install -g pyright" {
+	// Not on disk anywhere, with a toolchain route: missing, and setup is the fix.
+	if got := byID(t, checks, "prereq.pyright"); !strings.Contains(got.Message, "is missing") || got.Fix != "makeit setup" {
 		t.Errorf("a program not on disk anywhere: %+v", got)
 	}
 }
@@ -403,6 +416,7 @@ func TestDoctorProfileCheck(t *testing.T) {
 // user (chrome where neither works) keeps its manual line.
 func TestPrereqRoutedFixIsSetup(t *testing.T) {
 	m, _ := healthy(t)
+	m.HasSudo = true
 	m.Prereqs = []platform.State{
 		{Prereq: platform.Find("prek")},   // release binary, no package on apt
 		{Prereq: platform.Find("chrome")}, // Google's .deb on apt
