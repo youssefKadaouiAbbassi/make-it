@@ -333,3 +333,40 @@ func TestRunOrderGitCatalog(t *testing.T) {
 		t.Errorf("makeit.receipt at %d, catalog.source at %d", r, s)
 	}
 }
+
+// A program that go install or rustup put off PATH is not "missing": doctor says where it is and
+// how to put that folder on PATH, instead of repeating an install that changes nothing.
+func TestPrereqOffPath(t *testing.T) {
+	m, _ := healthy(t)
+	home := t.TempDir()
+	for _, p := range []string{"go/bin/gopls", ".cargo/bin/rust-analyzer"} {
+		f := filepath.Join(home, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.Getenv = func(k string) string {
+		if k == "HOME" {
+			return home
+		}
+		return ""
+	}
+	m.Prereqs = []platform.State{
+		{Prereq: platform.Prereq{ID: "gopls", Bins: []string{"gopls"}, Via: []platform.Via{{Bin: "go"}}}, Via: []string{"go", "install", "golang.org/x/tools/gopls@latest"}},
+		{Prereq: platform.Prereq{ID: "rust-analyzer", Bins: []string{"rust-analyzer"}, Via: []platform.Via{{Bin: "rustup"}}}},
+		{Prereq: platform.Prereq{ID: "pyright", Bins: []string{"pyright"}, Via: []platform.Via{{Bin: "go"}}}, Via: []string{"npm", "install", "-g", "pyright"}},
+	}
+	checks := Run(context.Background(), m)
+	for id, dir := range map[string]string{"prereq.gopls": filepath.Join(home, "go", "bin"), "prereq.rust-analyzer": filepath.Join(home, ".cargo", "bin")} {
+		got := byID(t, checks, id)
+		if got.Level != Warn || !strings.Contains(got.Message, "is installed in "+dir+", which is not on PATH") || got.Fix != `export PATH="`+dir+`:$PATH"  (in your shell profile)` {
+			t.Errorf("%s = %+v", id, got)
+		}
+	}
+	if got := byID(t, checks, "prereq.pyright"); !strings.Contains(got.Message, "is missing") || got.Fix != "npm install -g pyright" {
+		t.Errorf("a program not on disk anywhere: %+v", got)
+	}
+}
