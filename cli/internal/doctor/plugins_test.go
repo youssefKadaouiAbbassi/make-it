@@ -107,3 +107,20 @@ func TestState(t *testing.T) {
 		t.Errorf("recorded: state = %+v", got)
 	}
 }
+
+// A plugin Claude Code loads in place from its folder runs the folder's version; the listed version
+// is a stale label until a plugin update, so doctor shows the one that runs.
+func TestPluginInPlaceShowsFolderVersion(t *testing.T) {
+	m, f := healthy(t)
+	f.answers["plugin list --json"] = text(`[
+	  {"id": "makeit-bundle@makeit", "version": "0.1.0", "enabled": true, "readFromFolder": "/c/plugins/makeit-bundle", "folderVersion": "0.2.0"},
+	  {"id": "makeit@makeit", "version": "0.1.0", "enabled": true, "readFromFolder": "/c/plugins/makeit"}
+	]`)
+	checks := Run(context.Background(), m)
+	if got := byID(t, checks, "plugin.makeit-bundle@makeit"); got.Message != "makeit-bundle@makeit 0.2.0" {
+		t.Errorf("in place with a folder version: %q", got.Message)
+	}
+	if got := byID(t, checks, "plugin.makeit@makeit"); got.Message != "makeit@makeit 0.1.0" {
+		t.Errorf("no folder version: %q, want the listed one", got.Message)
+	}
+}

@@ -52,7 +52,8 @@ func (r *report) plugins(ctx context.Context, m Machine, req catalog.Requires, r
 		case !installed[i].Enabled:
 			r.add("plugin."+id, g, Info, id+" is installed but disabled", "")
 		default:
-			r.add("plugin."+id, g, OK, id+" "+installed[i].Version, "")
+			// A plugin loaded in place runs its folder's version; the listed one is a stale label.
+			r.add("plugin."+id, g, OK, id+" "+cmp.Or(installed[i].FolderVersion, installed[i].Version), "")
 		}
 	}
 	r.updates(ctx, m, req, ids, installed, st)
