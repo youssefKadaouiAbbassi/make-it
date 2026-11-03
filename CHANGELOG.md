@@ -33,6 +33,17 @@ Fixes:
   same install command that already ran once.
 - "Settings.json: a value you hold" reads as the setting's name and what happens to it, not a
   JSON pointer.
+- Downloads read the CA bundle when they start, so a run that installs `ca-certificates` first can
+  download in the same run; `SSL_CERT_FILE` and `SSL_CERT_DIR` are honoured.
+- A release archive entry past 200 MB is refused instead of cut, and a zip entry that is a symlink
+  is never taken as the program.
+- `makeit setup --reinstall <tool>` with a name makeit does not know says so and stops.
+- A run with nothing to change but tools left to you says "1 tool needs you" in its result, not
+  "everything is current"; plain mode also says to open a new terminal after adding the block.
+- The profile block also goes into `~/.bash_profile` when you have one, which bash reads instead
+  of `~/.profile` at login; the fish line quotes the folder.
+- On Windows, the npm tools land in `~/.local/bin`, `uninstall` finds `.exe` release binaries, and
+  a quote in the home path no longer breaks the `PATH` command.
 
 ## 0.2.1
 

@@ -39,8 +39,8 @@ the same and, at a terminal, can run the fix for you.
 setup keeps the folders it installs into on `PATH`: `~/.makeit/env` lists them (`~/.local/bin`
 always, plus `~/go/bin` or `~/.cargo/bin` when a tool landed there through a toolchain you already
 had), and one block, between `# >>> makeit >>>` and `# <<< makeit <<<`, loads it from your shell's
-profile (`~/.profile`, `~/.bashrc` when you have one, `.zshenv` for zsh, a fish `conf.d` file for
-fish). Lines you had in that file stay. `makeit uninstall` removes exactly what it added. A run
+profile (`~/.profile`, `~/.bashrc` and `~/.bash_profile` when you have them, `.zshenv` for zsh,
+a fish `conf.d` file for fish). Lines you had in that file stay. `makeit uninstall` removes exactly what it added. A run
 that just added the block says to open a new terminal; your current one keeps its own `PATH` until
 then.
 
