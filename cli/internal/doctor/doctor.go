@@ -3,15 +3,16 @@
 package doctor
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"makeit/internal/pathenv"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
-	"makeit/internal/execx"
 	"makeit/internal/fsx"
 	"makeit/internal/platform"
 	"makeit/internal/selfupdate"
@@ -58,6 +59,9 @@ type Machine struct {
 	Globals   []string
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
+	// Root and HasSudo say whether setup could use the package manager here (brew and winget
+	// need neither).
+	Root, HasSudo bool
 	// Exe is this makeit, symlinks resolved; Self is what its receipt says; Dev is a development
 	// build, which never updates itself.
 	Exe  string
@@ -83,6 +87,7 @@ func Run(ctx context.Context, m Machine) []Check {
 	r.catalogSource(m)
 	r.platform(m)
 	r.prereqs(m)
+	r.profile(m)
 	unusable := r.claude(ctx, m, req, reqErr)
 	r.settings(ctx, m, req.Marketplace, unusable)
 	st, info, stErr := state.LoadState(m.StatePath)
@@ -193,32 +198,92 @@ func (r *report) prereqs(m Machine) {
 			level = Error
 		}
 		if dir := offPath(s.Prereq, m.Getenv); dir != "" {
-			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why),
-				`export PATH="`+dir+`:$PATH"  (in your shell profile)`)
+			// Setup already put the folder in the env file and the block in the profile: it is on
+			// PATH in a new terminal; this one is just older than that. Nothing to fix.
+			if envPath, missing := profileState(m); envPath != "" && len(missing) == 0 && envLists(envPath, dir, m) {
+				r.add(id, "prereqs", Info, fmt.Sprintf("%s is in %s, on PATH in a new terminal: %s", s.Prereq.ID, dir, s.Prereq.Why), "")
+				continue
+			}
+			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why), "makeit setup")
 			continue
 		}
+		// The fix is "makeit setup" whenever setup has a route here, by setup's own rule (package
+		// routes need root, except brew and winget); only a tool setup would leave to the user
+		// keeps its manual line.
+		packages := s.Prereq.Required || m.Root || m.HasSudo || m.Platform.PM == platform.Brew || m.Platform.PM == platform.WinGet
+		_, pkgOK := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false)
+		var asset string
+		if s.Prereq.Release != nil {
+			asset, _ = s.Prereq.Release.Asset(s.Prereq.Release.Version, m.Platform.OS, m.Platform.Arch)
+		}
 		fix := s.Prereq.Manual
-		// The fix is for a person at a terminal, so sudo may prompt (no -n).
-		if s.Via != nil {
-			fix = execx.Quote(s.Via)
-		} else if cmd, ok := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false); ok {
-			fix = execx.Quote(cmd.Argv)
+		if s.Via != nil || (pkgOK && packages) || (s.Prereq.PkgFile[m.Platform.PM] != "" && m.Platform.Arch == "amd64" && packages) || asset != "" {
+			fix = "makeit setup"
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)
 	}
 }
 
-// offPath returns the folder where one of p's toolchain routes put its program, when the program
-// is there but not on PATH; "" otherwise.
+// profileState is the env file's path and the profile files that do not load it yet; "" on
+// Windows (the registry PATH) and without a home.
+func profileState(m Machine) (envPath string, missing []string) {
+	if m.Getenv == nil || m.Platform.OS == "windows" {
+		return "", nil
+	}
+	home := cmp.Or(m.Getenv("HOME"), m.Getenv("USERPROFILE"))
+	if home == "" {
+		return "", nil
+	}
+	stack := filepath.Join(home, ".makeit")
+	if m.StatePath != "" {
+		stack = filepath.Dir(m.StatePath)
+	}
+	envPath = filepath.Join(stack, "env")
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	for _, p := range pathenv.Profiles(home, envPath, m.Getenv("SHELL"), m.Getenv, exists) {
+		b, _ := os.ReadFile(p.Path)
+		for _, want := range p.Lines[1 : len(p.Lines)-1] { // the lines inside the markers
+			if !strings.Contains(string(b), want) {
+				missing = append(missing, p.Path)
+				break
+			}
+		}
+	}
+	return envPath, missing
+}
+
+// envLists reports whether the env file at envPath puts dir on PATH.
+func envLists(envPath, dir string, m Machine) bool {
+	home := cmp.Or(m.Getenv("HOME"), m.Getenv("USERPROFILE"))
+	b, err := os.ReadFile(envPath)
+	return err == nil && strings.Contains(string(b), `"`+pathenv.HomeRef(dir, home)+`:`)
+}
+
+// profile checks that the shell profile loads ~/.makeit/env, without which nothing makeit
+// installs is on PATH in a new terminal.
+func (r *report) profile(m Machine) {
+	envPath, missing := profileState(m)
+	switch {
+	case envPath == "":
+	case len(missing) > 0:
+		r.add("path.profile", "prereqs", Warn, "the shell profile does not load "+envPath+": "+strings.Join(missing, ", "), "makeit setup")
+	default:
+		r.add("path.profile", "prereqs", OK, "the shell profile loads "+envPath, "")
+	}
+}
+
+// offPath returns the folder makeit's env file puts on PATH (~/.local/bin, the go and cargo
+// folders) that holds p's program, when it is there but not on PATH; "" otherwise.
 func offPath(p platform.Prereq, getenv func(string) string) string {
 	if getenv == nil {
 		return ""
 	}
-	for _, v := range p.Via {
-		dir := v.Into(getenv)
-		if dir == "" {
-			continue
-		}
+	home := cmp.Or(getenv("HOME"), getenv("USERPROFILE"))
+	if home == "" {
+		return ""
+	}
+	exists := func(d string) bool { _, err := os.Stat(d); return err == nil }
+	for _, dir := range pathenv.Dirs(home, getenv, exists) {
 		for _, b := range p.Bins {
 			for _, name := range []string{b, b + ".exe"} {
 				if fi, err := os.Stat(filepath.Join(dir, name)); err == nil && fi.Mode().IsRegular() {

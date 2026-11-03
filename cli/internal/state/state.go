@@ -94,12 +94,14 @@ type Settings struct {
 
 // File is a file makeit wrote.
 type File struct {
-	Class      string         `json:"class"` // owned or seeded
-	Source     string         `json:"source,omitempty"`
-	Sha256     string         `json:"sha256"`
-	PreExisted bool           `json:"preExisted"`
-	Generation int            `json:"generation"`
-	Extra      jsontext.Value `json:",embed"`
+	Class      string `json:"class"` // owned or seeded
+	Source     string `json:"source,omitempty"`
+	Sha256     string `json:"sha256"`
+	PreExisted bool   `json:"preExisted"`
+	Generation int    `json:"generation"`
+	// Added are the lines makeit added to a file it merges into (class merge), for removal.
+	Added []string       `json:"added,omitempty"`
+	Extra jsontext.Value `json:",embed"`
 }
 
 // Dir is a directory makeit may have created.
@@ -133,10 +135,12 @@ type Marketplace struct {
 
 // Prereq is a prerequisite makeit installed.
 type Prereq struct {
-	InstalledBy string         `json:"installedBy"`
-	Route       string         `json:"route"`
-	Argv        []string       `json:"argv,omitempty"`
-	Extra       jsontext.Value `json:",embed"`
+	InstalledBy string   `json:"installedBy"`
+	Route       string   `json:"route"`
+	Argv        []string `json:"argv,omitempty"`
+	// Sha256 is the installed file's, for a release binary makeit downloaded.
+	Sha256 string         `json:"sha256,omitempty"`
+	Extra  jsontext.Value `json:",embed"`
 }
 
 // StepRecord is the outcome of one plan step, journaled after each step.

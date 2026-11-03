@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
+	"makeit/internal/fetch"
 	"os"
 	"strings"
 	"time"
@@ -43,43 +43,9 @@ func (e Env) url(v, name string) string {
 	return e.Base + "/" + e.Repo + "/releases/download/v" + v + "/" + name
 }
 
-// get copies url's body into w: https only, redirects only to https, status 200, at most limit
-// bytes, and the User-Agent makeit/<version> is all it sends.
+// get copies url's body into w with fetch.Get's limits, as makeit/<version>.
 func (e Env) get(ctx context.Context, url string, limit int64, w io.Writer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	if req.URL.Scheme != "https" {
-		return fmt.Errorf("refusing %s: not https", url)
-	}
-	req.Header.Set("User-Agent", "makeit/"+e.Version)
-	c := *e.Client
-	c.CheckRedirect = func(r *http.Request, via []*http.Request) error {
-		if r.URL.Scheme != "https" {
-			return fmt.Errorf("refusing a redirect to %s: not https", r.URL)
-		}
-		if len(via) >= 10 {
-			return errors.New("too many redirects")
-		}
-		return nil
-	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s answered %s", url, resp.Status)
-	}
-	n, err := io.Copy(w, io.LimitReader(resp.Body, limit+1))
-	if err != nil {
-		return err
-	}
-	if n > limit {
-		return fmt.Errorf("%s is larger than %d bytes", url, limit)
-	}
-	return nil
+	return fetch.Get(ctx, e.Client, "makeit/"+e.Version, url, limit, w)
 }
 
 // signedSha fetches release v's checksums.txt and its signature, verifies them with the keys this

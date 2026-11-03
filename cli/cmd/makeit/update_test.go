@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -151,7 +152,13 @@ func TestUpdateAdoptedRunsOnlyVersionUpdates(t *testing.T) {
 			t.Errorf("run %d changed %q, want %q", run, got, want[run-1])
 		}
 	}
-	if es, _ := os.ReadDir(state.GenerationsDir(stack)); len(es) != len(gens)+1 {
+	es, _ := os.ReadDir(state.GenerationsDir(stack))
+	if len(es) != len(gens)+1 {
+		for _, fi := range es {
+			if n, err := strconv.Atoi(fi.Name()); err == nil && n > len(gens) {
+				t.Logf("DEBUG generation %d: %+v", n, manifest(t, stack, n).Ops)
+			}
+		}
 		t.Errorf("%d generations after setup's %d, want one more: the second update had nothing to do", len(es), len(gens))
 	}
 	if after := snapshot(t, claudeDir); !sameFiles(before, after) {
@@ -219,7 +226,7 @@ esac
 
 func TestSetupUpdateUninstallRoundTrip(t *testing.T) {
 	home, bin, stack, fake := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tool := range []string{"git", "node", "jq"} {
+	for _, tool := range []string{"git", "node", "jq", "gh", "google-chrome", "prek", "deja", "grype", "typescript-language-server", "pyright-langserver"} {
 		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
 	}
 	write(t, filepath.Join(bin, "claude"), fakeClaude)

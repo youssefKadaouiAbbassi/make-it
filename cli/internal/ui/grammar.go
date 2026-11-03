@@ -95,7 +95,7 @@ func Group(stepID, title string) string {
 		return "Plugins"
 	case "settings":
 		return "Settings"
-	case "global":
+	case "global", "path":
 		return "Files"
 	case "self":
 		return "makeit"

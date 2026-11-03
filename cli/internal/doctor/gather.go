@@ -27,6 +27,8 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 	p := platform.Detect(runtime.GOOS, runtime.GOARCH, present, os.Getenv)
 	m := Machine{
 		Getenv:  os.Getenv,
+		Root:    os.Geteuid() == 0,
+		HasSudo: present("sudo"),
 		Version: version, Target: target, CatalogDigest: digest,
 		Platform:     p,
 		Prereqs:      platform.Status(p, present),

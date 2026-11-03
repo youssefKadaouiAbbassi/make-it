@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,6 +43,14 @@ type Env struct {
 	Interactive, Yes, Root bool
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
+	// Client fetches release binaries and package files; nil means a default with a timeout.
+	// ReleaseBase is where GitHub releases are fetched from (https://github.com when "").
+	Client      *http.Client
+	ReleaseBase string
+	// Background is the daily run: no tool installs, no profile edits (both need a terminal).
+	Background bool
+	// Reinstall names tools to install again although the user removed them.
+	Reinstall []string
 	// Progress, when set, sees each step of the apply pass start and finish (the live view).
 	Progress func(plan.Event)
 	// Pins are the plugin release moves update's latest step made in CatalogTree, recorded in the
@@ -57,13 +66,13 @@ type env struct {
 	req catalog.Requires
 	// claude is set by the Claude Code step once a usable claude is known.
 	claude *claudecli.CLI
-	// skipped are the optional prerequisites left for the user to install by hand.
-	skipped []platform.Prereq
 	// command is the run's command: setup, update or uninstall.
 	command string
 	// kept and hints are what the run left alone and how adopted plugins update, for the report.
-	kept  []Kept
-	hints []Hint
+	kept []Kept
+	// needsYou are the tools with no install route here.
+	needsYou []NeedsYou
+	hints    []Hint
 	// catalogChanges: the catalog step writes a new catalog in this run.
 	catalogChanges bool
 	// inputs caches the plugin listing for the plugin phase; a step that changes plugins clears it.

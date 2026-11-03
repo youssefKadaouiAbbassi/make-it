@@ -68,3 +68,22 @@ reach your machine the day it is published. `makeit rollback` moves it back, and
 `"autoUpdate": false` in `~/.makeit/config.json` stops the daily run. The four language-server
 plugins come from claude-plugins-official and update with it; [What makeit installs](docs/included.md) lists them and the
 settings makeit writes, including `permissions.defaultMode: bypassPermissions`.
+
+## What makeit downloads besides itself
+
+Three tools have no Linux package: `setup` downloads each one's binary straight from its project's
+GitHub release over HTTPS, at a version pinned in makeit's own table (Renovate bumps it), and
+checks it against the checksum file that release publishes before writing anything. A download
+that does not match the checksum is refused; nothing is written. These downloads are not signed
+the way makeit's own releases are (no sigstore check); the checksum is the project's own, not a
+second party's attestation. On Debian, Ubuntu or Fedora, `setup` also fetches Google's own
+`.deb`/`.rpm` for Chrome from `dl.google.com` over HTTPS; that package carries no separate
+checksum in the release, but installing it registers Google's own signed repository for its future
+updates.
+
+## What makeit writes to your shell profile
+
+So that what `setup` installs is on `PATH` in every new terminal, it writes `~/.makeit/env` and
+adds one block to your shell's profile (`~/.profile` and others; [What makeit installs](docs/included.md#path)
+lists exactly which files and when) that loads it. `makeit rollback` restores the file if nothing
+else changed it since; `makeit uninstall` removes the block and the env file.

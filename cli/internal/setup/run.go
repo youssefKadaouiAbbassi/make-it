@@ -23,8 +23,6 @@ var ErrDeclined = errors.New("declined: nothing was changed")
 // Report is what a run did, or would do.
 type Report struct {
 	Plan plan.Report
-	// Skipped are the optional prerequisites left to install by hand, with their manual route.
-	Skipped []Skipped
 	// Hints say how each adopted stack plugin that makeit does not update gets its updates.
 	Hints []Hint
 	// Kept are the items the run left alone, each with the reason.
@@ -34,11 +32,16 @@ type Report struct {
 	Reload bool
 	// Generation is the run's generation, 0 when nothing was applied.
 	Generation int
+	// Pins are the plugin release moves the run recorded (the plugin really updated).
+	Pins []state.PinMove
+	// NeedsYou are the tools with no install route on this machine, each with its manual route.
+	NeedsYou []NeedsYou
 }
 
-// Skipped is an optional prerequisite setup did not install.
-type Skipped struct {
-	ID, Manual string
+// NeedsYou is a tool makeit cannot install on this machine.
+type NeedsYou struct {
+	ID     string `json:"id"`
+	Manual string `json:"manual"`
 }
 
 // Hint is how an adopted stack plugin gets its updates.
@@ -83,7 +86,8 @@ func (e *env) setupSteps(global []plan.Step) []plan.Step {
 	steps = append(steps, e.claudeStep())
 	steps = append(steps, e.stackSteps()...)
 	steps = append(steps, e.settingsStep())
-	return append(steps, global...)
+	steps = append(steps, global...)
+	return append(steps, e.pathSteps()...)
 }
 
 // execute is the run every modifying command shares: the lock, state, one dry pass over every
@@ -111,10 +115,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	en := &env{Env: e, st: st, req: req, command: command}
 	phases := build(en)
 	rep := Report{Plan: runPhases(ctx, phases, plan.Options{DryRun: true})}
-	for _, r := range en.skipped {
-		rep.Skipped = append(rep.Skipped, Skipped{ID: r.ID, Manual: r.Manual})
-	}
-	rep.Hints, rep.Kept = en.hints, en.kept
+	rep.Hints, rep.Kept, rep.NeedsYou = en.hints, en.kept, en.needsYou
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {
 		return rep, en, nil
 	}
@@ -144,6 +145,8 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 		st.Steps = map[string]*state.StepRecord{}
 	}
 	// The apply pass checks every step again, so it reports what it keeps afresh.
+	// needsYou is decided when the plan is built, once; hints and kept come from the steps,
+	// which run again now.
 	en.hints, en.kept = nil, nil
 	var saveErr error
 	rep.Plan = runPhases(ctx, phases, plan.Options{Before: func(s plan.Step) {
@@ -165,10 +168,11 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 			saveErr = errors.Join(saveErr, state.SaveState(statePath, st))
 		}
 	}})
-	rep.Hints, rep.Kept, rep.Reload = en.hints, en.kept, en.reload
+	rep.Hints, rep.Kept, rep.NeedsYou, rep.Reload = en.hints, en.kept, en.needsYou, en.reload
 	rep.Generation = gen.Manifest.Generation
 	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
 	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
+	rep.Pins = gen.Manifest.Pins
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())

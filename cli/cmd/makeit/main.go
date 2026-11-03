@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"runtime"
@@ -46,7 +47,9 @@ var commands = []cli.Command{
 	{Name: "self", Hidden: true, Args: "install", Summary: "install this makeit binary", Flags: []cli.Flag{
 		{Name: "prefix", Value: "dir", Help: "where to put makeit (default ~/.local/bin)"},
 	}},
-	{Name: "setup", Summary: "set up this machine: prerequisites, Claude Code, the plugin set, settings and global files", Flags: catalogFlags},
+	{Name: "setup", Summary: "set up this machine: prerequisites, Claude Code, the plugin set, settings and global files", Flags: append([]cli.Flag{
+		{Name: "reinstall", Value: "tool", Help: "install this tool again although you removed it (comma-separated for several)"},
+	}, catalogFlags...)},
 	{Name: "uninstall", Summary: "remove what makeit put on this machine and nobody changed since", Flags: []cli.Flag{
 		{Name: "keep-settings", Help: "leave settings.json as it is"},
 		{Name: "purge", Help: "also delete the data of the plugins makeit installed, and the makeit directory with every backup; cannot be undone"},
@@ -305,12 +308,17 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 			Warnings int            `json:"warnings"`
 		}{buildinfo.Version, checks, errs, warns}, code)
 	}
-	u := ui.New(os.Stdin, stderr, false, ui.ColorWanted(p.String["color"], isTTY(stderr)))
+	interactive := isTTY(os.Stdin) && isTTY(stderr) && !p.Bool["no-input"]
+	u := ui.New(os.Stdin, stderr, interactive, ui.ColorWanted(p.String["color"], isTTY(stderr)))
 	u.Quiet, u.Verbose = p.Bool["quiet"], p.Bool["verbose"]
 	u.Mode = ui.DecideMode(isTTY(os.Stdout), isTTY(stderr), os.Getenv, false, p.Bool["plain"] || p.Bool["verbose"])
+	fix, n := fixCommand(checks)
 	if u.Mode == ui.Live {
 		u.Header("doctor")
 		printDoctorLive(u, checks)
+		if interactive && fix != "" {
+			return doctorFix(ctx, p, stdout, stderr, fix, n, u, code)
+		}
 		return code
 	}
 	for _, c := range checks {
@@ -333,6 +341,44 @@ func runDoctor(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, gath
 	}
 	fmt.Fprintf(stderr, "%d errors, %d warnings\n", errs, warns)
 	return code
+}
+
+// fixCommand says which of setup or update to run for checks, and how many problems it covers:
+// update when any problem's fix is "makeit update" (which includes setup's own steps), else
+// setup when any is "makeit setup", else "" when every fix needs the user's own hands.
+func fixCommand(checks []doctor.Check) (cmd string, n int) {
+	setup := false
+	for _, c := range checks {
+		switch c.Fix {
+		case "makeit update":
+			cmd = "update"
+		case "makeit setup":
+			setup = true
+		default:
+			continue
+		}
+		n++
+	}
+	if cmd == "" && setup {
+		cmd = "setup"
+	}
+	return cmd, n
+}
+
+// doctorFix asks once, in the live view, whether to run the fixing command now; Yes runs it as
+// consented (no plan question, sudo may still ask) and returns its exit code, No or EOF leaves
+// doctor's own code. Plain mode (a pipe, CI, --plain, --verbose) never asks.
+func doctorFix(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, cmd string, n int, u *ui.UI, code int) int {
+	yes, err := u.Confirm(fmt.Sprintf("Fix %s now?", plural(n, "problem", "problems")), true)
+	if err != nil || !yes {
+		return code
+	}
+	fp := cli.Parsed{Bool: maps.Clone(p.Bool), String: p.String}
+	fp.Bool["consented"] = true
+	if cmd == "update" {
+		return runUpdate(ctx, fp, nil, stdout, stderr)
+	}
+	return runSetup(ctx, fp, nil, stdout, stderr)
 }
 
 // isTTY reports whether w is a terminal.

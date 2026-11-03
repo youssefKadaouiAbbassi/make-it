@@ -102,7 +102,9 @@ func (e *env) updateGlobalSteps() []plan.Step {
 	}
 	keys := make([]string, 0, len(e.st.Files))
 	for key, rec := range e.st.Files {
-		if !inCatalog[key] && !rec.PreExisted {
+		// Only a global file (Source set at templates/global/...) can be stale here; path.env and
+		// a merge-class record such as the profile block are a different owner, not this cleanup's.
+		if rec.Source != "" && !inCatalog[key] && !rec.PreExisted {
 			keys = append(keys, key)
 		}
 	}

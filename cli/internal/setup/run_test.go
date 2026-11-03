@@ -211,7 +211,7 @@ func TestSecondRunResumes(t *testing.T) {
 	for _, o := range second.Plan.Outcomes {
 		want := plan.Already
 		// bundle failed on the first run; settings and the global files come after it.
-		if o.ID == "bundle" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") {
+		if o.ID == "bundle" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") || strings.HasPrefix(o.ID, "path.") {
 			want = plan.Done
 		}
 		if o.Status != want {
@@ -266,5 +266,18 @@ func TestRunLockedPlansNothing(t *testing.T) {
 	}
 	if len(m.calls) != 0 {
 		t.Errorf("planned while another run held the lock: %v", m.calls)
+	}
+}
+
+// What setup cannot install here is reported after the apply pass too, not only in the plan.
+func TestNeedsYouSurvivesTheApplyPass(t *testing.T) {
+	m := newMachine(t)
+	m.env.Platform.PM = platform.APK
+	m.env.Present = func(bin string) bool {
+		return !slices.Contains([]string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "Google Chrome"}, bin)
+	}
+	rep := apply(t, m)
+	if !slices.ContainsFunc(rep.NeedsYou, func(n NeedsYou) bool { return n.ID == "chrome" }) {
+		t.Errorf("needs you %+v, want chrome", rep.NeedsYou)
 	}
 }

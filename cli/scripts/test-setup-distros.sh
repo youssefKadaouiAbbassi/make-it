@@ -226,6 +226,40 @@ chmod 755 /tmp/initchain.sh
 INITCHAIN
 )
 
+# As the user, right after the first setup: every tool makeit's table knows is installed, by its
+# route, or (chrome on a distribution Google ships no package for) reported needs-you; the shell
+# profile loads makeit's PATH folders.
+toolcheck=$(cat <<'TOOLCHECK'
+cat > /tmp/toolcheck.sh <<"EOS"
+set -e
+installed() { env PATH="$HOME/.local/bin:$PATH" sh -c "command -v \"\$1\"" -- "$1" >/dev/null; }
+# gh and Chrome come through the package manager, which needs sudo; without it they are left to
+# the user (the no-sudo pass), like Chrome on a distribution Google ships no package for (Alpine).
+tools="prek deja grype"
+if command -v sudo >/dev/null; then tools="gh $tools"; fi
+# The npm route needs npm: setup installs it with node where it may; the no-sudo pass has it preinstalled.
+if command -v npm >/dev/null; then tools="$tools typescript-language-server pyright-langserver"; fi
+for t in $tools; do
+  installed "$t" || { echo "$t not installed"; exit 1; }
+done
+echo "tools installed: ok"
+if installed google-chrome || installed google-chrome-stable; then
+  echo "chrome installed: ok"
+elif command -v apk >/dev/null || ! command -v sudo >/dev/null; then
+  echo "chrome needs you: ok"
+else
+  echo "chrome missing where a route exists"; exit 1
+fi
+grep -q ">>> makeit >>>" "$HOME/.profile"
+echo "profile block: ok"
+# A brand new terminal: no ~/.local/bin on PATH until .profile adds it.
+env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c '. "$HOME/.profile"; command -v prek' >/dev/null
+echo "PATH through the profile: ok"
+EOS
+chmod 755 /tmp/toolcheck.sh
+TOOLCHECK
+)
+
 # As root: sudo and a user who may use it without a password; then setup twice as that user
 # (sudo -iu, because fedora's image has no su).
 sudo_user='set -e
@@ -235,6 +269,8 @@ else apk add -q sudo; adduser -D u; fi
 echo "u ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/u
 sudo -iu u makeit setup --yes
 sudo -iu u claude --version
+'"$toolcheck"'
+sudo -iu u sh /tmp/toolcheck.sh
 sudo -iu u makeit setup --yes --json > /tmp/second.json
 cat /tmp/second.json
 if grep -q "\"status\": \"done\"" /tmp/second.json; then echo "the second setup changed something"; exit 1; fi
@@ -251,10 +287,12 @@ sudo -iu u sh /tmp/initchain.sh'
 
 # As root: the prerequisites only, no sudo; setup must install Claude Code natively.
 no_sudo='set -e
-apt-get update -qq && apt-get install -y -qq git nodejs jq ca-certificates curl >/dev/null
+apt-get update -qq && apt-get install -y -qq git nodejs npm jq ca-certificates curl >/dev/null
 useradd -m u
 su - u -c "makeit setup --yes"
 su - u -c "~/.local/bin/claude --version"
+'"$toolcheck"'
+su - u -c "sh /tmp/toolcheck.sh"
 '"$upkeep"'
 su - u -c "sh /tmp/upkeep.sh"
 '"$selfchain"'

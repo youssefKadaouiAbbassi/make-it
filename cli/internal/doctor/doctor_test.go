@@ -3,6 +3,7 @@ package doctor
 import (
 	"context"
 	"errors"
+	"makeit/internal/pathenv"
 	"os"
 	"path/filepath"
 	"slices"
@@ -127,24 +128,35 @@ func TestRunOrder(t *testing.T) {
 	}
 }
 
-func TestPrereqMissing(t *testing.T) {
+// A missing tool's fix is "makeit setup" whenever setup has a route for it here, with the same
+// root rule setup applies; only a tool setup would leave to the user keeps its manual line.
+func TestPrereqFixFollowsSetupsRoutes(t *testing.T) {
 	m, _ := healthy(t)
+	m.HasSudo = true
 	m.Prereqs = []platform.State{
-		{Prereq: platform.Prereq{ID: "git", Required: true, Pkgs: map[platform.PM][]string{platform.APT: {"git"}}}},
-		{Prereq: platform.Prereq{ID: "gh", Pkgs: map[platform.PM][]string{platform.APT: {"gh"}}}},
-		{Prereq: platform.Prereq{ID: "chrome", Manual: "https://www.google.com/chrome/"}},
-		// A toolchain route Status found on PATH comes before the package manager.
-		{Prereq: platform.Prereq{ID: "rust-analyzer", Pkgs: map[platform.PM][]string{platform.APT: {"rust-analyzer"}}}, Via: []string{"rustup", "component", "add", "rust-analyzer"}},
+		{Prereq: platform.Find("git")}, {Prereq: platform.Find("gh")}, {Prereq: platform.Find("chrome")}, {Prereq: platform.Find("prek")},
+		{Prereq: platform.Find("rust-analyzer"), Via: []string{"rustup", "component", "add", "rust-analyzer"}},
 	}
 	checks := Run(context.Background(), m)
-	for id, want := range map[string]Check{
-		"prereq.git":           {Level: Error, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y git"},
-		"prereq.gh":            {Level: Warn, Fix: "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y gh"},
-		"prereq.chrome":        {Level: Warn, Fix: "https://www.google.com/chrome/"},
-		"prereq.rust-analyzer": {Level: Warn, Fix: "rustup component add rust-analyzer"},
+	for _, id := range []string{"prereq.git", "prereq.gh", "prereq.chrome", "prereq.prek", "prereq.rust-analyzer"} {
+		if got := byID(t, checks, id); got.Fix != "makeit setup" || got.Group != "prereqs" {
+			t.Errorf("with sudo, %s = %+v, want fix makeit setup", id, got)
+		}
+	}
+	if got := byID(t, checks, "prereq.git"); got.Level != Error {
+		t.Errorf("git is required: %+v", got)
+	}
+	m.HasSudo = false
+	checks = Run(context.Background(), m)
+	for id, want := range map[string]string{
+		"prereq.git":           "makeit setup", // required: setup still tries, and fails, as before
+		"prereq.gh":            "https://cli.github.com",
+		"prereq.chrome":        "Google Chrome or Chrome for Testing: https://www.google.com/chrome/",
+		"prereq.prek":          "makeit setup",
+		"prereq.rust-analyzer": "makeit setup",
 	} {
-		if got := byID(t, checks, id); got.Level != want.Level || got.Fix != want.Fix || got.Group != "prereqs" {
-			t.Errorf("%s = %+v, want level %s fix %q", id, got, want.Level, want.Fix)
+		if got := byID(t, checks, id); got.Fix != want {
+			t.Errorf("without sudo, %s fix = %q, want %q", id, got.Fix, want)
 		}
 	}
 }
@@ -339,7 +351,7 @@ func TestRunOrderGitCatalog(t *testing.T) {
 func TestPrereqOffPath(t *testing.T) {
 	m, _ := healthy(t)
 	home := t.TempDir()
-	for _, p := range []string{"go/bin/gopls", ".cargo/bin/rust-analyzer"} {
+	for _, p := range []string{"go/bin/gopls", ".cargo/bin/rust-analyzer", ".local/bin/grype"} {
 		f := filepath.Join(home, filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
 			t.Fatal(err)
@@ -357,16 +369,150 @@ func TestPrereqOffPath(t *testing.T) {
 	m.Prereqs = []platform.State{
 		{Prereq: platform.Prereq{ID: "gopls", Bins: []string{"gopls"}, Via: []platform.Via{{Bin: "go"}}}, Via: []string{"go", "install", "golang.org/x/tools/gopls@latest"}},
 		{Prereq: platform.Prereq{ID: "rust-analyzer", Bins: []string{"rust-analyzer"}, Via: []platform.Via{{Bin: "rustup"}}}},
+		{Prereq: platform.Prereq{ID: "grype", Bins: []string{"grype"}}},
 		{Prereq: platform.Prereq{ID: "pyright", Bins: []string{"pyright"}, Via: []platform.Via{{Bin: "go"}}}, Via: []string{"npm", "install", "-g", "pyright"}},
 	}
 	checks := Run(context.Background(), m)
-	for id, dir := range map[string]string{"prereq.gopls": filepath.Join(home, "go", "bin"), "prereq.rust-analyzer": filepath.Join(home, ".cargo", "bin")} {
+	for id, dir := range map[string]string{"prereq.gopls": filepath.Join(home, "go", "bin"), "prereq.rust-analyzer": filepath.Join(home, ".cargo", "bin"), "prereq.grype": filepath.Join(home, ".local", "bin")} {
 		got := byID(t, checks, id)
-		if got.Level != Warn || !strings.Contains(got.Message, "is installed in "+dir+", which is not on PATH") || got.Fix != `export PATH="`+dir+`:$PATH"  (in your shell profile)` {
+		if got.Level != Warn || !strings.Contains(got.Message, "is installed in "+dir+", which is not on PATH") || got.Fix != "makeit setup" {
 			t.Errorf("%s = %+v", id, got)
 		}
 	}
-	if got := byID(t, checks, "prereq.pyright"); !strings.Contains(got.Message, "is missing") || got.Fix != "npm install -g pyright" {
+	// Not on disk anywhere, with a toolchain route: missing, and setup is the fix.
+	if got := byID(t, checks, "prereq.pyright"); !strings.Contains(got.Message, "is missing") || got.Fix != "makeit setup" {
 		t.Errorf("a program not on disk anywhere: %+v", got)
+	}
+}
+
+// The shell profile must load ~/.makeit/env, or nothing makeit installed is on PATH.
+func TestDoctorProfileCheck(t *testing.T) {
+	m, _ := healthy(t)
+	home := t.TempDir()
+	m.Getenv = func(k string) string {
+		switch k {
+		case "HOME":
+			return home
+		case "SHELL":
+			return "/bin/bash"
+		}
+		return ""
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != Warn || got.Fix != "makeit setup" {
+		t.Errorf("no block: %+v", got)
+	}
+	envPath := filepath.Join(filepath.Dir(m.StatePath), "env")
+	block := strings.Join(pathenv.Block(envPath, home), "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(block), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != OK {
+		t.Errorf("with the block: %+v", got)
+	}
+}
+
+// A tool missing here but routed (its package file or release binary applies to this machine)
+// gets "makeit setup" as its fix, like every other check setup resolves; one truly left to the
+// user (chrome where neither works) keeps its manual line.
+func TestPrereqRoutedFixIsSetup(t *testing.T) {
+	m, _ := healthy(t)
+	m.HasSudo = true
+	m.Prereqs = []platform.State{
+		{Prereq: platform.Find("prek")},   // release binary, no package on apt
+		{Prereq: platform.Find("chrome")}, // Google's .deb on apt
+	}
+	checks := Run(context.Background(), m)
+	for _, id := range []string{"prereq.prek", "prereq.chrome"} {
+		if got := byID(t, checks, id); got.Fix != "makeit setup" {
+			t.Errorf("%s fix = %q, want makeit setup", id, got.Fix)
+		}
+	}
+	m.Platform.PM = platform.APK
+	if got := byID(t, Run(context.Background(), m), "prereq.chrome"); got.Fix == "makeit setup" || !strings.Contains(got.Fix, "https://www.google.com/chrome/") {
+		t.Errorf("chrome on apk fix = %q, want the manual line", got.Fix)
+	}
+}
+
+// Right after setup, in the same terminal: a tool in a folder the env file lists, with the
+// profile block in place, is on PATH in a new terminal. That is information, not a problem, and
+// "makeit setup" would change nothing.
+func TestPrereqOffPathLoadsInANewTerminal(t *testing.T) {
+	m, _ := healthy(t)
+	home := t.TempDir()
+	m.StatePath = filepath.Join(home, ".makeit", "state.json")
+	m.Getenv = func(k string) string {
+		switch k {
+		case "HOME":
+			return home
+		case "SHELL":
+			return "/bin/bash"
+		}
+		return ""
+	}
+	gopls := filepath.Join(home, "go", "bin", "gopls")
+	if err := os.MkdirAll(filepath.Dir(gopls), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gopls, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m.Prereqs = []platform.State{{Prereq: platform.Prereq{ID: "gopls", Bins: []string{"gopls"}, Via: []platform.Via{{Bin: "go"}}}}}
+	// Without the env file and the block: a warning, and setup is the fix.
+	if got := byID(t, Run(context.Background(), m), "prereq.gopls"); got.Level != Warn || got.Fix != "makeit setup" {
+		t.Errorf("before setup: %+v", got)
+	}
+	envPath := filepath.Join(home, ".makeit", "env")
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envPath, pathenv.EnvFile(pathenv.Dirs(home, m.Getenv, exists), home), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(strings.Join(pathenv.Block(envPath, home), "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := byID(t, Run(context.Background(), m), "prereq.gopls")
+	if got.Level != Info || got.Fix != "" || !strings.Contains(got.Message, "on PATH in a new terminal") {
+		t.Errorf("after setup, same terminal: %+v", got)
+	}
+}
+
+// For fish the check wants the fish_add_path lines inside the markers; the markers alone are a
+// block with nothing in it.
+func TestDoctorProfileCheckFish(t *testing.T) {
+	m, _ := healthy(t)
+	home := t.TempDir()
+	m.Getenv = func(k string) string {
+		switch k {
+		case "HOME":
+			return home
+		case "SHELL":
+			return "/usr/bin/fish"
+		}
+		return ""
+	}
+	confd := filepath.Join(home, ".config", "fish", "conf.d")
+	if err := os.MkdirAll(confd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(filepath.Dir(m.StatePath), "env")
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(strings.Join(pathenv.Block(envPath, home), "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fishFile := filepath.Join(confd, "makeit.fish")
+	if err := os.WriteFile(fishFile, []byte("# >>> makeit >>>\n# <<< makeit <<<\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != Warn || !strings.Contains(got.Message, "makeit.fish") {
+		t.Errorf("markers alone: %+v", got)
+	}
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	ps := pathenv.Profiles(home, envPath, "/usr/bin/fish", m.Getenv, exists)
+	if err := os.WriteFile(fishFile, []byte(strings.Join(ps[len(ps)-1].Lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != OK {
+		t.Errorf("with the lines: %+v", got)
 	}
 }

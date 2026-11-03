@@ -64,14 +64,18 @@ each part.
 $ makeit doctor
 ```
 
-`doctor` changes nothing. At a terminal it counts the checks that passed and lists each problem
-with the command that fixes it; `--verbose` lists every check. It exits 1 when it finds an error.
-`makeit` on its own shows the same status in short, with what to do next.
+`doctor` on its own changes nothing. At a terminal it counts the checks that passed, lists each
+problem with the command that fixes it, and, when a fix is `makeit setup` or `makeit update`,
+asks once, `Fix N problems now?`, and runs it if you say yes; `--verbose` lists every check and
+asks nothing. It exits 1 when it finds an error. `makeit` on its own shows the same status in
+short, with what to do next.
 
-Optional tools that setup does not install, such as `gopls`, show up here as warnings with the
-command to install them by hand. When the tool is installed but its folder is not on `PATH`
-(`go install` puts gopls in `~/go/bin`), doctor names the folder and gives the line to add to your
-shell profile.
+setup installs almost everything makeit's table knows, by whatever route your machine has. A tool
+with none to install from here, such as Chrome on a machine with neither Google's package nor a
+supported one, shows up as a warning with the one line to install it by hand. When a tool is
+already installed but its folder is not on `PATH` (`go install` puts gopls in `~/go/bin`, and a
+run before setup's own PATH line never reached your profile), doctor names the folder and its fix
+is `makeit setup`, which puts that folder on PATH along with everything else it installs.
 
 ## Set up a project
 

@@ -3,6 +3,50 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.0
+
+Breaking:
+
+- `makeit setup` and `update` also install prek, deja-vu, grype, the two npm language servers and
+  Chrome, no longer leaving them for you to install by hand; a tool you remove afterward stays
+  removed, `makeit setup --reinstall <tool>` brings it back.
+- `makeit setup` and `update` add one block to your shell profile that loads `~/.makeit/env`, which
+  keeps the folders they install into on `PATH`. `makeit uninstall` removes it.
+- In the `--json` reports of `setup` and `update`, `skipped` (the optional tools) is gone; `needsYou`
+  lists the tools makeit cannot install on this machine, each with its manual route.
+
+New:
+
+- `makeit doctor` at a terminal asks "Fix N problems now?" for whatever `makeit setup` or
+  `makeit update` can resolve, and runs it on yes.
+- `makeit update`'s result names what moved: makeit's own version change, the plugins it moved by
+  name (a count past two), and a count of the rest.
+
+Fixes:
+
+- `makeit rollback` undoes an update the daily run made: `update` now records when it swapped
+  makeit in, which rollback reads; before, it only looked back 15 minutes from the run that wrote
+  files, so an update from hours earlier was never undone.
+- A clean live run of `setup` or `update` shows no note rows; how an adopted plugin gets its
+  updates stays in `--verbose` and the log, as it already did for plain mode.
+- "gopls is missing" when it is only off `PATH` now gives the line to put it there, instead of the
+  same install command that already ran once.
+- "Settings.json: a value you hold" reads as the setting's name and what happens to it, not a
+  JSON pointer.
+- Downloads read the CA bundle when they start, so a run that installs `ca-certificates` first can
+  download in the same run; `SSL_CERT_FILE` and `SSL_CERT_DIR` are honoured.
+- A release archive entry past 200 MB is refused instead of cut, and a zip entry that is a symlink
+  is never taken as the program.
+- `makeit setup --reinstall <tool>` with a name makeit does not know says so and stops.
+- A run with nothing to change but tools left to you says "1 tool needs you" in its result, not
+  "everything is current"; plain mode also says to open a new terminal after adding the block.
+- The profile block also goes into `~/.bash_profile` when you have one, which bash reads instead
+  of `~/.profile` at login; the fish line quotes the folder.
+- On Windows, the npm tools land in `~/.local/bin`, `uninstall` finds `.exe` release binaries, and
+  a quote in the home path no longer breaks the `PATH` command.
+- `makeit uninstall` removes only the block between makeit's markers: a copy of its line you put
+  elsewhere in the profile stays, and `setup` repairs a block edited inside instead of adding one.
+
 ## 0.2.1
 
 Fixes:

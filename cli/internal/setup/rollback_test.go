@@ -127,3 +127,38 @@ func TestRollbackNothing(t *testing.T) {
 		t.Errorf("err %v, want ErrNothingToRollBack", err)
 	}
 }
+
+// A profile that is a symlink into a dotfiles repository: setup wrote through the link, so rollback
+// restores the target and keeps the link and the file's mode.
+func TestRollbackRestoresThroughSymlink(t *testing.T) {
+	e, _ := newEnv(t)
+	target := filepath.Join(e.Roots.Home, "dotfiles", "bashrc")
+	link := filepath.Join(e.Roots.Home, ".bashrc")
+	writeFile(t, target, "export A=1\n")
+	if err := os.Chmod(target, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.gen = g
+	if err := e.write("path.profile", link, []byte("export A=1\n# >>> makeit >>>\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Save(); err != nil {
+		t.Fatal(err)
+	}
+	runAll(t, e.rollbackSteps(g))
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the link is gone or replaced: %v %v", fi, err)
+	}
+	b, _ := os.ReadFile(target)
+	fi, _ := os.Stat(target)
+	if string(b) != "export A=1\n" || fi.Mode().Perm() != 0o644 {
+		t.Errorf("target %q mode %v, want the old content at 0644", b, fi.Mode())
+	}
+}

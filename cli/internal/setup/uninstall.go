@@ -1,11 +1,14 @@
 package setup
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"makeit/internal/platform"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -143,6 +146,7 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 	for _, k := range keys {
 		steps = append(steps, e.unFileStep(k))
 	}
+	steps = append(steps, e.toolSteps()...)
 	steps = append(steps, e.unDirsStep(), e.unCatalogStep(), e.unStateStep())
 	if opts.Purge {
 		steps = append(steps, plan.Step{ID: "purge",
@@ -430,6 +434,9 @@ func (e *env) unSettingsStep() plan.Step {
 // changed, had before makeit, or linked is kept.
 func (e *env) unFileStep(key string) plan.Step {
 	rec := e.st.Files[key]
+	if rec.Class == "merge" {
+		return e.unMergeStep(key)
+	}
 	path := e.Roots.Abs(key)
 	return plan.Step{ID: "file." + strings.TrimPrefix(key, "claude:"), Title: "Remove " + path,
 		Already: func(context.Context) (bool, error) {
@@ -655,4 +662,123 @@ func (e *env) unStateStep() plan.Step {
 			e.stateRemoved = true
 			return "removed; a copy is in the generation", nil
 		}}
+}
+
+// toolSteps removes the release binaries makeit downloaded, one step per tool so each is
+// recorded like any other removal. A tool makeit installed any other way (package manager,
+// npm, a toolchain) is left alone and reported with the command to remove it by hand.
+func (e *env) toolSteps() []plan.Step {
+	ids := make([]string, 0, len(e.st.Prereqs))
+	for id := range e.st.Prereqs {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	var steps []plan.Step
+	for _, id := range ids {
+		rec := e.st.Prereqs[id]
+		if rec.InstalledBy != "makeit" {
+			continue
+		}
+		if rec.Route != "release" {
+			e.keep(id, "installed by makeit through "+rec.Route+"; to remove: "+removeCommand(rec.Route, id))
+			continue
+		}
+		bin := id
+		if r := platform.Find(id).Release; r != nil {
+			bin = r.Bin
+		}
+		if e.Platform.OS == "windows" {
+			bin += ".exe"
+		}
+		path := filepath.Join(e.Roots.Home, ".local", "bin", bin)
+		steps = append(steps, plan.Step{ID: "tool." + id, Title: "Remove " + path,
+			Already: func(context.Context) (bool, error) {
+				cur, found, err := fsx.ReadOptional(path)
+				if err != nil {
+					return false, err
+				}
+				if !found {
+					delete(e.st.Prereqs, id)
+					return true, nil
+				}
+				if fsx.Sha256(cur) != rec.Sha256 {
+					e.keep(id, "changed since makeit wrote it")
+					return true, nil
+				}
+				return false, nil
+			},
+			Run: func(context.Context) (string, error) {
+				if err := e.remove("tool."+id, path); err != nil {
+					return "", err
+				}
+				delete(e.st.Prereqs, id)
+				return "", nil
+			}})
+	}
+	return steps
+}
+
+// removeCommand is the line to remove a tool makeit installed through a route other than a
+// release download: the package names the route installed, from the tool table.
+func removeCommand(route, id string) string {
+	var r platform.Prereq
+	if i := slices.IndexFunc(platform.Prereqs, func(p platform.Prereq) bool { return p.ID == id }); i >= 0 {
+		r = platform.Prereqs[i]
+	}
+	pkgs := func(pm platform.PM) string {
+		if len(r.Pkgs[pm]) > 0 {
+			return strings.Join(r.Pkgs[pm], " ")
+		}
+		return id
+	}
+	// Google's package file: the package it installs is the file's name before the version.
+	pkgFile := func(pm platform.PM) string {
+		name, _, _ := strings.Cut(path.Base(r.PkgFile[pm]), "_")
+		return cmp.Or(name, id)
+	}
+	via := func(bin string) []string {
+		for _, v := range r.Via {
+			if v.Bin == bin {
+				return v.Argv
+			}
+		}
+		return nil
+	}
+	switch route {
+	case "apt":
+		return "sudo apt-get remove " + pkgs(platform.APT)
+	case "deb":
+		return "sudo apt-get remove " + pkgFile(platform.APT)
+	case "dnf":
+		return "sudo dnf remove " + pkgs(platform.DNF)
+	case "rpm":
+		return "sudo dnf remove " + pkgFile(platform.DNF)
+	case "apk":
+		return "sudo apk del " + pkgs(platform.APK)
+	case "pacman":
+		return "sudo pacman -R " + pkgs(platform.Pacman)
+	case "brew":
+		return "brew uninstall " + pkgs(platform.Brew)
+	case "winget":
+		return "winget uninstall --id " + pkgs(platform.WinGet)
+	case "npm":
+		// The packages after `--prefix <dir>` in the install command.
+		argv := via("npm")
+		if i := slices.Index(argv, "--prefix"); i >= 0 && i+2 <= len(argv) {
+			return "npm uninstall -g --prefix ~/.local " + strings.Join(argv[i+2:], " ")
+		}
+		return "npm uninstall -g --prefix ~/.local " + id
+	case "go":
+		bin := id
+		if len(r.Bins) > 0 {
+			bin = r.Bins[0]
+		}
+		return "rm ~/.local/bin/" + bin
+	case "rustup":
+		if argv := via("rustup"); len(argv) > 0 {
+			return "rustup component remove " + argv[len(argv)-1]
+		}
+		return "rustup component remove " + id
+	}
+	return "remove it the way you installed it"
 }

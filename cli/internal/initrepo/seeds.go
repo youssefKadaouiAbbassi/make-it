@@ -2,6 +2,7 @@ package initrepo
 
 import (
 	"fmt"
+	"makeit/internal/mergefile"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -60,7 +61,7 @@ func Seeds(p Project, src catalog.Source, req catalog.Requires, ours func(string
 	}
 	s.merges = append(s.merges, MergeSeed{Path: ".gitignore", Template: "makeit:env-lines",
 		Apply: func(theirs []byte, skip map[string]bool) (Merged, error) {
-			return MergeLines(theirs, envLines, skip), nil
+			return mergefile.MergeLines(theirs, envLines, skip), nil
 		}})
 	s.env()
 	if err := s.settings(); err != nil {

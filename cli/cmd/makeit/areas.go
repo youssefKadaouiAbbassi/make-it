@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"makeit/internal/plan"
 	"makeit/internal/setup"
+	"makeit/internal/state"
 	"makeit/internal/ui"
 )
 
@@ -81,24 +83,50 @@ var verbs = map[string]string{"setup": "Ready", "update": "Updated", "uninstall"
 // printNotesLive shows a run's notes as rows above its result: the optional programs left out on
 // one line (makeit doctor prints how to install each), each file kept, each hint.
 func printNotesLive(u *ui.UI, rep setup.Report) {
-	if len(rep.Skipped) > 0 {
-		ids := make([]string, len(rep.Skipped))
-		for i, s := range rep.Skipped {
-			ids[i] = s.ID
-		}
-		u.Row(ui.GWarn, "Optional", strings.Join(ids, ", "), "see makeit doctor")
+	// A tool with no route on this machine: the one thing makeit leaves to the user.
+	for _, n := range rep.NeedsYou {
+		u.Row(ui.GWarn, n.ID, "needs you", n.Manual)
 	}
 	for _, k := range rep.Kept {
 		u.Row(ui.GWarn, "Kept", k.Item, k.Reason)
 	}
-	for _, h := range rep.Hints {
-		u.Row(ui.GWarn, h.ID, h.Text, "")
-	}
+	// Hints (how an adopted plugin gets its updates) are background: plain mode and the log keep them.
 }
 
-func finishLive(u *ui.UI, name string, rep setup.Report, elapsed time.Duration) {
+// movedPhrase names what an update moved: makeit first, then up to two plugins by name, more as
+// a count, then the other changed steps as a count. "" when nothing moved.
+func movedPhrase(self *selfMove, pins []state.PinMove, others int) string {
+	var parts []string
+	if self != nil {
+		parts = append(parts, "makeit "+self.From+" → "+self.To)
+	}
+	switch n := len(pins); {
+	case n == 0:
+	case n <= 2:
+		names := make([]string, n)
+		for i, p := range pins {
+			names[i], _, _ = strings.Cut(p.ID, "@")
+		}
+		parts = append(parts, strings.Join(names, ", ")+" moved to new releases")
+	default:
+		parts = append(parts, fmt.Sprintf("%d plugins moved to new releases", n))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	if others > 0 {
+		parts = append(parts, plural(others, "other change", "other changes"))
+	}
+	return strings.Join(parts, " and ")
+}
+
+func finishLive(u *ui.UI, name string, rep setup.Report, self *selfMove, elapsed time.Duration) {
 	if rep.Generation == 0 && !rep.Plan.Failed() {
-		u.Result(true, "Nothing to do", elapsed, []string{"everything is current"})
+		note := []string{"everything is current"}
+		if n := len(rep.NeedsYou); n > 0 {
+			note = []string{plural(n, "tool needs you", "tools need you")}
+		}
+		u.Result(true, "Nothing to do", elapsed, note)
 		return
 	}
 	changed, already := 0, 0
@@ -118,6 +146,18 @@ func finishLive(u *ui.UI, name string, rep setup.Report, elapsed time.Duration) 
 	if already > 0 {
 		counts = append(counts, fmt.Sprintf("%d already", already))
 	}
+	// The steps that moved a plugin are named, not counted.
+	others := changed
+	for _, p := range rep.Pins {
+		for _, o := range rep.Plan.Outcomes {
+			if o.ID == "plugin."+p.ID && o.Status == plan.Done {
+				others--
+			}
+		}
+	}
+	if phrase := movedPhrase(self, rep.Pins, others); phrase != "" {
+		counts = []string{phrase}
+	}
 	if rep.Plan.Failed() {
 		// The live rows keep one cut line per area; here is every failed step, whole.
 		_, _ = fmt.Fprintln(u.Out)
@@ -132,6 +172,9 @@ func finishLive(u *ui.UI, name string, rep setup.Report, elapsed time.Duration) 
 		return
 	}
 	u.Result(true, verb, elapsed, counts)
+	if slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.ID == "path.profile" && o.Status == plan.Done }) {
+		u.Next("Open a new terminal to pick up PATH.")
+	}
 	switch {
 	case name == "setup":
 		u.Next("Open Claude Code to start.", "undo: makeit rollback")
