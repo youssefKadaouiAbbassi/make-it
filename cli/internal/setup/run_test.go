@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,7 +29,9 @@ type fakeMachine struct {
 	markets     []string
 	plugins     []string
 	failInstall bool
-	calls       []string
+	// calls is appended from concurrent listings, so it has a lock.
+	mu    sync.Mutex
+	calls []string
 	// deps arrive with the bundle's install; needed are ids another plugin needs, so prune's dry
 	// run leaves them out; failUninstall makes that id's uninstall fail; onRemove runs when the
 	// marketplace remove arrives.
@@ -66,7 +69,9 @@ func newMachine(t *testing.T) *fakeMachine {
 
 func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 	cmd := strings.Join(c.Argv, " ")
+	m.mu.Lock()
 	m.calls = append(m.calls, cmd)
+	m.mu.Unlock()
 	list := func(names []string, field string) string {
 		var rows []string
 		for _, n := range names {
