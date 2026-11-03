@@ -3,8 +3,11 @@
 package platform
 
 import (
+	"cmp"
 	"crypto/x509"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"makeit/internal/execx"
 )
@@ -86,6 +89,33 @@ type Prereq struct {
 type Via struct {
 	Bin  string
 	Argv []string
+}
+
+// Into is the folder this route installs programs into, which is often not on PATH: go install
+// into $GOBIN, else $GOPATH's first entry /bin, else ~/go/bin; rustup into $CARGO_HOME/bin, else
+// ~/.cargo/bin. "" for routes that install onto PATH.
+func (v Via) Into(getenv func(string) string) string {
+	home := cmp.Or(getenv("HOME"), getenv("USERPROFILE"))
+	switch v.Bin {
+	case "go":
+		if d := getenv("GOBIN"); d != "" {
+			return d
+		}
+		if gp, _, _ := strings.Cut(getenv("GOPATH"), string(filepath.ListSeparator)); gp != "" {
+			return filepath.Join(gp, "bin")
+		}
+		if home != "" {
+			return filepath.Join(home, "go", "bin")
+		}
+	case "rustup":
+		if d := getenv("CARGO_HOME"); d != "" {
+			return filepath.Join(d, "bin")
+		}
+		if home != "" {
+			return filepath.Join(home, ".cargo", "bin")
+		}
+	}
+	return ""
 }
 
 // Applies reports whether the row is checked on p.

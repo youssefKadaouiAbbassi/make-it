@@ -5,6 +5,7 @@ package doctor
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -191,6 +192,11 @@ func (r *report) prereqs(m Machine) {
 		if s.Prereq.Required {
 			level = Error
 		}
+		if dir := offPath(s.Prereq, m.Getenv); dir != "" {
+			r.add(id, "prereqs", level, fmt.Sprintf("%s is installed in %s, which is not on PATH: %s", s.Prereq.ID, dir, s.Prereq.Why),
+				`export PATH="`+dir+`:$PATH"  (in your shell profile)`)
+			continue
+		}
 		fix := s.Prereq.Manual
 		// The fix is for a person at a terminal, so sudo may prompt (no -n).
 		if s.Via != nil {
@@ -200,6 +206,28 @@ func (r *report) prereqs(m Machine) {
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)
 	}
+}
+
+// offPath returns the folder where one of p's toolchain routes put its program, when the program
+// is there but not on PATH; "" otherwise.
+func offPath(p platform.Prereq, getenv func(string) string) string {
+	if getenv == nil {
+		return ""
+	}
+	for _, v := range p.Via {
+		dir := v.Into(getenv)
+		if dir == "" {
+			continue
+		}
+		for _, b := range p.Bins {
+			for _, name := range []string{b, b + ".exe"} {
+				if fi, err := os.Stat(filepath.Join(dir, name)); err == nil && fi.Mode().IsRegular() {
+					return dir
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // claude checks the Claude Code install and returns why it cannot be asked anything, or "" when
