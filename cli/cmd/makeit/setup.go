@@ -114,19 +114,19 @@ func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, 
 			if p.Bool["auto"] {
 				skips = st.PluginSkips
 			}
-			// setup and update both take the newest releases; offline they fetch nothing and keep the
-			// releases on disk (a nil runner) instead of writing the older pins makeit ships over them.
-			var run execx.Runner
+			// Now, with no network: the releases on disk stay instead of the older ones makeit ships.
+			if kept, _, notes := latestApply(ctx, nil, tree, current, skips); kept != tree {
+				e.Catalog, e.CatalogTree = kept, kept
+				notices = append(notices, notes...)
+			}
+			// The newest releases are looked up by the run itself, once git is there: on a fresh
+			// machine that is after the prerequisites step installed it.
 			if !p.Bool["offline"] {
-				run = execx.Run
+				e.Resolve = func(ctx context.Context) setup.Resolved {
+					moved, pins, notes := latestApply(ctx, execx.Run, tree, current, skips)
+					return setup.Resolved{Tree: moved, Pins: pins, MCP: latest.MCPChanges(current, moved), Notes: notes}
+				}
 			}
-			moved, pins, notes := latestApply(ctx, run, tree, current, skips)
-			if moved != tree {
-				e.Catalog, e.CatalogTree = moved, moved
-			}
-			e.Pins = pins
-			e.MCPChanges = latest.MCPChanges(current, moved)
-			notices = append(notices, notes...)
 		}
 		return notices, nil
 	}
@@ -229,6 +229,9 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 		notice = m.notice(ctx)
 	}
 	notice = strings.TrimPrefix(strings.Join(append([]string{notice}, catalogNotices...), "\n"), "\n")
+	withNotes := func(rep setup.Report) string {
+		return strings.TrimPrefix(strings.Join(append([]string{notice}, rep.Notes...), "\n"), "\n")
+	}
 	shown := false
 	confirm := func(outs []plan.Outcome) (bool, error) {
 		printOutcomes(u, outs)
@@ -271,7 +274,7 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 			Generation int              `json:"generation"`
 			Summary    string           `json:"summary"`
 			Error      string           `json:"error,omitempty"`
-		}{buildinfo.Version, rep.Plan.Outcomes, rep.Hints, rep.NeedsYou, rep.Kept, notice, m.self, allChanges(m.self, rep), rep.Generation, rep.Plan.Summary(), errText(err)}
+		}{buildinfo.Version, rep.Plan.Outcomes, rep.Hints, rep.NeedsYou, rep.Kept, withNotes(rep), m.self, allChanges(m.self, rep), rep.Generation, rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
 	if live == nil && (!shown || rep.Generation > 0) {
@@ -299,6 +302,7 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 			fmt.Fprintf(stderr, "%s: %s\n", h.ID, h.Text)
 		}
 	}
+	notice = withNotes(rep)
 	if notice != "" {
 		fmt.Fprintln(stderr, notice)
 	}

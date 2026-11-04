@@ -40,6 +40,8 @@ type Report struct {
 	NeedsYou []NeedsYou
 	// Changes are every version the run moved: Claude Code, plugins, MCP servers, tools.
 	Changes []state.Change
+	// Notes are what the release lookups had to say (a source that could not be read).
+	Notes []string
 }
 
 // NeedsYou is a tool makeit cannot install on this machine.
@@ -87,7 +89,7 @@ func (e *env) setupRunSteps() []plan.Step {
 // setupSteps are setup's steps in order, with global the global-file steps of the command.
 func (e *env) setupSteps(global []plan.Step) []plan.Step {
 	steps := append(e.prereqSteps(), e.toolUpgradeSteps()...)
-	steps = append(steps, e.claudeStep(), e.claudeUpgradeStep())
+	steps = append(steps, e.claudeStep(), e.claudeSeenStep(), e.claudeUpgradeStep())
 	steps = append(steps, e.stackSteps()...)
 	steps = append(steps, e.settingsStep())
 	steps = append(steps, global...)
@@ -175,10 +177,11 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	rep.Hints, rep.Kept, rep.NeedsYou, rep.Reload = en.hints, en.kept, en.needsYou, en.reload
 	rep.Generation = gen.Manifest.Generation
 	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
-	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
+	gen.Manifest.Pins = updatedPins(en.Pins, gen.Manifest.Plugins.Updated)
 	rep.Pins = gen.Manifest.Pins
 	catalogWritten := slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.ID == "catalog" && o.Status == plan.Done })
-	rep.Changes = reportChanges(en.changes, gen.Manifest.Pins, e.MCPChanges, catalogWritten)
+	rep.Changes = reportChanges(en.changes, gen.Manifest.Pins, en.MCPChanges, catalogWritten)
+	rep.Notes = en.notes
 	gen.Manifest.Changes = rep.Changes
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
@@ -257,7 +260,17 @@ func reportChanges(own []state.Change, pins []state.PinMove, mcp []state.Change,
 	out = append(out, own...)
 	rank := map[string]int{"makeit": 0, "claude-code": 1, "plugin": 2, "mcp": 3, "tool": 4}
 	slices.SortStableFunc(out, func(a, b state.Change) int { return rank[a.Kind] - rank[b.Kind] })
-	return out
+	// One item moved twice in a run (Claude Code updated itself, then makeit upgraded it) is one
+	// change, from the first version to the last.
+	var merged []state.Change
+	for _, c := range out {
+		if n := len(merged); n > 0 && merged[n-1].Kind == c.Kind && merged[n-1].Item == c.Item {
+			merged[n-1].To = c.To
+			continue
+		}
+		merged = append(merged, c)
+	}
+	return merged
 }
 
 // short is a commit's first seven characters, as git shows it.

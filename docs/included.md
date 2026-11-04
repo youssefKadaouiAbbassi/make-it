@@ -87,7 +87,10 @@ setup` and `makeit update`, and the daily run, moves each plugin to its newest s
 security-audit, which has no releases, to the newest commit of its `main` branch. The two MCP
 servers move to their newest npm version the same way, and prek, deja and grype to their newest
 release. Each run lists what moved, old and new version side by side, and `makeit rollback` puts
-the previous versions back. The four language server plugins come from `claude-plugins-official` and
+the previous plugin, MCP server and tool versions back (Claude Code only moves forward; a run
+that moved nothing else is not one rollback undoes). A tool release that is tagged but not yet
+uploaded, or an upgrade that fails, leaves that one item where it is with a line saying why; the
+rest of the run goes on. The four language server plugins come from `claude-plugins-official` and
 update with it. Each
 language server plugin needs its server program on `PATH` (the optional prerequisite rows above).
 

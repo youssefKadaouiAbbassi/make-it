@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "makeit",
-  "description": "makeit's plugin set: a tested set of Claude Code plugins, each external one pinned to the commit that was tested; the bundles install them in one command.",
+  "description": "makeit's plugin set: a tested set of Claude Code plugins, each external one recorded at the release it was tested with, which makeit moves to the newest release on every run; the bundles install them in one command.",
   "owner": {
     "name": "Youssef Kadaoui Abbassi"
   },
@@ -35,7 +35,7 @@
     },
     {
       "name": "superpowers",
-      "description": "obra/superpowers 7.0.1, tag v7.0.1, peeled commit pinned. MIT.",
+      "description": "obra/superpowers 7.0.1, tag v7.0.1, peeled commit recorded. MIT.",
       "source": {
         "source": "url",
         "url": "https://github.com/obra/superpowers.git",

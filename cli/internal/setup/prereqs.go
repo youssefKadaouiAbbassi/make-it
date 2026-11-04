@@ -156,7 +156,7 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 			return "", nil
 		}}
 	}
-	if rel := r.Release; rel != nil && rel.Ships(e.Platform.OS, e.Platform.Arch) {
+	if rel := r.Release; rel != nil && rel.Ships(e.Platform.OS, e.Platform.Arch) && !e.Offline {
 		return toolRoute{name: "release", detail: "the newest release from github.com/" + rel.Repo, run: func(ctx context.Context) (string, error) {
 			v, err := e.newestRelease(ctx, r.ID)
 			if err != nil {

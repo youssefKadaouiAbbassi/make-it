@@ -22,8 +22,17 @@ New:
   "Claude Code 2.1.317 → 2.1.320", "grype 0.121.1 → 0.122.0"), in the live view, in plain mode
   and `update.log`, and in the daily run's note; a Claude Code that updated itself since the last
   run shows too.
-- `makeit rollback` also puts a release tool back to its earlier release, and skips the release it
-  undid until a newer one ships.
+- `makeit rollback` also puts a release tool and the MCP servers back to their earlier versions;
+  the daily run skips an undone release until a newer one ships, a run by hand takes it.
+
+Fixes:
+
+- On a fresh machine the newest releases are looked up after setup has installed git, so the first
+  setup already lands on them (found by the distro tests before release).
+- A tool release that is tagged but not uploaded yet, a failing Claude Code upgrade, or an upgrade
+  that needs a password where none can be typed (`--yes`, the daily run) is a note on that one
+  item, never a stopped run; the plan shows the upgrade command.
+- `makeit rollback` passes over a run that left nothing to undo instead of stopping there.
 
 ## 0.3.1
 

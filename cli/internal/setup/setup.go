@@ -64,6 +64,18 @@ type Env struct {
 	Pins []state.PinMove
 	// MCPChanges are the MCP servers the new plugin set moves (they count once it is written).
 	MCPChanges []state.Change
+	// Resolve looks up the newest plugin and MCP releases (nil: offline, or a pinned plugin set).
+	// The run calls it once git is on the machine, so a fresh machine resolves after the
+	// prerequisites step installed it; its result replaces CatalogTree, Pins and MCPChanges.
+	Resolve func(context.Context) Resolved
+}
+
+// Resolved is the newest plugin set, the plugin moves it makes, its MCP moves and its notes.
+type Resolved struct {
+	Tree  *catalog.Tree
+	Pins  []state.PinMove
+	MCP   []state.Change
+	Notes []string
 }
 
 // env is one run: the machine plus what earlier steps learned and the run's record.
@@ -80,6 +92,13 @@ type env struct {
 	kept []Kept
 	// changes are the versions this run moved (tools, Claude Code), for the report and generation.
 	changes []state.Change
+	// resolved: Resolve ran; notes are what it and the upgrade steps had to say.
+	resolved bool
+	notes    []string
+	// claudeNewest is Claude Code's newest version, read once per run.
+	claudeNewestOnce sync.Once
+	claudeNewest     string
+	claudeNewestErr  error
 	// releases are the newest release of each release tool, looked up once per run, together.
 	releasesOnce sync.Once
 	releases     map[string]release

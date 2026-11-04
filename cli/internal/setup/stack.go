@@ -37,7 +37,7 @@ func (e *env) stackSteps() []plan.Step {
 				if e.command == "update" && !listed && rec != nil {
 					return true, nil
 				}
-				t, err := e.catalogTree()
+				t, err := e.catalogTree(ctx)
 				if err != nil {
 					return false, err
 				}
@@ -46,8 +46,8 @@ func (e *env) stackSteps() []plan.Step {
 				// The same files from another source still run the step, so the switch is recorded.
 				return up && sameCatalog(e.st.Catalog, e.catalogRecord(dir)), nil
 			},
-			Run: func(context.Context) (string, error) {
-				t, err := e.catalogTree()
+			Run: func(ctx context.Context) (string, error) {
+				t, err := e.catalogTree(ctx)
 				if err != nil {
 					return "", err
 				}
@@ -253,7 +253,16 @@ func (e *env) act(res claudecli.Result, err error) error {
 }
 
 // catalogTree is the tree the catalog step writes: the prepared one, or the embedded catalog.
-func (e *env) catalogTree() (*catalog.Tree, error) {
+func (e *env) catalogTree(ctx context.Context) (*catalog.Tree, error) {
+	if e.Resolve != nil && !e.resolved && e.Present("git") {
+		r := e.Resolve(ctx)
+		e.resolved = true
+		if r.Tree != nil {
+			e.Catalog, e.CatalogTree = r.Tree, r.Tree
+		}
+		e.Pins, e.MCPChanges = r.Pins, r.MCP
+		e.notes = append(e.notes, r.Notes...)
+	}
 	if e.CatalogTree != nil {
 		return e.CatalogTree, nil
 	}

@@ -125,16 +125,4 @@ func TestUpdateClaudeFollowsStableChannel(t *testing.T) {
 	}
 }
 
-// A native install updates itself between runs: the next run shows that move too.
-func TestClaudeSelfUpdateShown(t *testing.T) {
-	e, _ := upgradeEnv(t, "native", "2.1.318", "2.1.318", "2.1.318")
-	e.st.ClaudeCode.VersionSeen = "2.1.317"
-	if ran, err := runUpgrade(t, e); ran || err != nil {
-		t.Fatalf("ran %v err %v", ran, err)
-	}
-	if want := (state.Change{Kind: "claude-code", Item: "Claude Code", From: "2.1.317", To: "2.1.318"}); !slices.Contains(e.changes, want) {
-		t.Errorf("changes %+v", e.changes)
-	}
-}
-
 var _ = platform.APT

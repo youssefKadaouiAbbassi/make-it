@@ -43,7 +43,12 @@ func (e *env) newestRelease(ctx context.Context, id string) (string, error) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				v, err := latest.Newest(ctx, e.Run, r.Release.Repo, e.st.ToolSkips[r.ID])
+				// Like plugins: the daily run leaves a release rollback undid, a run by hand takes it.
+				var skip []string
+				if e.Background {
+					skip = e.st.ToolSkips[r.ID]
+				}
+				v, err := latest.Newest(ctx, e.Run, r.Release.Repo, skip)
 				mu.Lock()
 				e.releases[r.ID] = release{v, err}
 				mu.Unlock()
@@ -106,12 +111,15 @@ func (e *env) toolUpgradeSteps() []plan.Step {
 				}
 				_, data, err := tools.FetchRelease(ctx, e.client(), userAgent(), cmp.Or(e.ReleaseBase, "https://github.com"), rel, v, e.Platform.OS, e.Platform.Arch)
 				if err != nil {
-					return "", err
+					// A tag can be out minutes before its files, or a file can be renamed: the tool
+					// stays where it is and the rest of the run goes on.
+					e.keep(id, fmt.Sprintf("kept at %s: release v%s could not be installed (%v)", cmp.Or(rec.Version, "its version"), v, err))
+					return "", plan.ErrSkip
 				}
 				from, sha := rec.Version, fsx.Sha256(data)
 				if sha == rec.Sha256 {
-					rec.Version = v // a 0.3.x record without a version: the same bytes
-					return "", nil
+					rec.Version = v // a 0.3.x record without a version: the same bytes, nothing moved
+					return "", plan.ErrSkip
 				}
 				if err := e.write("upgrade."+id, path, data, 0o755); err != nil {
 					return "", err
