@@ -236,6 +236,7 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 	var notes []string
 	rewritten := false
 	var jobs []*tagJob
+	var heads []*headJob
 	for _, raw := range plugins {
 		entry, _ := raw.(map[string]any)
 		src, _ := entry["source"].(map[string]any)
@@ -245,18 +246,28 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 		}
 		ref, _ := src["ref"].(string)
 		sha, _ := src["sha"].(string)
-		prefix, ok := Prefix(ref)
-		if !ok || sha == "" {
-			continue
-		}
 		url, _ := src["url"].(string)
 		if repo, _ := src["repo"].(string); repo != "" {
 			url = "https://github.com/" + repo + ".git"
 		}
-		if url == "" {
+		if url == "" || ref == "" || sha == "" {
 			continue
 		}
 		id := name + "@" + market
+		prefix, ok := Prefix(ref)
+		if !ok {
+			// A branch: it follows the branch's newest commit, keeping the one on disk offline.
+			from := pin{ref, sha}
+			if cur, ok := current[name]; ok && cur.ref == ref && cur.sha != "" && cur.sha != sha {
+				from = cur
+				src["sha"] = cur.sha
+				rewritten = true
+			}
+			if run != nil {
+				heads = append(heads, &headJob{src: src, id: id, name: name, from: from, url: url})
+			}
+			continue
+		}
 		from := pin{ref, sha}
 		if cur, ok := current[name]; ok && ahead(cur, from, prefix) {
 			from = cur
@@ -274,7 +285,21 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 		wg.Add(1)
 		go func() { defer wg.Done(); j.tags, j.err = lsRemote(ctx, run, j.url) }()
 	}
+	for _, h := range heads {
+		wg.Add(1)
+		go func() { defer wg.Done(); h.sha, h.err = lsHead(ctx, run, h.url, h.from.ref) }()
+	}
 	wg.Wait()
+	for _, h := range heads {
+		switch {
+		case h.err != nil:
+			notes = append(notes, fmt.Sprintf("%s kept at %.7s: could not read its branch %s (%v)", h.name, h.from.sha, h.from.ref, h.err))
+		case h.sha != h.from.sha && !contains(skips[h.id], h.sha):
+			h.src["sha"] = h.sha
+			rewritten = true
+			moves = append(moves, state.PinMove{ID: h.id, FromTag: h.from.ref, FromSHA: h.from.sha, ToTag: h.from.ref, ToSHA: h.sha})
+		}
+	}
 	for _, j := range jobs {
 		if j.err != nil {
 			notes = append(notes, fmt.Sprintf("%s kept at %s: could not read its releases (%v)", j.name, j.from.ref, j.err))
@@ -296,6 +321,34 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 		return b, nil, append(notes, "could not write the plugin set: "+err.Error()), false
 	}
 	return out, moves, notes, true
+}
+
+// headJob is one plugin on a branch, and the branch's newest commit.
+type headJob struct {
+	src      map[string]any
+	id, name string
+	from     pin
+	url      string
+	sha      string
+	err      error
+}
+
+// lsHead is the commit a remote branch points to.
+func lsHead(ctx context.Context, run execx.Runner, url, branch string) (string, error) {
+	res, err := run(ctx, execx.Cmd{Argv: []string{"git", "ls-remote", "--heads", url, "refs/heads/" + branch},
+		Env: []string{"GIT_TERMINAL_PROMPT=0"}, Timeout: 30 * time.Second})
+	if err != nil || res.Code != 0 {
+		why := res.Text()
+		if err != nil {
+			why += " " + err.Error()
+		}
+		return "", fmt.Errorf("%s: %s", url, strings.TrimSpace(why))
+	}
+	sha, _, _ := strings.Cut(strings.TrimSpace(res.Stdout), "\t")
+	if sha == "" {
+		return "", fmt.Errorf("%s has no branch %s", url, branch)
+	}
+	return sha, nil
 }
 
 // tagJob is one plugin source to probe for a newer release, and what the probe found.

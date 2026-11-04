@@ -104,6 +104,8 @@ func fakeRun(fail map[string]bool) execx.Runner {
 			return execx.Result{Stdout: "bbb\trefs/tags/skill-v4.8.0\nnew2\trefs/tags/skill-v4.9.0\nx\trefs/tags/cli-v9.0.0\n"}, nil
 		case strings.Contains(cmd, "npm view @arabold/docs-mcp-server version"):
 			return execx.Result{Stdout: "3.5.0\n"}, nil
+		case strings.Contains(cmd, "--heads") && strings.Contains(cmd, "security-audit-skill"):
+			return execx.Result{Stdout: "ccc\trefs/heads/main\n"}, nil
 		}
 		return execx.Result{Code: 1}, errors.New("unexpected " + cmd)
 	}
@@ -253,7 +255,7 @@ func TestApplyCancelledKeepsPins(t *testing.T) {
 	}
 	got, moves, notes := Apply(ctx, run, tree(t), tree(t), nil)
 	b, _ := got.ReadFile(".claude-plugin/marketplace.json")
-	if len(moves) != 0 || !strings.Contains(string(b), `"ref":"v7.0.1"`) || len(notes) != 2 {
+	if len(moves) != 0 || !strings.Contains(string(b), `"ref":"v7.0.1"`) || len(notes) != 3 { // two releases, one branch
 		t.Errorf("moves %+v notes %v:\n%s", moves, notes, b)
 	}
 }
@@ -311,5 +313,29 @@ func TestMCPChanges(t *testing.T) {
 	}
 	if got := MCPChanges(tree(t), tree(t)); len(got) != 0 {
 		t.Errorf("same set: %+v", got)
+	}
+}
+
+// A plugin on a branch follows the branch's newest commit; a commit rollback undid is skipped.
+func TestApplyFollowsBranch(t *testing.T) {
+	base := fakeRun(nil)
+	run := func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if cmd := strings.Join(c.Argv, " "); strings.Contains(cmd, "--heads") && strings.Contains(cmd, "security-audit-skill") {
+			return execx.Result{Stdout: "ddd\trefs/heads/main\n"}, nil
+		}
+		return base(ctx, c)
+	}
+	got, moves, notes := Apply(context.Background(), run, tree(t), tree(t), nil)
+	b, _ := got.ReadFile(".claude-plugin/marketplace.json")
+	if !strings.Contains(string(b), `"ref":"main","sha":"ddd"`) && !strings.Contains(string(b), `"sha":"ddd"`) {
+		t.Errorf("security-audit not at the branch head:\n%s", b)
+	}
+	want := state.PinMove{ID: "security-audit@makeit", FromTag: "main", FromSHA: "ccc", ToTag: "main", ToSHA: "ddd"}
+	if !slices.Contains(moves, want) || len(notes) != 0 {
+		t.Errorf("moves %+v notes %v, want %+v", moves, notes, want)
+	}
+	_, moves, _ = Apply(context.Background(), run, tree(t), tree(t), map[string][]string{"security-audit@makeit": {"ddd"}})
+	if slices.ContainsFunc(moves, func(p state.PinMove) bool { return p.ID == "security-audit@makeit" }) {
+		t.Errorf("a skipped commit moved again: %+v", moves)
 	}
 }

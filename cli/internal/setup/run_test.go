@@ -336,3 +336,12 @@ func TestReportChanges(t *testing.T) {
 		t.Errorf("an MCP move without the plugin set written: %+v", got)
 	}
 }
+
+// A plugin on a branch moves by commit: the change shows the short commits.
+func TestReportChangesBranch(t *testing.T) {
+	got := reportChanges(nil, []state.PinMove{{ID: "security-audit@makeit", FromTag: "main", FromSHA: "c1c8a8c1471069fb", ToTag: "main", ToSHA: "9f2e4d0aa1b2c3d4"}}, nil, false)
+	want := []state.Change{{Kind: "plugin", Item: "security-audit", From: "c1c8a8c", To: "9f2e4d0"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("changes %+v, want %+v", got, want)
+	}
+}

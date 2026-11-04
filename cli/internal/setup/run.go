@@ -243,6 +243,10 @@ func reportChanges(own []state.Change, pins []state.PinMove, mcp []state.Change,
 	var out []state.Change
 	for _, p := range pins {
 		name, _, _ := strings.Cut(p.ID, "@")
+		if p.FromTag == p.ToTag { // a branch: the commits moved
+			out = append(out, state.Change{Kind: "plugin", Item: name, From: short(p.FromSHA), To: short(p.ToSHA)})
+			continue
+		}
 		fp, _ := latest.Prefix(p.FromTag)
 		tp, _ := latest.Prefix(p.ToTag)
 		out = append(out, state.Change{Kind: "plugin", Item: name, From: strings.TrimPrefix(p.FromTag, fp), To: strings.TrimPrefix(p.ToTag, tp)})
@@ -255,3 +259,6 @@ func reportChanges(own []state.Change, pins []state.PinMove, mcp []state.Change,
 	slices.SortStableFunc(out, func(a, b state.Change) int { return rank[a.Kind] - rank[b.Kind] })
 	return out
 }
+
+// short is a commit's first seven characters, as git shows it.
+func short(sha string) string { return sha[:min(7, len(sha))] }

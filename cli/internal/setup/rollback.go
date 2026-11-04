@@ -157,9 +157,15 @@ func (e *env) pinsStep(pins []state.PinMove) plan.Step {
 						src["ref"], src["sha"] = p.FromTag, p.FromSHA
 					}
 				}
+				// A release is skipped by its tag; a branch by the commit, or the branch would stay
+				// skipped for good.
+				skip := p.ToTag
+				if p.FromTag == p.ToTag {
+					skip = p.ToSHA
+				}
 				e.st.PluginSkips = initSkips(e.st.PluginSkips)
-				if !slices.Contains(e.st.PluginSkips[p.ID], p.ToTag) {
-					e.st.PluginSkips[p.ID] = append(e.st.PluginSkips[p.ID], p.ToTag)
+				if !slices.Contains(e.st.PluginSkips[p.ID], skip) {
+					e.st.PluginSkips[p.ID] = append(e.st.PluginSkips[p.ID], skip)
 				}
 			}
 			out, err := json.Marshal(m)

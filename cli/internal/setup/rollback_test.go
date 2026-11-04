@@ -107,6 +107,42 @@ func TestRollbackRestoresPins(t *testing.T) {
 	}
 }
 
+// A branch plugin is put back to its earlier commit, and that commit (not the branch) is skipped.
+func TestRollbackSkipsBranchCommit(t *testing.T) {
+	e, f := stackEnv(t, `[{"name":"makeit","source":"directory"}]`, "[]")
+	dir := filepath.Join(e.Roots.Stack, "catalog")
+	cat := filepath.Join(dir, ".claude-plugin", "marketplace.json")
+	tr, err := catalog.TreeOf(map[string][]byte{".claude-plugin/marketplace.json": []byte(`{"name":"makeit","plugins":[{"name":"superpowers","source":{"source":"url","url":"https://github.com/obra/superpowers.git","ref":"main","sha":"bbb"}}]}`)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.SyncTree(dir, tr); err != nil {
+		t.Fatal(err)
+	}
+	f.answers["claude plugin marketplace update makeit --json"] = text(ok)
+	f.answers["claude plugin update superpowers@makeit --scope user --json"] = text(ok)
+	g, _ := state.NewGeneration(e.Roots.Stack, 0, "update", nil)
+	g.Manifest.Pins = []state.PinMove{{ID: "superpowers@makeit", FromTag: "main", FromSHA: "aaa", ToTag: "main", ToSHA: "bbb"}}
+	rep := runAll(t, e.rollbackSteps(g))
+	if rep.Failed() {
+		t.Fatalf("rollback failed: %+v", rep.Outcomes)
+	}
+	got, _ := os.ReadFile(cat)
+	if !strings.Contains(string(got), `"ref":"main"`) || !strings.Contains(string(got), `"sha":"aaa"`) {
+		t.Errorf("catalog %s, want main at aaa", got)
+	}
+	// doctor compares the plugin set with makeit's marker: a rollback is makeit's own write.
+	if now, err := catalog.DirTree(dir); err != nil || catalog.Digest(now.Manifest) != catalog.ReadMarker(dir).Digest {
+		t.Errorf("the plugin set no longer matches its marker after rollback (%v): doctor would warn", err)
+	}
+	if s := e.st.PluginSkips["superpowers@makeit"]; !slices.Contains(s, "bbb") || slices.Contains(s, "main") {
+		t.Errorf("skips %v, want the commit bbb and not the branch", s)
+	}
+	if !slices.ContainsFunc(f.argvs(), func(a string) bool { return strings.Contains(a, "plugin update superpowers@makeit") }) {
+		t.Errorf("calls %v, want the plugin updated to the restored pin", f.argvs())
+	}
+}
+
 func TestRollbackPicksNewestNotRolledBack(t *testing.T) {
 	e, _ := newEnv(t)
 	g1, _ := state.NewGeneration(e.Roots.Stack, 0, "update", nil)
