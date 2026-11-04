@@ -113,10 +113,10 @@ func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, 
 			if p.Bool["auto"] {
 				skips = st.PluginSkips
 			}
-			// setup and an offline update fetch nothing: they keep the releases on disk (a nil runner)
-			// instead of writing the older pins makeit ships over them.
+			// setup and update both take the newest releases; offline they fetch nothing and keep the
+			// releases on disk (a nil runner) instead of writing the older pins makeit ships over them.
 			var run execx.Runner
-			if command == "update" && !p.Bool["offline"] {
+			if !p.Bool["offline"] {
 				run = execx.Run
 			}
 			moved, pins, notes := latestApply(ctx, run, tree, current, skips)

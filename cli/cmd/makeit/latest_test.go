@@ -126,13 +126,15 @@ func TestManualUpdateIgnoresSkips(t *testing.T) {
 }
 
 // setup and update --offline keep the releases on disk without fetching; update fetches.
-func TestLatestOnlineOnlyForUpdate(t *testing.T) {
+// setup takes the newest plugin and MCP releases too, not the ones makeit shipped with; only
+// --offline keeps those.
+func TestSetupResolvesNewestReleases(t *testing.T) {
 	newCatMachine(t, nil)
 	c := fakeLatest(t, nil)
 	for _, tc := range []struct {
 		args   []string
 		online bool
-	}{{[]string{"setup", "--yes"}, false}, {[]string{"update", "--yes", "--offline"}, false}, {[]string{"update", "--yes"}, true}} {
+	}{{[]string{"setup", "--yes"}, true}, {[]string{"setup", "--yes", "--offline"}, false}, {[]string{"update", "--yes", "--offline"}, false}, {[]string{"update", "--yes"}, true}} {
 		*c = applyCall{}
 		if code, _, errOut := run2(t, tc.args...); code != 0 {
 			t.Fatalf("%v: exit %d\n%s", tc.args, code, errOut)
