@@ -15,6 +15,9 @@ Fixes:
   prints its header and version before it checks.
 - `makeit update` says when a plugin's source could not be reached ("kept at v7.0.1: could not
   read its releases"); before, git's exit code was dropped and the pin stayed without a word.
+- A release move of a plugin you installed yourself (adopted) is recorded like any other: the
+  daily run's note names it and `makeit rollback` can put it back. Before, the daily run moved
+  such a plugin and said nothing.
 
 ## 0.3.0
 

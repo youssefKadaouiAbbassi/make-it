@@ -780,3 +780,26 @@ func TestIdenticalSwitchOnConvergedMachine(t *testing.T) {
 		t.Errorf("the switch was not recorded: %+v", st.Catalog)
 	}
 }
+
+// A pin move of a plugin the owner installed (adopted) is recorded like any other, so the daily
+// note names it and rollback can put it back. Found on the owner's machine (2026-11-04): the
+// daily run moved superpowers to 7.0.2 and said nothing.
+func TestUpdateRecordsAdoptedPinMove(t *testing.T) {
+	m := adoptedMachine(t)
+	inner := m.env.Run
+	m.env.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.HasPrefix(strings.Join(c.Argv, " "), "/usr/bin/claude plugin update ") {
+			// The marketplace refresh already fetched the new pin: Claude Code reports up to date.
+			return execx.Result{Stdout: `{"command":"update","outcome":"ok","updateOutcome":"up_to_date"}`}, nil
+		}
+		return inner(ctx, c)
+	}
+	m.env.Pins = []state.PinMove{{ID: "makeit-bundle@makeit", FromTag: "v3.9.0", FromSHA: "a", ToTag: "v3.10.0", ToSHA: "b"}}
+	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Pins) != 1 || rep.Pins[0].ID != "makeit-bundle@makeit" {
+		t.Errorf("pins %+v, want the adopted plugin's move recorded", rep.Pins)
+	}
+}
