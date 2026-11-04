@@ -5,10 +5,12 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"makeit/internal/catalog"
 	"makeit/internal/fsx"
+	"makeit/internal/latest"
 	"makeit/internal/plan"
 	"makeit/internal/pluginrule"
 	"makeit/internal/state"
@@ -36,7 +38,7 @@ type Report struct {
 	Pins []state.PinMove
 	// NeedsYou are the tools with no install route on this machine, each with its manual route.
 	NeedsYou []NeedsYou
-	// Changes are the versions the run moved (tools and Claude Code; plugins are in Pins).
+	// Changes are every version the run moved: Claude Code, plugins, MCP servers, tools.
 	Changes []state.Change
 }
 
@@ -175,8 +177,9 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
 	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
 	rep.Pins = gen.Manifest.Pins
-	gen.Manifest.Changes = append(gen.Manifest.Changes, en.changes...)
-	rep.Changes = en.changes
+	catalogWritten := slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.ID == "catalog" && o.Status == plan.Done })
+	rep.Changes = reportChanges(en.changes, gen.Manifest.Pins, e.MCPChanges, catalogWritten)
+	gen.Manifest.Changes = rep.Changes
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())
@@ -231,5 +234,24 @@ func updatedPins(pins []state.PinMove, updated []string) []state.PinMove {
 			out = append(out, p)
 		}
 	}
+	return out
+}
+
+// reportChanges orders a run's moves for the reader: Claude Code, plugins (only those that really
+// updated, which pins already are), MCP servers (once the plugin set was written), tools.
+func reportChanges(own []state.Change, pins []state.PinMove, mcp []state.Change, catalogWritten bool) []state.Change {
+	var out []state.Change
+	for _, p := range pins {
+		name, _, _ := strings.Cut(p.ID, "@")
+		fp, _ := latest.Prefix(p.FromTag)
+		tp, _ := latest.Prefix(p.ToTag)
+		out = append(out, state.Change{Kind: "plugin", Item: name, From: strings.TrimPrefix(p.FromTag, fp), To: strings.TrimPrefix(p.ToTag, tp)})
+	}
+	if catalogWritten {
+		out = append(out, mcp...)
+	}
+	out = append(out, own...)
+	rank := map[string]int{"makeit": 0, "claude-code": 1, "plugin": 2, "mcp": 3, "tool": 4}
+	slices.SortStableFunc(out, func(a, b state.Change) int { return rank[a.Kind] - rank[b.Kind] })
 	return out
 }

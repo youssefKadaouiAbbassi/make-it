@@ -58,40 +58,6 @@ func TestFinishLiveShowsEveryFailure(t *testing.T) {
 	}
 }
 
-// Update's result names what moved; counts only when nothing did.
-func TestFinishLiveNamesMoves(t *testing.T) {
-	pin := func(id string) state.PinMove { return state.PinMove{ID: id + "@makeit", FromTag: "v1", ToTag: "v2"} }
-	done := func(ids ...string) []plan.Outcome {
-		var outs []plan.Outcome
-		for _, id := range ids {
-			outs = append(outs, plan.Outcome{ID: id, Title: id, Status: plan.Done})
-		}
-		return outs
-	}
-	for _, tc := range []struct {
-		name string
-		self *selfMove
-		pins []state.PinMove
-		outs []plan.Outcome
-		want string
-	}{
-		{"makeit and two plugins", &selfMove{From: "0.2.1", To: "0.3.0"}, []state.PinMove{pin("superpowers"), pin("ponytail")},
-			done("plugin.superpowers@makeit", "plugin.ponytail@makeit"), "makeit 0.2.1 → 0.3.0 and superpowers, ponytail moved to new releases"},
-		{"three plugins", nil, []state.PinMove{pin("superpowers"), pin("ponytail"), pin("deja-vu")},
-			done("plugin.superpowers@makeit", "plugin.ponytail@makeit", "plugin.deja-vu@makeit"), "3 plugins moved to new releases"},
-		{"makeit and other changes", &selfMove{From: "0.2.1", To: "0.3.0"}, nil, done("settings", "global.CLAUDE.md"), "makeit 0.2.1 → 0.3.0 and 2 other changes"},
-		{"nothing moved", nil, nil, done("settings", "a", "b", "c"), "4 changed"},
-	} {
-		var out bytes.Buffer
-		u := ui.NewFromReader(nil, &out, false)
-		u.Mode = ui.Live
-		finishLive(u, "update", setup.Report{Plan: plan.Report{Outcomes: tc.outs}, Pins: tc.pins, Generation: 1}, tc.self, time.Second)
-		if !strings.Contains(out.String(), tc.want) {
-			t.Errorf("%s: no %q in:\n%s", tc.name, tc.want, out.String())
-		}
-	}
-}
-
 // A run that just put the PATH line in the profile says to open a new terminal.
 func TestFinishLiveSaysNewTerminal(t *testing.T) {
 	var out bytes.Buffer
@@ -112,5 +78,47 @@ func TestFinishLiveNothingToDoNamesNeedsYou(t *testing.T) {
 	finishLive(u, "setup", setup.Report{NeedsYou: []setup.NeedsYou{{ID: "chrome", Manual: "x"}}}, nil, time.Second)
 	if s := out.String(); !strings.Contains(s, "1 tool needs you") || strings.Contains(s, "everything is current") {
 		t.Errorf("result:\n%s", s)
+	}
+}
+
+// Every change is listed with both versions, aligned, and the result counts them.
+func TestUpdateLiveListsChanges(t *testing.T) {
+	var out bytes.Buffer
+	u := ui.NewFromReader(nil, &out, false)
+	u.Mode = ui.Live
+	rep := setup.Report{Generation: 4, Plan: plan.Report{Outcomes: []plan.Outcome{{ID: "catalog", Status: plan.Done}}}, Changes: []state.Change{
+		{Kind: "claude-code", Item: "Claude Code", From: "2.1.317", To: "2.1.320"},
+		{Kind: "plugin", Item: "superpowers", From: "7.0.1", To: "7.0.2"},
+		{Kind: "tool", Item: "grype", From: "0.121.1", To: "0.122.0"},
+	}}
+	finishLive(u, "update", rep, &selfMove{From: "0.3.1", To: "0.3.2"}, time.Second)
+	s := out.String()
+	for _, want := range []string{"Changed", "makeit       0.3.1 → 0.3.2", "Claude Code  2.1.317 → 2.1.320", "superpowers  7.0.1 → 7.0.2", "grype        0.121.1 → 0.122.0", "4 changes"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("no %q in:\n%s", want, s)
+		}
+	}
+	if strings.Index(s, "Changed") > strings.Index(s, "4 changes") {
+		t.Errorf("the list comes after the result:\n%s", s)
+	}
+}
+
+// Nothing moved: no list.
+func TestNoChangesNoList(t *testing.T) {
+	var out bytes.Buffer
+	u := ui.NewFromReader(nil, &out, false)
+	u.Mode = ui.Live
+	finishLive(u, "update", setup.Report{}, nil, time.Second)
+	if strings.Contains(out.String(), "Changed") {
+		t.Errorf("a list with nothing in it:\n%s", out.String())
+	}
+}
+
+// Plain mode and the log get one line per change.
+func TestPlainListsChanges(t *testing.T) {
+	var out bytes.Buffer
+	printChangesPlain(&out, []state.Change{{Kind: "plugin", Item: "superpowers", From: "7.0.1", To: "7.0.2"}, {Kind: "tool", Item: "prek", To: "0.6.0"}})
+	if s := out.String(); s != "changed: superpowers 7.0.1 → 7.0.2\nchanged: prek → 0.6.0\n" {
+		t.Errorf("plain %q", s)
 	}
 }

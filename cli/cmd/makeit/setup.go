@@ -125,6 +125,7 @@ func prepareCatalog(command string, stderr io.Writer) func(ctx context.Context, 
 				e.Catalog, e.CatalogTree = moved, moved
 			}
 			e.Pins = pins
+			e.MCPChanges = latest.MCPChanges(current, moved)
 			notices = append(notices, notes...)
 		}
 		return notices, nil
@@ -266,10 +267,11 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 			Kept       []setup.Kept     `json:"kept,omitempty"`
 			Notice     string           `json:"notice,omitempty"`
 			Self       *selfMove        `json:"self,omitempty"`
+			Changes    []state.Change   `json:"changes,omitempty"`
 			Generation int              `json:"generation"`
 			Summary    string           `json:"summary"`
 			Error      string           `json:"error,omitempty"`
-		}{buildinfo.Version, rep.Plan.Outcomes, rep.Hints, rep.NeedsYou, rep.Kept, notice, m.self, rep.Generation, rep.Plan.Summary(), errText(err)}
+		}{buildinfo.Version, rep.Plan.Outcomes, rep.Hints, rep.NeedsYou, rep.Kept, notice, m.self, allChanges(m.self, rep), rep.Generation, rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
 	if live == nil && (!shown || rep.Generation > 0) {
@@ -282,6 +284,7 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 		printNotesLive(u, rep)
 		finishLive(u, m.name, rep, m.self, time.Since(started))
 	} else {
+		printChangesPlain(stderr, allChanges(m.self, rep))
 		fmt.Fprintln(stderr, rep.Plan.Summary())
 		for _, n := range rep.NeedsYou {
 			fmt.Fprintf(stderr, "%s needs you: %s\n", n.ID, n.Manual)

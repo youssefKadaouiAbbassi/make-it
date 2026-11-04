@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,5 +145,44 @@ func TestSetupResolvesNewestReleases(t *testing.T) {
 		if !c.called || c.online != tc.online {
 			t.Errorf("%v: called %v online %v, want online %v", tc.args, c.called, c.online, tc.online)
 		}
+	}
+}
+
+// A Claude Code that updated itself since the last run shows in the next update's changes,
+// once, through the plan pass and the apply pass of a real run.
+func TestUpdateShowsClaudeSelfUpdate(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	path := filepath.Join(m.stack, "state.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st map[string]any
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	cc, _ := st["claudeCode"].(map[string]any)
+	if cc == nil || cc["versionSeen"] == nil {
+		t.Fatalf("setup recorded no Claude Code version: %v", st["claudeCode"])
+	}
+	now := cc["versionSeen"].(string)
+	cc["versionSeen"] = "2.1.1"
+	out, _ := json.Marshal(st)
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, errOut := run2(t, "update", "--yes", "--json")
+	if code != 0 {
+		t.Fatalf("update: exit %d\n%s", code, errOut)
+	}
+	if !strings.Contains(stdout, `"from": "2.1.1"`) || !strings.Contains(stdout, `"to": "`+now+`"`) {
+		t.Errorf("no Claude Code 2.1.1 → %s in:\n%s", now, stdout)
+	}
+	_, stdout, _ = run2(t, "update", "--yes", "--json")
+	if strings.Contains(stdout, `"from": "2.1.1"`) {
+		t.Errorf("the self-update was listed twice:\n%s", stdout)
 	}
 }

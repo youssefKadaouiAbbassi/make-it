@@ -3,6 +3,7 @@ package latest
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 
 	"makeit/internal/catalog"
 	"makeit/internal/execx"
+	"makeit/internal/state"
 )
 
 func TestPrefix(t *testing.T) {
@@ -290,5 +292,24 @@ func TestNewest(t *testing.T) {
 	}
 	if v, err := Newest(ctx, run, "o/gone", nil); err == nil {
 		t.Errorf("unreachable: %q, want an error", v)
+	}
+}
+
+// The MCP servers a new plugin set moves, from the versions on disk; a fresh machine (nothing on
+// disk) moves nothing.
+func TestMCPChanges(t *testing.T) {
+	moved, err := catalog.TreeOf(map[string][]byte{"plugins/makeit/.mcp.json": []byte(strings.ReplaceAll(mcp, "3.4.1", "3.5.0"))}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []state.Change{{Kind: "mcp", Item: "@arabold/docs-mcp-server", From: "3.4.1", To: "3.5.0"}}
+	if got := MCPChanges(tree(t), moved); !slices.Equal(got, want) {
+		t.Errorf("changes %+v, want %+v", got, want)
+	}
+	if got := MCPChanges(nil, moved); len(got) != 0 {
+		t.Errorf("fresh machine: %+v", got)
+	}
+	if got := MCPChanges(tree(t), tree(t)); len(got) != 0 {
+		t.Errorf("same set: %+v", got)
 	}
 }

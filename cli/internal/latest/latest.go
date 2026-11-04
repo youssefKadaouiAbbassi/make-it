@@ -10,7 +10,9 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -322,6 +324,24 @@ func npmPins(b []byte) map[string]string {
 	out := map[string]string{}
 	for _, mm := range npmQuoted.FindAllStringSubmatch(string(b), -1) {
 		out[mm[1]] = mm[2]
+	}
+	return out
+}
+
+// MCPChanges are the MCP servers whose npm version moved between the plugin set on disk and a
+// new one; nothing on disk (a fresh machine) is not a move.
+func MCPChanges(current, next *catalog.Tree) []state.Change {
+	if current == nil || next == nil {
+		return nil
+	}
+	cur, _ := current.ReadFile(mcpFile)
+	nxt, _ := next.ReadFile(mcpFile)
+	was, now := npmPins(cur), npmPins(nxt)
+	var out []state.Change
+	for _, pkg := range slices.Sorted(maps.Keys(now)) {
+		if from, ok := was[pkg]; ok && from != now[pkg] {
+			out = append(out, state.Change{Kind: "mcp", Item: pkg, From: from, To: now[pkg]})
+		}
 	}
 	return out
 }

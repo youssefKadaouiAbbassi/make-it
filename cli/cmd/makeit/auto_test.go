@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"makeit/internal/plan"
-	"makeit/internal/setup"
 	"makeit/internal/state"
 )
 
@@ -55,14 +53,16 @@ func TestAutoDueLocked(t *testing.T) {
 }
 
 func TestAutoNote(t *testing.T) {
-	rep := setup.Report{Generation: 3, Plan: plan.Report{Outcomes: []plan.Outcome{{ID: "catalog", Status: plan.Done}}}}
-	pins := []state.PinMove{{ID: "superpowers@makeit", ToTag: "v7.1.0"}, {ID: "chrome-devtools-mcp@makeit", ToTag: "chrome-devtools-mcp-v1.13.0"}}
-	got := autoNote(rep, pins, &selfMove{From: "0.2.0", To: "0.2.1"})
-	want := "makeit updated: makeit 0.2.1, superpowers 7.1.0, chrome-devtools-mcp 1.13.0 · undo: makeit rollback"
-	if got != want {
+	changes := []state.Change{
+		{Kind: "makeit", Item: "makeit", From: "0.2.0", To: "0.2.1"},
+		{Kind: "plugin", Item: "superpowers", From: "7.0.1", To: "7.1.0"},
+		{Kind: "tool", Item: "grype", From: "", To: "0.122.0"},
+	}
+	want := "makeit updated: makeit 0.2.0 → 0.2.1, superpowers 7.0.1 → 7.1.0, grype → 0.122.0 · undo: makeit rollback"
+	if got := autoNote(changes); got != want {
 		t.Errorf("note\n%q\nwant\n%q", got, want)
 	}
-	if n := autoNote(setup.Report{}, nil, nil); n != "" {
+	if n := autoNote(nil); n != "" {
 		t.Errorf("a run that changed nothing left a note: %q", n)
 	}
 }

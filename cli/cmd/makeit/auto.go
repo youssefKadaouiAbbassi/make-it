@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"makeit/internal/fsx"
-	"makeit/internal/latest"
-	"makeit/internal/setup"
 	"makeit/internal/state"
 )
 
@@ -35,17 +33,10 @@ func autoDue(stack string, now time.Time) (bool, string) {
 }
 
 // autoNote is the one line the next Claude Code session shows after a daily run moved something.
-func autoNote(rep setup.Report, pins []state.PinMove, self *selfMove) string {
+func autoNote(changes []state.Change) string {
 	var parts []string
-	if self != nil {
-		parts = append(parts, "makeit "+self.To)
-	}
-	if rep.Generation > 0 {
-		for _, p := range pins {
-			name, _, _ := strings.Cut(p.ID, "@")
-			prefix, _ := latest.Prefix(p.ToTag)
-			parts = append(parts, name+" "+strings.TrimPrefix(p.ToTag, prefix))
-		}
+	for _, c := range changes {
+		parts = append(parts, c.Item+" "+changeText(c))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -70,12 +61,8 @@ func openAutoLog(stack string) (*os.File, error) {
 }
 
 // finishAuto records the daily run: when it ran, and the note for the next session.
-func finishAuto(stack string, rep setup.Report, self *selfMove) error {
-	var pins []state.PinMove
-	if gens, err := state.LoadGenerations(stack); err == nil && len(gens) > 0 && gens[0].Manifest.Generation == rep.Generation {
-		pins = gens[0].Manifest.Pins
-	}
-	if note := autoNote(rep, pins, self); note != "" {
+func finishAuto(stack string, changes []state.Change) error {
+	if note := autoNote(changes); note != "" {
 		if err := fsx.WriteAtomic(filepath.Join(stack, "pending-note"), []byte(note+"\n"), 0o600); err != nil {
 			return err
 		}

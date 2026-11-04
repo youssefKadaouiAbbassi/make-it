@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"slices"
-	"strings"
 	"time"
 
 	"makeit/internal/plan"
@@ -93,34 +93,49 @@ func printNotesLive(u *ui.UI, rep setup.Report) {
 	// Hints (how an adopted plugin gets its updates) are background: plain mode and the log keep them.
 }
 
-// movedPhrase names what an update moved: makeit first, then up to two plugins by name, more as
-// a count, then the other changed steps as a count. "" when nothing moved.
-func movedPhrase(self *selfMove, pins []state.PinMove, others int) string {
-	var parts []string
+// allChanges are makeit's own move, then the run's.
+func allChanges(self *selfMove, rep setup.Report) []state.Change {
+	var out []state.Change
 	if self != nil {
-		parts = append(parts, "makeit "+self.From+" → "+self.To)
+		out = append(out, state.Change{Kind: "makeit", Item: "makeit", From: self.From, To: self.To})
 	}
-	switch n := len(pins); {
-	case n == 0:
-	case n <= 2:
-		names := make([]string, n)
-		for i, p := range pins {
-			names[i], _, _ = strings.Cut(p.ID, "@")
-		}
-		parts = append(parts, strings.Join(names, ", ")+" moved to new releases")
-	default:
-		parts = append(parts, fmt.Sprintf("%d plugins moved to new releases", n))
+	return append(out, rep.Changes...)
+}
+
+// changeText is "from → to", or "→ to" when the earlier version is not known.
+func changeText(c state.Change) string {
+	if c.From == "" {
+		return "→ " + c.To
 	}
-	if len(parts) == 0 {
-		return ""
+	return c.From + " → " + c.To
+}
+
+// printChangesLive lists every change under "Changed", the names in one column.
+func printChangesLive(u *ui.UI, changes []state.Change) {
+	if len(changes) == 0 {
+		return
 	}
-	if others > 0 {
-		parts = append(parts, plural(others, "other change", "other changes"))
+	w := 0
+	for _, c := range changes {
+		w = max(w, len(c.Item))
 	}
-	return strings.Join(parts, " and ")
+	_, _ = fmt.Fprintln(u.Out)
+	_, _ = fmt.Fprintln(u.Out, "  Changed")
+	for _, c := range changes {
+		_, _ = fmt.Fprintf(u.Out, "    %-*s  %s\n", w, c.Item, changeText(c))
+	}
+}
+
+// printChangesPlain is one line per change, for plain mode and update.log.
+func printChangesPlain(w io.Writer, changes []state.Change) {
+	for _, c := range changes {
+		_, _ = fmt.Fprintf(w, "changed: %s %s\n", c.Item, changeText(c))
+	}
 }
 
 func finishLive(u *ui.UI, name string, rep setup.Report, self *selfMove, elapsed time.Duration) {
+	changes := allChanges(self, rep)
+	printChangesLive(u, changes)
 	if rep.Generation == 0 && !rep.Plan.Failed() {
 		note := []string{"everything is current"}
 		if n := len(rep.NeedsYou); n > 0 {
@@ -146,17 +161,9 @@ func finishLive(u *ui.UI, name string, rep setup.Report, self *selfMove, elapsed
 	if already > 0 {
 		counts = append(counts, fmt.Sprintf("%d already", already))
 	}
-	// The steps that moved a plugin are named, not counted.
-	others := changed
-	for _, p := range rep.Pins {
-		for _, o := range rep.Plan.Outcomes {
-			if o.ID == "plugin."+p.ID && o.Status == plan.Done {
-				others--
-			}
-		}
-	}
-	if phrase := movedPhrase(self, rep.Pins, others); phrase != "" {
-		counts = []string{phrase}
+	// The list above names every version that moved; the result counts them.
+	if len(changes) > 0 {
+		counts = []string{plural(len(changes), "change", "changes")}
 	}
 	if rep.Plan.Failed() {
 		// The live rows keep one cut line per area; here is every failed step, whole.

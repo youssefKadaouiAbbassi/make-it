@@ -62,6 +62,8 @@ type Env struct {
 	// Pins are the plugin release moves update's latest step made in CatalogTree, recorded in the
 	// run's generation for rollback.
 	Pins []state.PinMove
+	// MCPChanges are the MCP servers the new plugin set moves (they count once it is written).
+	MCPChanges []state.Change
 }
 
 // env is one run: the machine plus what earlier steps learned and the run's record.

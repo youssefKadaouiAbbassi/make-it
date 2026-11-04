@@ -314,3 +314,25 @@ func TestSetupListsConcurrently(t *testing.T) {
 		t.Errorf("a step failed: %s", rep.Plan.Summary())
 	}
 }
+
+// The report lists Claude Code, then plugins, then MCP servers, then tools; a plugin move counts
+// only when the plugin really updated, an MCP move only when the plugin set was written.
+func TestReportChanges(t *testing.T) {
+	got := reportChanges(
+		[]state.Change{{Kind: "tool", Item: "grype", From: "0.121.1", To: "0.122.0"}, {Kind: "claude-code", Item: "Claude Code", From: "2.1.317", To: "2.1.320"}},
+		[]state.PinMove{{ID: "superpowers@makeit", FromTag: "v7.0.1", ToTag: "v7.0.2"}, {ID: "chrome-devtools-mcp@makeit", FromTag: "chrome-devtools-mcp-v1.12.0", ToTag: "chrome-devtools-mcp-v1.13.0"}},
+		[]state.Change{{Kind: "mcp", Item: "chrome-devtools-mcp", From: "1.12.0", To: "1.13.0"}}, true)
+	want := []state.Change{
+		{Kind: "claude-code", Item: "Claude Code", From: "2.1.317", To: "2.1.320"},
+		{Kind: "plugin", Item: "superpowers", From: "7.0.1", To: "7.0.2"},
+		{Kind: "plugin", Item: "chrome-devtools-mcp", From: "1.12.0", To: "1.13.0"},
+		{Kind: "mcp", Item: "chrome-devtools-mcp", From: "1.12.0", To: "1.13.0"},
+		{Kind: "tool", Item: "grype", From: "0.121.1", To: "0.122.0"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("changes\n%+v\nwant\n%+v", got, want)
+	}
+	if got := reportChanges(nil, nil, []state.Change{{Kind: "mcp", Item: "x", From: "1", To: "2"}}, false); len(got) != 0 {
+		t.Errorf("an MCP move without the plugin set written: %+v", got)
+	}
+}
