@@ -26,9 +26,9 @@ the same and, at a terminal, can run the fix for you.
 | jq | your package manager | the hooks read Claude Code's JSON with it |
 | gh | your package manager | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
 | Chrome | Homebrew, winget, or Google's own `.deb`/`.rpm` on apt or dnf (x86-64); left to you elsewhere | chrome-devtools-mcp drives an installed Chrome (it supports Chrome and Chrome for Testing, not Chromium) |
-| prek | Homebrew, winget, or a release binary from github.com/j178/prek | runs the commit hooks in `.pre-commit-config.yaml` |
-| deja | Homebrew, or a release binary from github.com/vshulcz/deja-vu | the local search binary of the deja-vu plugin |
-| grype | Homebrew, winget, or a release binary from github.com/anchore/grype | the vulnerability scan, run locally (the CI checks run it too) |
+| prek | Homebrew, winget, or the newest release binary from github.com/j178/prek | runs the commit hooks in `.pre-commit-config.yaml` |
+| deja | Homebrew, or the newest release binary from github.com/vshulcz/deja-vu | the local search binary of the deja-vu plugin |
+| grype | Homebrew, winget, or the newest release binary from github.com/anchore/grype | the vulnerability scan, run locally (the CI checks run it too) |
 | typescript-language-server | Homebrew, or `npm install -g --prefix ~/.local` | the typescript-lsp plugin runs it for `.ts` and `.js` files |
 | pyright | Homebrew, or `npm install -g --prefix ~/.local` | the pyright-lsp plugin runs it for `.py` files |
 | rust-analyzer | checked only when `cargo` or `rustup` is on `PATH`: Homebrew, apk, dnf, or `rustup component add` | the rust-analyzer-lsp plugin runs it for `.rs` files |
@@ -46,8 +46,12 @@ then.
 
 ## Claude Code
 
-setup installs Claude Code when it is missing or older than 2.1.287. `makeit doctor` warns when it
-is older than 2.1.310, the version this release was tested with.
+setup installs Claude Code when it is missing or older than 2.1.287, and every setup and update
+then brings it to the newest release of its channel (`latest`, or `stable` when you set
+`autoUpdatesChannel` to it), through the install's own upgrade. The daily run never asks for a
+password: where the upgrade needs sudo (apt, dnf, apk), it leaves a line saying `makeit update`
+will do it. A native install also updates itself; the next run lists that move too. `makeit
+doctor` warns when Claude Code is older than 2.1.310, the version this release was tested with.
 
 The route depends on the machine: Homebrew on macOS, winget on Windows, and on Linux Homebrew when
 present, otherwise Anthropic's signed apt, dnf or apk repository. setup checks the repository key's
@@ -58,13 +62,13 @@ failed install stops with its error. An existing Claude Code is kept, however it
 ## The plugin set
 
 makeit carries a plugin set: a Claude Code plugin marketplace named `makeit` that lists each plugin
-at a pinned commit. setup copies it to `~/.makeit/catalog`, adds it as a marketplace, adds
+at the release (or, for one without releases, the commit) it was tested with. setup copies it to `~/.makeit/catalog`, adds it as a marketplace, adds
 Anthropic's `claude-plugins-official` marketplace, and installs the `makeit-bundle` plugin. The
 bundle has no content of its own: installing it installs these plugins.
 
 | plugin | version | what it does | tested |
 |---|---|---|---|
-| makeit | 0.3.0 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
+| makeit | 0.3.2 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
 | superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review | yes: on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost; a tie on a second hard test |
 | ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` | yes: the cheapest and fastest option on the UI tasks, chosen over Caveman |
 | chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) | yes: compared with other browser tools; the only one with traces, Lighthouse and device emulation |
@@ -78,9 +82,15 @@ bundle has no content of its own: installing it installs these plugins.
 
 Parts that were tested and lost were left out, among them Caveman, Laya and hallmark.
 
-The versions above are the ones this release was tested with. `makeit update`, and its daily run,
-moves each plugin pinned to a release to its newest stable release; security-audit, pinned to a
-commit, stays where it is. The four language server plugins come from `claude-plugins-official` and
+The versions above are the ones this release was tested with; nothing is held there. Every `makeit
+setup` and `makeit update`, and the daily run, moves each plugin to its newest stable release, and
+security-audit, which has no releases, to the newest commit of its `main` branch. The two MCP
+servers move to their newest npm version the same way, and prek, deja and grype to their newest
+release. Each run lists what moved, old and new version side by side, and `makeit rollback` puts
+the previous plugin, MCP server and tool versions back (Claude Code only moves forward; a run
+that moved nothing else is not one rollback undoes). A tool release that is tagged but not yet
+uploaded, or an upgrade that fails, leaves that one item where it is with a line saying why; the
+rest of the run goes on. The four language server plugins come from `claude-plugins-official` and
 update with it. Each
 language server plugin needs its server program on `PATH` (the optional prerequisite rows above).
 
@@ -142,8 +152,8 @@ when it differs; setup adds only the missing ones. `--dry-run` prints each path 
 | `permissions.defaultMode` | `bypassPermissions` | Claude runs tools without asking, except for the commands below |
 | `skipDangerousModePermissionPrompt` | `true` | skips Claude Code's one-time confirmation for that mode |
 | `permissions.ask` | a list of commands | these always ask first: merging pull requests, `DELETE` calls through `gh api`, pushing to `main` or `master`, force pushes, `git reset --hard`, publishing packages and releases (npm, cargo, uv, twine, gh, eas), `gh pr comment`, `rm -rf` on home, root or parent paths, and the DBHub write tools |
-| `model` | `claude-opus-5-5` | the default model |
-| `advisorModel` | `claude-fable-5-1` | the advisor model |
+| `model` | `opus` | the newest Opus, resolved by Claude Code |
+| `advisorModel` | `fable` | the newest Fable as the advisor, resolved by Claude Code |
 | `cleanupPeriodDays` | `3650` | keeps session transcripts for ten years instead of deleting them |
 | `env.PONYTAIL_DEFAULT_MODE` | `full` | ponytail's level |
 | `env.CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`, `env.DOCS_MCP_TELEMETRY`, `env.REDOCLY_TELEMETRY`, `env.FASTLANE_OPT_OUT_USAGE`, `env.MAESTRO_CLI_NO_ANALYTICS` | off | telemetry off for tools the plugins and the CI checks run |

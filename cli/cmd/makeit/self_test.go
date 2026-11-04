@@ -429,3 +429,24 @@ func TestRollbackAfterAgedUpdate(t *testing.T) {
 		t.Errorf("the file was not rolled back")
 	}
 }
+
+// Distro suite, 2026-11-04: setup finished, then makeit was replaced seconds later, then an update
+// left a run with nothing to undo. makeit is the last change: its swap came after the newest run
+// rollback can undo had finished, even though that run started less than a minute earlier.
+func TestBinaryIsLastAfterAFinishedRun(t *testing.T) {
+	e, _ := selfMachine(t, true)
+	write(t, e.Exe, "makeit 0.3.2")
+	e.Version = "0.3.2"
+	prev := "0.3.1"
+	started := time.Now().UTC().Add(-20 * time.Second)
+	g := &state.Generation{Manifest: state.Manifest{Generation: 1, Command: "setup", StartedAt: started, FinishedAt: started.Add(10 * time.Second)}}
+	saveReceipt(t, e, state.Receipt{Method: "script", BinPath: e.Roots.Portable(e.Exe), Version: "0.3.2", Target: e.Target, Previous: &prev, InstalledAt: started.Add(15 * time.Second)})
+	if !binaryIsLast(e, g) {
+		t.Error("the swap after the finished setup is not taken as the last change")
+	}
+	// An update's own swap comes before its run starts: that run, not the swap, is the last change.
+	g.Manifest.Command, g.Manifest.StartedAt, g.Manifest.FinishedAt = "update", started.Add(16*time.Second), started.Add(19*time.Second)
+	if binaryIsLast(e, g) {
+		t.Error("an update's swap is taken as later than its own run")
+	}
+}

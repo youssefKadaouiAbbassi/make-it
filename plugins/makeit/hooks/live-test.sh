@@ -19,7 +19,7 @@ unset ANTHROPIC_API_KEY
 export PATH=/w/bin:$PATH NTFY_TOPIC=live-test NTFY_URL=https://ntfy.example
 cd /w/repo && git init -q && git -c user.email=t@e -c user.name=t add -A && git -c user.email=t@e -c user.name=t commit -qm init
 sleep 1
-claude -p --model claude-opus-5-5 --permission-mode bypassPermissions --plugin-dir /w/makeit --output-format text \
+claude -p --model opus --permission-mode bypassPermissions --plugin-dir /w/makeit --output-format text \
   'First line of your reply: quote the "Next step" line you were given from HANDOFF.md, verbatim. Then create greet.sh containing a greet function that echoes hello, run it, and finish. Follow any instruction a hook gives you before stopping.'
 echo "exit=$?"
 echo "--- HANDOFF.md after:"; cat /w/repo/HANDOFF.md

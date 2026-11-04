@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -47,8 +48,13 @@ type Env struct {
 	// ReleaseBase is where GitHub releases are fetched from (https://github.com when "").
 	Client      *http.Client
 	ReleaseBase string
+	// RegistryBase is the npm registry Claude Code's newest version is read from; "" looks
+	// nothing up (the command sets https://registry.npmjs.org).
+	RegistryBase string
 	// Background is the daily run: no tool installs, no profile edits (both need a terminal).
 	Background bool
+	// Offline: makeit itself makes no network request (--offline); no release is looked up.
+	Offline bool
 	// Reinstall names tools to install again although the user removed them.
 	Reinstall []string
 	// Progress, when set, sees each step of the apply pass start and finish (the live view).
@@ -56,6 +62,20 @@ type Env struct {
 	// Pins are the plugin release moves update's latest step made in CatalogTree, recorded in the
 	// run's generation for rollback.
 	Pins []state.PinMove
+	// MCPChanges are the MCP servers the new plugin set moves (they count once it is written).
+	MCPChanges []state.Change
+	// Resolve looks up the newest plugin and MCP releases (nil: offline, or a pinned plugin set).
+	// The run calls it once git is on the machine, so a fresh machine resolves after the
+	// prerequisites step installed it; its result replaces CatalogTree, Pins and MCPChanges.
+	Resolve func(context.Context) Resolved
+}
+
+// Resolved is the newest plugin set, the plugin moves it makes, its MCP moves and its notes.
+type Resolved struct {
+	Tree  *catalog.Tree
+	Pins  []state.PinMove
+	MCP   []state.Change
+	Notes []string
 }
 
 // env is one run: the machine plus what earlier steps learned and the run's record.
@@ -70,6 +90,18 @@ type env struct {
 	command string
 	// kept and hints are what the run left alone and how adopted plugins update, for the report.
 	kept []Kept
+	// changes are the versions this run moved (tools, Claude Code), for the report and generation.
+	changes []state.Change
+	// resolved: Resolve ran; notes are what it and the upgrade steps had to say.
+	resolved bool
+	notes    []string
+	// claudeNewest is Claude Code's newest version, read once per run.
+	claudeNewestOnce sync.Once
+	claudeNewest     string
+	claudeNewestErr  error
+	// releases are the newest release of each release tool, looked up once per run, together.
+	releasesOnce sync.Once
+	releases     map[string]release
 	// needsYou are the tools with no install route here.
 	needsYou []NeedsYou
 	hints    []Hint

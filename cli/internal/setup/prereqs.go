@@ -156,21 +156,24 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 			return "", nil
 		}}
 	}
-	if rel := r.Release; rel != nil {
-		if asset, _ := rel.Asset(rel.Version, e.Platform.OS, e.Platform.Arch); asset != "" {
-			return toolRoute{name: "release", detail: "release v" + rel.Version + " from github.com/" + rel.Repo, run: func(ctx context.Context) (string, error) {
-				name, data, err := tools.FetchRelease(ctx, e.client(), userAgent(), cmp.Or(e.ReleaseBase, "https://github.com"), *rel, e.Platform.OS, e.Platform.Arch)
-				if err != nil {
-					return "", err
-				}
-				// Through the generation, like every file setup writes: rollback removes it again.
-				if err := e.write("prereq."+r.ID, filepath.Join(e.Roots.Home, ".local", "bin", name), data, 0o755); err != nil {
-					return "", err
-				}
-				record("release", nil, fsx.Sha256(data))
-				return "", nil
-			}}
-		}
+	if rel := r.Release; rel != nil && rel.Ships(e.Platform.OS, e.Platform.Arch) && !e.Offline {
+		return toolRoute{name: "release", detail: "the newest release from github.com/" + rel.Repo, run: func(ctx context.Context) (string, error) {
+			v, err := e.newestRelease(ctx, r.ID)
+			if err != nil {
+				return "", err
+			}
+			name, data, err := tools.FetchRelease(ctx, e.client(), userAgent(), cmp.Or(e.ReleaseBase, "https://github.com"), *rel, v, e.Platform.OS, e.Platform.Arch)
+			if err != nil {
+				return "", err
+			}
+			// Through the generation, like every file setup writes: rollback removes it again.
+			if err := e.write("prereq."+r.ID, filepath.Join(e.Roots.Home, ".local", "bin", name), data, 0o755); err != nil {
+				return "", err
+			}
+			record("release", nil, fsx.Sha256(data))
+			e.st.Prereqs[r.ID].Version = v
+			return "v" + v, nil
+		}}
 	}
 	if r.Required {
 		return toolRoute{detail: r.Manual, run: func(context.Context) (string, error) {

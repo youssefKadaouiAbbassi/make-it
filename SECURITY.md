@@ -62,9 +62,10 @@ sha256. That check does not depend on minisign being installed.
 
 makeit runs package managers (with `sudo` on Linux, shown in the plan first), `git`, `gh` and the
 `claude` CLI. The plugins it installs run hooks and MCP servers with your user's rights. Each one is
-pinned to a release tag and its commit in the plugin set, and `update` (daily, on its own) moves it
-to the newest stable release its own repository tags: a plugin release makeit has not tested can
-reach your machine the day it is published. `makeit rollback` moves it back, and
+recorded at a release tag and its commit in the plugin set, and every `setup` and `update` (daily,
+on its own) moves it to the newest stable release its own repository tags, or, for one without
+releases, the newest commit of its branch: a plugin release makeit has not tested can reach your
+machine the day it is published. `makeit rollback` moves it back, and
 `"autoUpdate": false` in `~/.makeit/config.json` stops the daily run. The four language-server
 plugins come from claude-plugins-official and update with it; [What makeit installs](docs/included.md) lists them and the
 settings makeit writes, including `permissions.defaultMode: bypassPermissions`.
@@ -72,8 +73,10 @@ settings makeit writes, including `permissions.defaultMode: bypassPermissions`.
 ## What makeit downloads besides itself
 
 Three tools have no Linux package: `setup` downloads each one's binary straight from its project's
-GitHub release over HTTPS, at a version pinned in makeit's own table (Renovate bumps it), and
-checks it against the checksum file that release publishes before writing anything. A download
+GitHub release over HTTPS, at the newest release the project tags (looked up on every `setup` and
+`update`, which also replaces a binary makeit installed when a newer release ships), and checks it
+against the checksum file that release publishes before writing anything; a binary you changed
+since makeit wrote it is never replaced. A download
 that does not match the checksum is refused; nothing is written. These downloads are not signed
 the way makeit's own releases are (no sigstore check); the checksum is the project's own, not a
 second party's attestation. On Debian, Ubuntu or Fedora, `setup` also fetches Google's own

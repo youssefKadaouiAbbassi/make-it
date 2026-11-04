@@ -3,6 +3,8 @@ package claudecli
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -285,5 +287,27 @@ func TestListingRacedByActionIsNotKept(t *testing.T) {
 	_, _ = c.Plugins(context.Background())
 	if calls != 2 {
 		t.Errorf("runs %d, want 2: a listing older than an action was kept", calls)
+	}
+}
+
+// The newest Claude Code is npm's dist-tag for the channel: latest unless the user chose stable.
+func TestNewestVersionReadsChannel(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/-/package/@anthropic-ai/claude-code/dist-tags" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"stable":"2.1.311","latest":"2.1.318","next":"2.1.318"}`))
+	}))
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	if v, err := NewestVersion(ctx, srv.Client(), srv.URL, ""); v != "2.1.318" || err != nil {
+		t.Errorf("default channel: %q %v", v, err)
+	}
+	if v, err := NewestVersion(ctx, srv.Client(), srv.URL, "stable"); v != "2.1.311" || err != nil {
+		t.Errorf("stable: %q %v", v, err)
+	}
+	if _, err := NewestVersion(ctx, srv.Client(), srv.URL, "nightly"); err == nil {
+		t.Error("an unknown channel gave a version")
 	}
 }

@@ -5,10 +5,12 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"makeit/internal/catalog"
 	"makeit/internal/fsx"
+	"makeit/internal/latest"
 	"makeit/internal/plan"
 	"makeit/internal/pluginrule"
 	"makeit/internal/state"
@@ -36,6 +38,10 @@ type Report struct {
 	Pins []state.PinMove
 	// NeedsYou are the tools with no install route on this machine, each with its manual route.
 	NeedsYou []NeedsYou
+	// Changes are every version the run moved: Claude Code, plugins, MCP servers, tools.
+	Changes []state.Change
+	// Notes are what the release lookups had to say (a source that could not be read).
+	Notes []string
 }
 
 // NeedsYou is a tool makeit cannot install on this machine.
@@ -82,8 +88,8 @@ func (e *env) setupRunSteps() []plan.Step {
 
 // setupSteps are setup's steps in order, with global the global-file steps of the command.
 func (e *env) setupSteps(global []plan.Step) []plan.Step {
-	steps := e.prereqSteps()
-	steps = append(steps, e.claudeStep())
+	steps := append(e.prereqSteps(), e.toolUpgradeSteps()...)
+	steps = append(steps, e.claudeStep(), e.claudeSeenStep(), e.claudeUpgradeStep())
 	steps = append(steps, e.stackSteps()...)
 	steps = append(steps, e.settingsStep())
 	steps = append(steps, global...)
@@ -147,7 +153,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	// The apply pass checks every step again, so it reports what it keeps afresh.
 	// needsYou is decided when the plan is built, once; hints and kept come from the steps,
 	// which run again now.
-	en.hints, en.kept = nil, nil
+	en.hints, en.kept, en.changes = nil, nil, nil
 	var saveErr error
 	rep.Plan = runPhases(ctx, phases, plan.Options{Before: func(s plan.Step) {
 		if e.Progress != nil {
@@ -171,8 +177,12 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	rep.Hints, rep.Kept, rep.NeedsYou, rep.Reload = en.hints, en.kept, en.needsYou, en.reload
 	rep.Generation = gen.Manifest.Generation
 	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
-	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
+	gen.Manifest.Pins = updatedPins(en.Pins, gen.Manifest.Plugins.Updated)
 	rep.Pins = gen.Manifest.Pins
+	catalogWritten := slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.ID == "catalog" && o.Status == plan.Done })
+	rep.Changes = reportChanges(en.changes, gen.Manifest.Pins, en.MCPChanges, catalogWritten)
+	rep.Notes = en.notes
+	gen.Manifest.Changes = rep.Changes
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())
@@ -229,3 +239,39 @@ func updatedPins(pins []state.PinMove, updated []string) []state.PinMove {
 	}
 	return out
 }
+
+// reportChanges orders a run's moves for the reader: Claude Code, plugins (only those that really
+// updated, which pins already are), MCP servers (once the plugin set was written), tools.
+func reportChanges(own []state.Change, pins []state.PinMove, mcp []state.Change, catalogWritten bool) []state.Change {
+	var out []state.Change
+	for _, p := range pins {
+		name, _, _ := strings.Cut(p.ID, "@")
+		if p.FromTag == p.ToTag { // a branch: the commits moved
+			out = append(out, state.Change{Kind: "plugin", Item: name, From: short(p.FromSHA), To: short(p.ToSHA)})
+			continue
+		}
+		fp, _ := latest.Prefix(p.FromTag)
+		tp, _ := latest.Prefix(p.ToTag)
+		out = append(out, state.Change{Kind: "plugin", Item: name, From: strings.TrimPrefix(p.FromTag, fp), To: strings.TrimPrefix(p.ToTag, tp)})
+	}
+	if catalogWritten {
+		out = append(out, mcp...)
+	}
+	out = append(out, own...)
+	rank := map[string]int{"makeit": 0, "claude-code": 1, "plugin": 2, "mcp": 3, "tool": 4}
+	slices.SortStableFunc(out, func(a, b state.Change) int { return rank[a.Kind] - rank[b.Kind] })
+	// One item moved twice in a run (Claude Code updated itself, then makeit upgraded it) is one
+	// change, from the first version to the last.
+	var merged []state.Change
+	for _, c := range out {
+		if n := len(merged); n > 0 && merged[n-1].Kind == c.Kind && merged[n-1].Item == c.Item {
+			merged[n-1].To = c.To
+			continue
+		}
+		merged = append(merged, c)
+	}
+	return merged
+}
+
+// short is a commit's first seven characters, as git shows it.
+func short(sha string) string { return sha[:min(7, len(sha))] }

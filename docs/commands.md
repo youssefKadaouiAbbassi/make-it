@@ -1,9 +1,9 @@
 # Commands
 
-Every command and flag, as `makeit help` prints them in makeit 0.3.1. Run `makeit help <command>` for the same text in your terminal.
+Every command and flag, as `makeit help` prints them in makeit 0.3.2. Run `makeit help <command>` for the same text in your terminal.
 
 ```
-makeit 0.3.1: a tested Claude Code setup for serious coding.
+makeit 0.3.2: a tested Claude Code setup for serious coding.
 
 Usage: makeit [command] [flags]   (no command: status and what to do next)
 
@@ -210,6 +210,7 @@ Environment variables makeit reads:
   CLAUDE_CONFIG_DIR   Claude Code's configuration directory (default ~/.claude)
   MAKEIT_DIR          where makeit keeps its copy of the plugin set, state and generations (default ~/.makeit)
   MAKEIT_RELEASES_URL where makeit looks for releases (https only; default https://github.com)
+  MAKEIT_REGISTRY_URL where makeit reads Claude Code's newest version (https only; default https://registry.npmjs.org)
   MAKEIT_REEXEC       set by update for the new makeit it runs: the version it replaced
   GIT_SSH_COMMAND     used for a --catalog git source over ssh when set; otherwise ssh runs in batch mode
   GIT_SSH             used for a --catalog git source over ssh when set, as is core.sshCommand; makeit then leaves ssh as you set it

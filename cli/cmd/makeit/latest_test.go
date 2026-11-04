@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,8 @@ import (
 // runner (as offline), so its carry-forward code runs in every command test; the tests below put
 // back a fake where they need one.
 func TestMain(m *testing.M) {
+	// Nor the npm registry for Claude Code's newest version: a lookup fails fast and nothing moves.
+	_ = os.Setenv("MAKEIT_REGISTRY_URL", "https://127.0.0.1:1")
 	latestApply = func(ctx context.Context, _ execx.Runner, t, current *catalog.Tree, skips map[string][]string) (*catalog.Tree, []state.PinMove, []string) {
 		return latest.Apply(ctx, nil, t, current, skips)
 	}
@@ -126,13 +129,15 @@ func TestManualUpdateIgnoresSkips(t *testing.T) {
 }
 
 // setup and update --offline keep the releases on disk without fetching; update fetches.
-func TestLatestOnlineOnlyForUpdate(t *testing.T) {
+// setup takes the newest plugin and MCP releases too, not the ones makeit shipped with; only
+// --offline keeps those.
+func TestSetupResolvesNewestReleases(t *testing.T) {
 	newCatMachine(t, nil)
 	c := fakeLatest(t, nil)
 	for _, tc := range []struct {
 		args   []string
 		online bool
-	}{{[]string{"setup", "--yes"}, false}, {[]string{"update", "--yes", "--offline"}, false}, {[]string{"update", "--yes"}, true}} {
+	}{{[]string{"setup", "--yes"}, true}, {[]string{"setup", "--yes", "--offline"}, false}, {[]string{"update", "--yes", "--offline"}, false}, {[]string{"update", "--yes"}, true}} {
 		*c = applyCall{}
 		if code, _, errOut := run2(t, tc.args...); code != 0 {
 			t.Fatalf("%v: exit %d\n%s", tc.args, code, errOut)
@@ -140,5 +145,44 @@ func TestLatestOnlineOnlyForUpdate(t *testing.T) {
 		if !c.called || c.online != tc.online {
 			t.Errorf("%v: called %v online %v, want online %v", tc.args, c.called, c.online, tc.online)
 		}
+	}
+}
+
+// A Claude Code that updated itself since the last run shows in the next update's changes,
+// once, through the plan pass and the apply pass of a real run.
+func TestUpdateShowsClaudeSelfUpdate(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	path := filepath.Join(m.stack, "state.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st map[string]any
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	cc, _ := st["claudeCode"].(map[string]any)
+	if cc == nil || cc["versionSeen"] == nil {
+		t.Fatalf("setup recorded no Claude Code version: %v", st["claudeCode"])
+	}
+	now := cc["versionSeen"].(string)
+	cc["versionSeen"] = "2.1.1"
+	out, _ := json.Marshal(st)
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, errOut := run2(t, "update", "--yes", "--json")
+	if code != 0 {
+		t.Fatalf("update: exit %d\n%s", code, errOut)
+	}
+	if !strings.Contains(stdout, `"from": "2.1.1"`) || !strings.Contains(stdout, `"to": "`+now+`"`) {
+		t.Errorf("no Claude Code 2.1.1 → %s in:\n%s", now, stdout)
+	}
+	_, stdout, _ = run2(t, "update", "--yes", "--json")
+	if strings.Contains(stdout, `"from": "2.1.1"`) {
+		t.Errorf("the self-update was listed twice:\n%s", stdout)
 	}
 }

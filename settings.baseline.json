@@ -1,7 +1,7 @@
 {
   "$comment": "Diff to merge into ~/.claude/settings.json by hand (v3.5, 2026-10-20). Keys a plugin cannot carry: mode, ask rules, model, env, marketplaces.",
-  "model": "claude-opus-5-5",
-  "advisorModel": "claude-fable-5-1",
+  "model": "opus",
+  "advisorModel": "fable",
   "cleanupPeriodDays": 3650,
   "skipDangerousModePermissionPrompt": true,
   "permissions": {

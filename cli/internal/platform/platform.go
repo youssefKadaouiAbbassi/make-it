@@ -126,16 +126,23 @@ func expandHome(s, home string) string {
 // Release is a program published as a binary on a GitHub release, verified by the checksum file
 // the project publishes beside it.
 type Release struct {
-	Repo, Version string // owner/repo and the version without "v"; the tag is "v" + Version
-	Bin           string // the program's name inside the archive and in ~/.local/bin
+	Repo string // owner/repo; makeit installs its newest release, looked up at each run
+	Bin  string // the program's name inside the archive and in ~/.local/bin
 	// Asset names the archive and its checksum file for a target; "" when the project ships
 	// nothing for it.
 	Asset func(v, goos, goarch string) (asset, sums string)
 }
 
-// URL is where name is downloaded from, under base (https://github.com).
-func (r Release) URL(base, name string) string {
-	return base + "/" + r.Repo + "/releases/download/v" + r.Version + "/" + name
+// URL is where name of release version is downloaded from, under base (https://github.com).
+func (r Release) URL(base, version, name string) string {
+	return base + "/" + r.Repo + "/releases/download/v" + version + "/" + name
+}
+
+// Ships reports whether the project publishes an archive for this target (the names do not
+// depend on the version's value).
+func (r Release) Ships(goos, goarch string) bool {
+	asset, _ := r.Asset("0.0.0", goos, goarch)
+	return asset != ""
 }
 
 // Into is the folder this route installs programs into, which is often not on PATH: go install
@@ -204,27 +211,21 @@ var Prereqs = []Prereq{
 	},
 	{
 		ID: "prek", Why: "the commit hook runner (reads .pre-commit-config.yaml, no Python needed)", Bins: []string{"prek"},
-		Pkgs: map[PM][]string{Brew: {"prek"}, WinGet: {"j178.prek"}},
-		Release: &Release{Repo: "j178/prek", Bin: "prek", Asset: prekAsset,
-			Version: "0.5.9", // renovate: github-releases=j178/prek
-		},
-		Manual: "a release binary from github.com/j178/prek",
+		Pkgs:    map[PM][]string{Brew: {"prek"}, WinGet: {"j178.prek"}},
+		Release: &Release{Repo: "j178/prek", Bin: "prek", Asset: prekAsset},
+		Manual:  "a release binary from github.com/j178/prek",
 	},
 	{
 		ID: "deja-vu", Why: "the memory plugin's local search binary", Bins: []string{"deja"},
-		Pkgs: map[PM][]string{Brew: {"deja-vu"}},
-		Release: &Release{Repo: "vshulcz/deja-vu", Bin: "deja", Asset: goreleaserAsset("deja-vu", "checksums.txt", true),
-			Version: "0.23.5", // renovate: github-releases=vshulcz/deja-vu
-		},
-		Manual: "a release binary from github.com/vshulcz/deja-vu",
+		Pkgs:    map[PM][]string{Brew: {"deja-vu"}},
+		Release: &Release{Repo: "vshulcz/deja-vu", Bin: "deja", Asset: goreleaserAsset("deja-vu", "checksums.txt", true)},
+		Manual:  "a release binary from github.com/vshulcz/deja-vu",
 	},
 	{
 		ID: "grype", Why: "the vulnerability scan, as a local command (CI runs it too)", Bins: []string{"grype"},
-		Pkgs: map[PM][]string{Brew: {"grype"}, WinGet: {"Anchore.Grype"}},
-		Release: &Release{Repo: "anchore/grype", Bin: "grype", Asset: goreleaserAsset("grype", "grype_%s_checksums.txt", false),
-			Version: "0.121.1", // renovate: github-releases=anchore/grype
-		},
-		Manual: "a release binary from github.com/anchore/grype",
+		Pkgs:    map[PM][]string{Brew: {"grype"}, WinGet: {"Anchore.Grype"}},
+		Release: &Release{Repo: "anchore/grype", Bin: "grype", Asset: goreleaserAsset("grype", "grype_%s_checksums.txt", false)},
+		Manual:  "a release binary from github.com/anchore/grype",
 	},
 	// The language servers the bundle's LSP plugins start (LSP-ROWS.md). npm needs node, a
 	// required row, so the two npm servers apply everywhere.

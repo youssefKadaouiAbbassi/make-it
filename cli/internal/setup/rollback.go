@@ -30,7 +30,7 @@ func lastUndoable(stack string) (*state.Generation, error) {
 		return nil, err
 	}
 	for _, g := range gens {
-		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" {
+		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" && undoable(g.Manifest) {
 			return g, nil
 		}
 	}
@@ -54,6 +54,23 @@ func Rollback(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Ou
 	return rep, err
 }
 
+// undoable reports whether a run left something rollback can put back: files, plugin releases or
+// MCP versions. A run that only saw Claude Code move has nothing (Claude Code only goes forward).
+func undoable(m state.Manifest) bool {
+	return len(m.Ops) > 0 || len(m.Pins) > 0 || slices.ContainsFunc(m.Changes, func(c state.Change) bool { return c.Kind == "mcp" || c.Kind == "tool" })
+}
+
+// mcpChanges are the MCP servers a run moved.
+func mcpChanges(m state.Manifest) []state.Change {
+	var out []state.Change
+	for _, c := range m.Changes {
+		if c.Kind == "mcp" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // rollbackSteps restore g's files, newest change first, then its plugin releases.
 func (e *env) rollbackSteps(g *state.Generation) []plan.Step {
 	var steps []plan.Step
@@ -61,8 +78,9 @@ func (e *env) rollbackSteps(g *state.Generation) []plan.Step {
 	for i := len(ops) - 1; i >= 0; i-- {
 		steps = append(steps, e.restoreStep(g, ops[i]))
 	}
-	if len(g.Manifest.Pins) > 0 {
-		steps = append(steps, e.pinsStep(g.Manifest.Pins))
+	steps = append(steps, e.toolRollbackSteps(g)...)
+	if mcp := mcpChanges(g.Manifest); len(g.Manifest.Pins) > 0 || len(mcp) > 0 {
+		steps = append(steps, e.pinsStep(g.Manifest.Pins, mcp))
 		for _, p := range g.Manifest.Pins {
 			steps = append(steps, plan.Step{ID: "plugin.rollback." + p.ID, Title: fmt.Sprintf("Put %s back to %s", p.ID, p.FromTag),
 				Run: func(ctx context.Context) (string, error) {
@@ -129,7 +147,7 @@ func (e *env) restoreStep(g *state.Generation, op state.Op) plan.Step {
 
 // pinsStep writes the earlier releases back into the local plugin set, records the undone ones as
 // skipped, and refreshes the marketplace so Claude Code sees them.
-func (e *env) pinsStep(pins []state.PinMove) plan.Step {
+func (e *env) pinsStep(pins []state.PinMove, mcp []state.Change) plan.Step {
 	dir := filepath.Join(e.Roots.Stack, "catalog")
 	cat := filepath.Join(dir, ".claude-plugin", "marketplace.json")
 	return plan.Step{ID: "catalog.pins", Title: "Restore the plugin releases",
@@ -156,9 +174,15 @@ func (e *env) pinsStep(pins []state.PinMove) plan.Step {
 						src["ref"], src["sha"] = p.FromTag, p.FromSHA
 					}
 				}
+				// A release is skipped by its tag; a branch by the commit, or the branch would stay
+				// skipped for good.
+				skip := p.ToTag
+				if p.FromTag == p.ToTag {
+					skip = p.ToSHA
+				}
 				e.st.PluginSkips = initSkips(e.st.PluginSkips)
-				if !slices.Contains(e.st.PluginSkips[p.ID], p.ToTag) {
-					e.st.PluginSkips[p.ID] = append(e.st.PluginSkips[p.ID], p.ToTag)
+				if !slices.Contains(e.st.PluginSkips[p.ID], skip) {
+					e.st.PluginSkips[p.ID] = append(e.st.PluginSkips[p.ID], skip)
 				}
 			}
 			out, err := json.Marshal(m)
@@ -171,6 +195,13 @@ func (e *env) pinsStep(pins []state.PinMove) plan.Step {
 				files[k] = v
 			}
 			files[".claude-plugin/marketplace.json"] = out
+			// The MCP servers go back to the versions they ran before, like the plugins.
+			if b, ok := files["plugins/makeit/.mcp.json"]; ok {
+				for _, c := range mcp {
+					b = []byte(strings.ReplaceAll(string(b), c.Item+"@"+c.To, c.Item+"@"+c.From))
+				}
+				files["plugins/makeit/.mcp.json"] = b
+			}
 			exec := map[string]bool{}
 			for _, f := range tree.Manifest.Files {
 				exec[f.Path] = f.Mode == "0755"

@@ -3,6 +3,7 @@ package latest
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 
 	"makeit/internal/catalog"
 	"makeit/internal/execx"
+	"makeit/internal/state"
 )
 
 func TestPrefix(t *testing.T) {
@@ -102,6 +104,8 @@ func fakeRun(fail map[string]bool) execx.Runner {
 			return execx.Result{Stdout: "bbb\trefs/tags/skill-v4.8.0\nnew2\trefs/tags/skill-v4.9.0\nx\trefs/tags/cli-v9.0.0\n"}, nil
 		case strings.Contains(cmd, "npm view @arabold/docs-mcp-server version"):
 			return execx.Result{Stdout: "3.5.0\n"}, nil
+		case strings.Contains(cmd, "--heads") && strings.Contains(cmd, "security-audit-skill"):
+			return execx.Result{Stdout: "ccc\trefs/heads/main\n"}, nil
 		}
 		return execx.Result{Code: 1}, errors.New("unexpected " + cmd)
 	}
@@ -251,7 +255,7 @@ func TestApplyCancelledKeepsPins(t *testing.T) {
 	}
 	got, moves, notes := Apply(ctx, run, tree(t), tree(t), nil)
 	b, _ := got.ReadFile(".claude-plugin/marketplace.json")
-	if len(moves) != 0 || !strings.Contains(string(b), `"ref":"v7.0.1"`) || len(notes) != 2 {
+	if len(moves) != 0 || !strings.Contains(string(b), `"ref":"v7.0.1"`) || len(notes) != 3 { // two releases, one branch
 		t.Errorf("moves %+v notes %v:\n%s", moves, notes, b)
 	}
 }
@@ -269,5 +273,69 @@ func TestUnreachableRemoteIsReported(t *testing.T) {
 	_, moves, notes := Apply(context.Background(), run, tree(t), tree(t), nil)
 	if len(moves) != 1 || len(notes) != 1 || !strings.Contains(notes[0], "superpowers kept at v7.0.1") || !strings.Contains(notes[0], "unable to access") {
 		t.Errorf("moves %+v notes %v", moves, notes)
+	}
+}
+
+// Newest is a repository's highest stable release, from git ls-remote; a skipped tag is passed
+// over and an unreachable repository is an error.
+func TestNewest(t *testing.T) {
+	run := func(_ context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Join(c.Argv, " ") == "git ls-remote --tags https://github.com/j178/prek.git" {
+			return execx.Result{Stdout: "a\trefs/tags/v0.5.9\nb\trefs/tags/v0.6.0\nc\trefs/tags/v0.7.0-rc.1\nd\trefs/tags/v0.6.0^{}\n"}, nil
+		}
+		return execx.Result{Code: 128, Stderr: "fatal: unable to access"}, nil
+	}
+	ctx := context.Background()
+	if v, err := Newest(ctx, run, "j178/prek", nil); v != "0.6.0" || err != nil {
+		t.Errorf("newest %q %v, want 0.6.0", v, err)
+	}
+	if v, err := Newest(ctx, run, "j178/prek", []string{"v0.6.0"}); v != "0.5.9" || err != nil {
+		t.Errorf("with v0.6.0 skipped: %q %v", v, err)
+	}
+	if v, err := Newest(ctx, run, "o/gone", nil); err == nil {
+		t.Errorf("unreachable: %q, want an error", v)
+	}
+}
+
+// The MCP servers a new plugin set moves, from the versions on disk; a fresh machine (nothing on
+// disk) moves nothing.
+func TestMCPChanges(t *testing.T) {
+	moved, err := catalog.TreeOf(map[string][]byte{"plugins/makeit/.mcp.json": []byte(strings.ReplaceAll(mcp, "3.4.1", "3.5.0"))}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []state.Change{{Kind: "mcp", Item: "@arabold/docs-mcp-server", From: "3.4.1", To: "3.5.0"}}
+	if got := MCPChanges(tree(t), moved); !slices.Equal(got, want) {
+		t.Errorf("changes %+v, want %+v", got, want)
+	}
+	if got := MCPChanges(nil, moved); len(got) != 0 {
+		t.Errorf("fresh machine: %+v", got)
+	}
+	if got := MCPChanges(tree(t), tree(t)); len(got) != 0 {
+		t.Errorf("same set: %+v", got)
+	}
+}
+
+// A plugin on a branch follows the branch's newest commit; a commit rollback undid is skipped.
+func TestApplyFollowsBranch(t *testing.T) {
+	base := fakeRun(nil)
+	run := func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if cmd := strings.Join(c.Argv, " "); strings.Contains(cmd, "--heads") && strings.Contains(cmd, "security-audit-skill") {
+			return execx.Result{Stdout: "ddd\trefs/heads/main\n"}, nil
+		}
+		return base(ctx, c)
+	}
+	got, moves, notes := Apply(context.Background(), run, tree(t), tree(t), nil)
+	b, _ := got.ReadFile(".claude-plugin/marketplace.json")
+	if !strings.Contains(string(b), `"ref":"main","sha":"ddd"`) && !strings.Contains(string(b), `"sha":"ddd"`) {
+		t.Errorf("security-audit not at the branch head:\n%s", b)
+	}
+	want := state.PinMove{ID: "security-audit@makeit", FromTag: "main", FromSHA: "ccc", ToTag: "main", ToSHA: "ddd"}
+	if !slices.Contains(moves, want) || len(notes) != 0 {
+		t.Errorf("moves %+v notes %v, want %+v", moves, notes, want)
+	}
+	_, moves, _ = Apply(context.Background(), run, tree(t), tree(t), map[string][]string{"security-audit@makeit": {"ddd"}})
+	if slices.ContainsFunc(moves, func(p state.PinMove) bool { return p.ID == "security-audit@makeit" }) {
+		t.Errorf("a skipped commit moved again: %+v", moves)
 	}
 }

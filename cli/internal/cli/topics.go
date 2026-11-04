@@ -67,6 +67,7 @@ var Environment = []EnvVar{
 	{"CLAUDE_CONFIG_DIR", "Claude Code's configuration directory (default ~/.claude)"},
 	{"MAKEIT_DIR", "where makeit keeps its copy of the plugin set, state and generations (default ~/.makeit)"},
 	{"MAKEIT_RELEASES_URL", "where makeit looks for releases (https only; default https://github.com)"},
+	{"MAKEIT_REGISTRY_URL", "where makeit reads Claude Code's newest version (https only; default https://registry.npmjs.org)"},
 	{"MAKEIT_REEXEC", "set by update for the new makeit it runs: the version it replaced"},
 	{"GIT_SSH_COMMAND", "used for a --catalog git source over ssh when set; otherwise ssh runs in batch mode"},
 	{"GIT_SSH", "used for a --catalog git source over ssh when set, as is core.sshCommand; makeit then leaves ssh as you set it"},

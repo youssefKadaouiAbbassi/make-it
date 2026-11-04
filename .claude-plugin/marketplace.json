@@ -1,12 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "makeit",
-  "description": "makeit's plugin set: a tested set of Claude Code plugins, each external one pinned to the commit that was tested; the bundles install them in one command.",
+  "description": "makeit's plugin set: a tested set of Claude Code plugins, each external one recorded at the release it was tested with, which makeit moves to the newest release on every run; the bundles install them in one command.",
   "owner": {
     "name": "Youssef Kadaoui Abbassi"
   },
   "metadata": {
-    "version": "0.3.1"
+    "version": "0.3.2"
   },
   "allowCrossMarketplaceDependenciesOn": [
     "claude-plugins-official"
@@ -15,27 +15,27 @@
     {
       "name": "makeit-bundle",
       "description": "Bundle: the day-to-day layer for every developer (makeit, superpowers, ponytail, chrome-devtools-mcp, deja-vu, security-audit, the four LSP plugins). Install at user scope.",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "license": "MIT",
       "source": "./plugins/makeit-bundle"
     },
     {
       "name": "makeit-ui",
       "description": "Bundle: what a UI repository adds (impeccable). Enable per project.",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "license": "MIT",
       "source": "./plugins/makeit-ui"
     },
     {
       "name": "makeit",
       "description": "makeit's own plugin: hooks (handoff, docs index, reply checks, notifications), the /makeit:init and expand-contract skills, and two MCP servers with telemetry off (chrome-devtools, docs-mcp-server read-only).",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "license": "MIT",
       "source": "./plugins/makeit"
     },
     {
       "name": "superpowers",
-      "description": "obra/superpowers 7.0.1, tag v7.0.1, peeled commit pinned. MIT.",
+      "description": "obra/superpowers 7.0.1, tag v7.0.1, peeled commit recorded. MIT.",
       "source": {
         "source": "url",
         "url": "https://github.com/obra/superpowers.git",

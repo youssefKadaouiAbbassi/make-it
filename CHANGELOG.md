@@ -3,6 +3,37 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.2
+
+Breaking:
+
+- Nothing is held back any more. `makeit setup` takes the newest plugin and MCP releases too, not
+  the ones makeit shipped with; prek, deja and grype come at their newest release and `update`
+  replaces them when a newer one ships (checked against that release's checksum file; a binary
+  you changed stays); security-audit follows the newest commit of its branch; `setup` and `update`
+  bring Claude Code to the newest release of its channel. `--offline` keeps what is on disk.
+- makeit's settings use model aliases: `"model": "opus"`, `"advisorModel": "fable"`, so Claude Code
+  picks the newest Opus and Fable itself. A value you set stays yours.
+- `--json` reports of `setup` and `update` carry `changes: [{kind, item, from, to}]`.
+
+New:
+
+- Every run lists what moved, old and new version side by side ("superpowers 7.0.1 → 7.0.2",
+  "Claude Code 2.1.317 → 2.1.320", "grype 0.121.1 → 0.122.0"), in the live view, in plain mode
+  and `update.log`, and in the daily run's note; a Claude Code that updated itself since the last
+  run shows too.
+- `makeit rollback` also puts a release tool and the MCP servers back to their earlier versions;
+  the daily run skips an undone release until a newer one ships, a run by hand takes it.
+
+Fixes:
+
+- On a fresh machine the newest releases are looked up after setup has installed git, so the first
+  setup already lands on them (found by the distro tests before release).
+- A tool release that is tagged but not uploaded yet, a failing Claude Code upgrade, or an upgrade
+  that needs a password where none can be typed (`--yes`, the daily run) is a note on that one
+  item, never a stopped run; the plan shows the upgrade command.
+- `makeit rollback` passes over a run that left nothing to undo instead of stopping there.
+
 ## 0.3.1
 
 Fixes:

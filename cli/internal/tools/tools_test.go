@@ -64,7 +64,7 @@ func release(t *testing.T, files map[string][]byte) (*httptest.Server, platform.
 		_, _ = w.Write(b)
 	}))
 	t.Cleanup(s.Close)
-	r := platform.Release{Repo: "o/r", Version: "1.0.0", Bin: "tool", Asset: func(v, goos, goarch string) (string, string) {
+	r := platform.Release{Repo: "o/r", Bin: "tool", Asset: func(v, goos, goarch string) (string, string) {
 		if goarch == "riscv64" {
 			return "", ""
 		}
@@ -102,7 +102,7 @@ func TestInstallReleaseTarGz(t *testing.T) {
 	archive := tarGz(t, map[string][]byte{"tool-1.0.0-linux/README": []byte("x"), "tool-1.0.0-linux/tool": bin})
 	s, r := release(t, map[string][]byte{"tool.tar.gz": archive, "sums.txt": []byte(sha(archive) + "  tool.tar.gz\n")})
 	dir := t.TempDir()
-	path, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "linux", "amd64", dir)
+	path, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "1.0.0", "linux", "amd64", dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestInstallReleaseZip(t *testing.T) {
 	archive := zipped(t, map[string][]byte{"tool.exe": bin})
 	s, r := release(t, map[string][]byte{"tool.zip": archive, "sums.txt": []byte(sha(archive) + "  tool.zip\n")})
 	dir := t.TempDir()
-	path, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "windows", "amd64", dir)
+	path, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "1.0.0", "windows", "amd64", dir)
 	if err != nil || path != filepath.Join(dir, "tool.exe") {
 		t.Fatalf("%q %v", path, err)
 	}
@@ -131,7 +131,7 @@ func TestInstallReleaseMismatchWritesNothing(t *testing.T) {
 	archive := tarGz(t, map[string][]byte{"tool": []byte("x")})
 	s, r := release(t, map[string][]byte{"tool.tar.gz": archive, "sums.txt": []byte(sha([]byte("other")) + "  tool.tar.gz\n")})
 	dir := t.TempDir()
-	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "linux", "amd64", dir); !errors.Is(err, ErrChecksum) {
+	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "1.0.0", "linux", "amd64", dir); !errors.Is(err, ErrChecksum) {
 		t.Fatalf("err %v", err)
 	}
 	if es, _ := os.ReadDir(dir); len(es) != 0 {
@@ -141,7 +141,7 @@ func TestInstallReleaseMismatchWritesNothing(t *testing.T) {
 
 func TestInstallReleaseNoAsset(t *testing.T) {
 	s, r := release(t, nil)
-	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "linux", "riscv64", t.TempDir()); !errors.Is(err, ErrNoAsset) {
+	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "1.0.0", "linux", "riscv64", t.TempDir()); !errors.Is(err, ErrNoAsset) {
 		t.Errorf("err %v", err)
 	}
 }
@@ -149,7 +149,7 @@ func TestInstallReleaseNoAsset(t *testing.T) {
 func TestInstallReleaseNoBinary(t *testing.T) {
 	archive := tarGz(t, map[string][]byte{"README": []byte("x")})
 	s, r := release(t, map[string][]byte{"tool.tar.gz": archive, "sums.txt": []byte(sha(archive) + "  tool.tar.gz\n")})
-	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "linux", "amd64", t.TempDir()); !errors.Is(err, ErrNoBinary) {
+	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "1.0.0", "linux", "amd64", t.TempDir()); !errors.Is(err, ErrNoBinary) {
 		t.Errorf("err %v", err)
 	}
 }
@@ -178,7 +178,7 @@ func TestArchiveEntryOverLimitRefused(t *testing.T) {
 	big := bytes.Repeat([]byte("x"), 100)
 	archive := tarGz(t, map[string][]byte{"tool": big})
 	s, r := release(t, map[string][]byte{"tool.tar.gz": archive, "sums.txt": []byte(sha(archive) + "  tool.tar.gz\n")})
-	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "linux", "amd64", t.TempDir()); err == nil || !strings.Contains(err.Error(), "larger than") {
+	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "1.0.0", "linux", "amd64", t.TempDir()); err == nil || !strings.Contains(err.Error(), "larger than") {
 		t.Errorf("err %v, want a refusal", err)
 	}
 }
@@ -197,7 +197,7 @@ func TestZipSymlinkEntryRefused(t *testing.T) {
 	_ = zw.Close()
 	archive := buf.Bytes()
 	s, r := release(t, map[string][]byte{"tool.zip": archive, "sums.txt": []byte(sha(archive) + "  tool.zip\n")})
-	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "windows", "amd64", t.TempDir()); !errors.Is(err, ErrNoBinary) {
+	if _, err := InstallRelease(context.Background(), s.Client(), "makeit/test", s.URL, r, "1.0.0", "windows", "amd64", t.TempDir()); !errors.Is(err, ErrNoBinary) {
 		t.Errorf("err %v, want ErrNoBinary", err)
 	}
 }
