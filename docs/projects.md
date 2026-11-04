@@ -51,8 +51,9 @@ $ makeit init [dir]
 the plan and writes nothing; `--yes` applies it without asking.
 
 - An empty or missing directory gets `git init` first.
-- A directory with files but no git is refused: every change init makes should be reviewable with
-  `git diff`. Run `git init` first.
+- A directory with files but no git is set up without git: no repository is created, and the parts
+  that only work inside one are left out (the commit-hook config, `--rulesets`), with a line saying
+  so. After `git init`, `makeit init --update` adds the hook config.
 
 At the end, init prints what it wrote, what it kept and why, the lines to add by hand to files it
 does not edit, and notices such as "enable the git hooks once per clone: prek install".

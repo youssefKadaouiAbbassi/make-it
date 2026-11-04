@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,15 +49,16 @@ type Report struct {
 	Docs    []string
 }
 
-// ErrNotRepo refuses a directory with files but no git: every write init makes must be
-// reviewable with git diff.
-var ErrNotRepo = errors.New("not a git repository: run git init first, or run makeit init in an empty directory")
+// noGitNotice says what init leaves out in a folder with files and no git.
+const noGitNotice = "no git repository here: set up without git; the commit-hook config (.pre-commit-config.yaml) is left out. After git init, makeit init --update adds it"
 
 // RecordName is the committed record init keeps in the repository.
 const RecordName = ".makeit.json"
 
 // run is one Run's working state. next is the record as the steps leave it.
 type run struct {
+	// noGit: a folder with files and no repository, set up without the git-only parts.
+	noGit bool
 	Env
 	opts    Options
 	p       Project
@@ -80,9 +82,12 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	if !e.Present("git") {
 		return Report{}, errors.New("makeit init needs git: install it (makeit setup does), then run init again")
 	}
-	gitInit, err := needsGitInit(e.Dir)
+	gitInit, noGit, err := needsGitInit(e.Dir)
 	if err != nil {
 		return Report{}, err
+	}
+	if noGit && o.Rulesets {
+		return Report{}, errors.New("--rulesets needs a git repository with a GitHub remote: run git init, add the remote, then makeit init --rulesets")
 	}
 	if mode == plan.Apply || mode == plan.Prompt {
 		lock, err := fsx.Acquire(filepath.Join(e.Stack, "lock"), time.Now())
@@ -99,7 +104,7 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	if err != nil {
 		return Report{}, err
 	}
-	r := &run{Env: e, opts: o, p: p, prev: prev}
+	r := &run{Env: e, opts: o, p: p, prev: prev, noGit: noGit}
 	steps, seedRep, err := r.steps(gitInit)
 	if err != nil {
 		return Report{}, err
@@ -224,6 +229,15 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	}
 	ours := func(path string) bool { f := r.prev.Files[path]; return f != nil && !f.PreExisted }
 	seeds, merges, rep, err := Seeds(r.p, r.Catalog, r.Req, ours)
+	if r.noGit {
+		// Commit hooks only work inside a repository: their config and its lines are left out.
+		seeds = slices.DeleteFunc(seeds, func(s Seed) bool { return s.Path == ".pre-commit-config.yaml" })
+		gitOnly := func(l string) bool {
+			return strings.Contains(l, ".pre-commit-config") || strings.Contains(l, "prek install")
+		}
+		rep.Notices = append(slices.DeleteFunc(rep.Notices, gitOnly), noGitNotice)
+		rep.Manual = slices.DeleteFunc(rep.Manual, gitOnly)
+	}
 	if err != nil {
 		return nil, SeedReport{}, err
 	}
@@ -485,22 +499,24 @@ func writeFile(path string, b []byte) error {
 
 // needsGitInit is true for a missing or empty directory outside any git work tree; a non-empty
 // one outside git is refused.
-func needsGitInit(dir string) (bool, error) {
+// needsGitInit reports whether init starts a repository (an empty or missing folder) or works
+// without git (a folder with files and no repository: the owner's choice, 2026-11-04).
+func needsGitInit(dir string) (gitInit, noGit bool, err error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	if gitTop(abs) != "" {
-		return false, nil
+		return false, false, nil
 	}
 	entries, err := os.ReadDir(abs)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return false, err
+		return false, false, err
 	}
 	if len(entries) > 0 {
-		return false, ErrNotRepo
+		return false, true, nil
 	}
-	return true, nil
+	return true, false, nil
 }
 
 // gitTop is the nearest directory from abs upward holding a .git (a directory, or a file in a
