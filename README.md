@@ -141,7 +141,7 @@ $ makeit doctor
 | `makeit setup` | installs the missing prerequisites, Claude Code, the plugin set, settings and global files |
 | `makeit init [dir]` | writes a project's CLAUDE.md, CONSTRAINTS.md, check tasks, hook config and CI caller |
 | `makeit doctor` | nothing by itself; lists each problem and, at a terminal, offers to fix them |
-| `makeit update` | moves makeit and the plugins to their newest releases, then the settings and global files (also runs daily on its own) |
+| `makeit update` | moves makeit, Claude Code, the plugins, the MCP servers and the release tools to their newest versions, lists each move with its old and new version, then the settings and global files (also runs daily on its own) |
 | `makeit rollback` | undoes the last update: files, plugin versions and makeit itself |
 | `makeit uninstall` | removes what makeit added and you did not change since |
 | `makeit` | shows this machine's status and what to do next |

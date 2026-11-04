@@ -3,6 +3,28 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.2
+
+Breaking:
+
+- Nothing is held back any more. `makeit setup` takes the newest plugin and MCP releases too, not
+  the ones makeit shipped with; prek, deja and grype come at their newest release and `update`
+  replaces them when a newer one ships (checked against that release's checksum file; a binary
+  you changed stays); security-audit follows the newest commit of its branch; `setup` and `update`
+  bring Claude Code to the newest release of its channel. `--offline` keeps what is on disk.
+- makeit's settings use model aliases: `"model": "opus"`, `"advisorModel": "fable"`, so Claude Code
+  picks the newest Opus and Fable itself. A value you set stays yours.
+- `--json` reports of `setup` and `update` carry `changes: [{kind, item, from, to}]`.
+
+New:
+
+- Every run lists what moved, old and new version side by side ("superpowers 7.0.1 → 7.0.2",
+  "Claude Code 2.1.317 → 2.1.320", "grype 0.121.1 → 0.122.0"), in the live view, in plain mode
+  and `update.log`, and in the daily run's note; a Claude Code that updated itself since the last
+  run shows too.
+- `makeit rollback` also puts a release tool back to its earlier release, and skips the release it
+  undid until a newer one ships.
+
 ## 0.3.1
 
 Fixes:

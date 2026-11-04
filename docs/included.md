@@ -26,9 +26,9 @@ the same and, at a terminal, can run the fix for you.
 | jq | your package manager | the hooks read Claude Code's JSON with it |
 | gh | your package manager | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
 | Chrome | Homebrew, winget, or Google's own `.deb`/`.rpm` on apt or dnf (x86-64); left to you elsewhere | chrome-devtools-mcp drives an installed Chrome (it supports Chrome and Chrome for Testing, not Chromium) |
-| prek | Homebrew, winget, or a release binary from github.com/j178/prek | runs the commit hooks in `.pre-commit-config.yaml` |
-| deja | Homebrew, or a release binary from github.com/vshulcz/deja-vu | the local search binary of the deja-vu plugin |
-| grype | Homebrew, winget, or a release binary from github.com/anchore/grype | the vulnerability scan, run locally (the CI checks run it too) |
+| prek | Homebrew, winget, or the newest release binary from github.com/j178/prek | runs the commit hooks in `.pre-commit-config.yaml` |
+| deja | Homebrew, or the newest release binary from github.com/vshulcz/deja-vu | the local search binary of the deja-vu plugin |
+| grype | Homebrew, winget, or the newest release binary from github.com/anchore/grype | the vulnerability scan, run locally (the CI checks run it too) |
 | typescript-language-server | Homebrew, or `npm install -g --prefix ~/.local` | the typescript-lsp plugin runs it for `.ts` and `.js` files |
 | pyright | Homebrew, or `npm install -g --prefix ~/.local` | the pyright-lsp plugin runs it for `.py` files |
 | rust-analyzer | checked only when `cargo` or `rustup` is on `PATH`: Homebrew, apk, dnf, or `rustup component add` | the rust-analyzer-lsp plugin runs it for `.rs` files |
@@ -46,8 +46,12 @@ then.
 
 ## Claude Code
 
-setup installs Claude Code when it is missing or older than 2.1.287. `makeit doctor` warns when it
-is older than 2.1.310, the version this release was tested with.
+setup installs Claude Code when it is missing or older than 2.1.287, and every setup and update
+then brings it to the newest release of its channel (`latest`, or `stable` when you set
+`autoUpdatesChannel` to it), through the install's own upgrade. The daily run never asks for a
+password: where the upgrade needs sudo (apt, dnf, apk), it leaves a line saying `makeit update`
+will do it. A native install also updates itself; the next run lists that move too. `makeit
+doctor` warns when Claude Code is older than 2.1.310, the version this release was tested with.
 
 The route depends on the machine: Homebrew on macOS, winget on Windows, and on Linux Homebrew when
 present, otherwise Anthropic's signed apt, dnf or apk repository. setup checks the repository key's
@@ -58,7 +62,7 @@ failed install stops with its error. An existing Claude Code is kept, however it
 ## The plugin set
 
 makeit carries a plugin set: a Claude Code plugin marketplace named `makeit` that lists each plugin
-at a pinned commit. setup copies it to `~/.makeit/catalog`, adds it as a marketplace, adds
+at the release (or, for one without releases, the commit) it was tested with. setup copies it to `~/.makeit/catalog`, adds it as a marketplace, adds
 Anthropic's `claude-plugins-official` marketplace, and installs the `makeit-bundle` plugin. The
 bundle has no content of its own: installing it installs these plugins.
 
@@ -78,9 +82,12 @@ bundle has no content of its own: installing it installs these plugins.
 
 Parts that were tested and lost were left out, among them Caveman, Laya and hallmark.
 
-The versions above are the ones this release was tested with. `makeit update`, and its daily run,
-moves each plugin pinned to a release to its newest stable release; security-audit, pinned to a
-commit, stays where it is. The four language server plugins come from `claude-plugins-official` and
+The versions above are the ones this release was tested with; nothing is held there. Every `makeit
+setup` and `makeit update`, and the daily run, moves each plugin to its newest stable release, and
+security-audit, which has no releases, to the newest commit of its `main` branch. The two MCP
+servers move to their newest npm version the same way, and prek, deja and grype to their newest
+release. Each run lists what moved, old and new version side by side, and `makeit rollback` puts
+the previous versions back. The four language server plugins come from `claude-plugins-official` and
 update with it. Each
 language server plugin needs its server program on `PATH` (the optional prerequisite rows above).
 
