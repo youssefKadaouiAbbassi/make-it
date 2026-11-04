@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"makeit/internal/catalog"
@@ -111,8 +112,13 @@ func parseLsRemote(out string) map[string]string {
 func lsRemote(ctx context.Context, run execx.Runner, url string) (map[string]string, error) {
 	res, err := run(ctx, execx.Cmd{Argv: []string{"git", "ls-remote", "--tags", url},
 		Env: []string{"GIT_TERMINAL_PROMPT=0"}, Timeout: 30 * time.Second})
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s", url, strings.TrimSpace(res.Text()+" "+err.Error()))
+	// git exits 128 for an unreachable remote; execx keeps that as the code, not as an error.
+	if err != nil || res.Code != 0 {
+		why := res.Text()
+		if err != nil {
+			why += " " + err.Error()
+		}
+		return nil, fmt.Errorf("%s: %s", url, strings.TrimSpace(why))
 	}
 	return parseLsRemote(res.Stdout), nil
 }
@@ -160,17 +166,32 @@ func Apply(ctx context.Context, run execx.Runner, t, current *catalog.Tree, skip
 	var moves []state.PinMove
 	var notes []string
 	changed := false
-	if b, ok := files[marketFile]; ok {
-		out, mv, ns, c := applyMarket(ctx, run, b, pins(current), skips)
-		files[marketFile], moves, notes, changed = out, mv, ns, c
+	// The git probes and the npm probes run as two batches at the same time; each batch writes
+	// its own variables, and files is touched only once both are done.
+	var wg sync.WaitGroup
+	var mOut, cOut []byte
+	var mChanged, cChanged bool
+	marketB, hasMarket := files[marketFile]
+	if hasMarket {
+		cur := pins(current)
+		wg.Add(1)
+		go func() { defer wg.Done(); mOut, moves, notes, mChanged = applyMarket(ctx, run, marketB, cur, skips) }()
 	}
-	if b, ok := files[mcpFile]; ok {
+	mcpB, hasMCP := files[mcpFile]
+	if hasMCP {
 		var cur []byte // nil on a fresh machine, which has no plugin set yet
 		if current != nil {
 			cur, _ = current.ReadFile(mcpFile)
 		}
-		out, c := applyMCP(ctx, run, b, cur)
-		files[mcpFile], changed = out, changed || c
+		wg.Add(1)
+		go func() { defer wg.Done(); cOut, cChanged = applyMCP(ctx, run, mcpB, cur) }()
+	}
+	wg.Wait()
+	if hasMarket {
+		files[marketFile], changed = mOut, mChanged
+	}
+	if hasMCP {
+		files[mcpFile], changed = cOut, changed || cChanged
 	}
 	if !changed {
 		return t, nil, notes
@@ -198,6 +219,7 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 	var moves []state.PinMove
 	var notes []string
 	rewritten := false
+	var jobs []*tagJob
 	for _, raw := range plugins {
 		entry, _ := raw.(map[string]any)
 		src, _ := entry["source"].(map[string]any)
@@ -228,18 +250,27 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 		if run == nil {
 			continue
 		}
-		tags, err := lsRemote(ctx, run, url)
-		if err != nil {
-			notes = append(notes, fmt.Sprintf("%s kept at %s: could not read its releases (%v)", name, from.ref, err))
+		jobs = append(jobs, &tagJob{src: src, id: id, name: name, from: from, prefix: prefix, url: url})
+	}
+	// One probe per source, all at once: six sources took six times 0.4 s in a row.
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		go func() { defer wg.Done(); j.tags, j.err = lsRemote(ctx, run, j.url) }()
+	}
+	wg.Wait()
+	for _, j := range jobs {
+		if j.err != nil {
+			notes = append(notes, fmt.Sprintf("%s kept at %s: could not read its releases (%v)", j.name, j.from.ref, j.err))
 			continue
 		}
-		tag, tagSHA, ok := Pick(tags, prefix, from.ref, skips[id])
-		if !ok || tag == from.ref {
+		tag, tagSHA, ok := Pick(j.tags, j.prefix, j.from.ref, skips[j.id])
+		if !ok || tag == j.from.ref {
 			continue
 		}
-		src["ref"], src["sha"] = tag, tagSHA
+		j.src["ref"], j.src["sha"] = tag, tagSHA
 		rewritten = true
-		moves = append(moves, state.PinMove{ID: id, FromTag: from.ref, FromSHA: from.sha, ToTag: tag, ToSHA: tagSHA})
+		moves = append(moves, state.PinMove{ID: j.id, FromTag: j.from.ref, FromSHA: j.from.sha, ToTag: tag, ToSHA: tagSHA})
 	}
 	if !rewritten {
 		return b, nil, notes, false
@@ -249,6 +280,17 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 		return b, nil, append(notes, "could not write the plugin set: "+err.Error()), false
 	}
 	return out, moves, notes, true
+}
+
+// tagJob is one plugin source to probe for a newer release, and what the probe found.
+type tagJob struct {
+	src      map[string]any
+	id, name string
+	from     pin
+	prefix   string
+	url      string
+	tags     map[string]string
+	err      error
 }
 
 // ahead reports a pin on disk of the same tag family as the shipped one and a newer release.
@@ -270,6 +312,15 @@ func npmPins(b []byte) map[string]string {
 	return out
 }
 
+// npmJob is one npm package argument to probe for a newer version.
+type npmJob struct {
+	args   []any
+	i      int
+	pkg    string
+	cv     [3]int
+	latest string
+}
+
 func applyMCP(ctx context.Context, run execx.Runner, b, current []byte) ([]byte, bool) {
 	var m map[string]any
 	if json.Unmarshal(b, &m) != nil {
@@ -278,6 +329,7 @@ func applyMCP(ctx context.Context, run execx.Runner, b, current []byte) ([]byte,
 	onDisk := npmPins(current)
 	servers, _ := m["mcpServers"].(map[string]any)
 	changed := false
+	var jobs []*npmJob
 	for _, raw := range servers {
 		srv, _ := raw.(map[string]any)
 		args, _ := srv["args"].([]any)
@@ -297,15 +349,25 @@ func applyMCP(ctx context.Context, run execx.Runner, b, current []byte) ([]byte,
 			if run == nil {
 				continue
 			}
-			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", pkg, "version"}, Timeout: 30 * time.Second})
-			if err != nil {
-				continue
+			jobs = append(jobs, &npmJob{args: args, i: i, pkg: pkg, cv: cv})
+		}
+	}
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", j.pkg, "version"}, Timeout: 30 * time.Second})
+			if err == nil {
+				j.latest = strings.TrimSpace(res.Stdout)
 			}
-			latest := strings.TrimSpace(res.Stdout)
-			if lv, ok := semver(latest); ok && less(cv, lv) {
-				args[i] = pkg + "@" + latest
-				changed = true
-			}
+		}()
+	}
+	wg.Wait()
+	for _, j := range jobs {
+		if lv, ok := semver(j.latest); ok && less(j.cv, lv) {
+			j.args[j.i] = j.pkg + "@" + j.latest
+			changed = true
 		}
 	}
 	if !changed {

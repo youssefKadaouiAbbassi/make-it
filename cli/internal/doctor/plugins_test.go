@@ -12,12 +12,14 @@ import (
 )
 
 func TestMarketplace(t *testing.T) {
-	m, f := healthy(t)
+	m, _ := healthy(t)
 	if got := byID(t, Run(context.Background(), m), "marketplace"); got.Level != OK {
 		t.Errorf("listed: marketplace = %+v", got)
 	}
+	// A machine is gathered afresh for every run; the listings are cached per CLI instance.
+	other, f := healthy(t)
 	f.answers["plugin marketplace list --json"] = text(`[{"name": "other", "source": "github", "repo": "o/r"}]`)
-	if got := byID(t, Run(context.Background(), m), "marketplace"); got.Level != Error || got.Fix != "makeit setup" {
+	if got := byID(t, Run(context.Background(), other), "marketplace"); got.Level != Error || got.Fix != "makeit setup" {
 		t.Errorf("missing: marketplace = %+v", got)
 	}
 }

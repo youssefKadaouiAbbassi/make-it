@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -89,8 +90,18 @@ func Run(ctx context.Context, m Machine) []Check {
 	r.prereqs(m)
 	r.profile(m)
 	unusable := r.claude(ctx, m, req, reqErr)
+	// The two claude listings cost 0.6 s each: start both now, beside the settings check, so the
+	// plugin checks read them from the CLI's cache; what fails is reported by those checks. An
+	// unusable Claude Code gets no listing: its plugin checks are skipped.
+	var warm sync.WaitGroup
+	if m.Claude != nil && unusable == "" {
+		warm.Add(2)
+		go func() { defer warm.Done(); _, _ = m.Claude.Marketplaces(ctx) }()
+		go func() { defer warm.Done(); _, _ = m.Claude.Plugins(ctx) }()
+	}
 	r.settings(ctx, m, req.Marketplace, unusable)
 	st, info, stErr := state.LoadState(m.StatePath)
+	warm.Wait()
 	r.plugins(ctx, m, req, reqErr, unusable, st)
 	r.global(m)
 	r.record(st, info, stErr)

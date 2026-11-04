@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"makeit/internal/claudecli"
@@ -81,6 +82,14 @@ func (e *env) findClaude(ctx context.Context) (in *claudecli.Install, version st
 		return in, v, false
 	}
 	e.claude = cli
+	// This check runs in the plan pass and again in the apply pass, each with a new CLI, so
+	// each pass starts from fresh listings. Both cost 0.6 s: started together, for the checks
+	// that follow to read from the cache.
+	var warm sync.WaitGroup
+	warm.Add(2)
+	go func() { defer warm.Done(); _, _ = cli.Marketplaces(ctx) }()
+	go func() { defer warm.Done(); _, _ = cli.Plugins(ctx) }()
+	warm.Wait()
 	return in, v, true
 }
 

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -56,5 +58,41 @@ func TestBareMakeitPlainCard(t *testing.T) {
 	}
 	if strings.Contains(out, "What next?") {
 		t.Errorf("plain card asked a question:\n%s", out)
+	}
+	if strings.Contains(out, "checking") || strings.Contains(out, "\x1b[") {
+		t.Errorf("plain card has a checking line or an escape sequence:\n%q", out)
+	}
+}
+
+// The home prints its header and version before it checks, with a faint "checking" line that the
+// result replaces (cursor up, clear line).
+func TestHomeHeaderBeforeChecks(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	fakeTTYPrompt(t, "q")
+	var out, errb bytes.Buffer
+	headerFirst := false
+	gather := func(context.Context) (doctor.Machine, error) {
+		headerFirst = strings.Contains(out.String(), "makeit")
+		return fakeGather(context.Background())
+	}
+	if code := run(context.Background(), nil, &out, &errb, gather); code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out.String(), errb.String())
+	}
+	s := out.String()
+	if !headerFirst {
+		t.Error("the checks ran before the header was printed")
+	}
+	i, j, k := strings.Index(s, "checking"), strings.Index(s, "\x1b[1A\x1b[2K"), strings.Index(s, "not set up")
+	if i < 0 || j < i || k < j {
+		t.Errorf("want checking, then the erase sequence, then the status; got %d %d %d:\n%q", i, j, k, s)
+	}
+}
+
+// A gather error in plain mode: the error on stderr, exit 1, and nothing on stdout, as before.
+func TestHomeGatherErrorPlain(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	code, out, errOut := call(t, func(context.Context) (doctor.Machine, error) { return doctor.Machine{}, errors.New("no state dir") })
+	if code != 1 || out != "" || !strings.Contains(errOut, "no state dir") {
+		t.Errorf("exit %d stdout %q stderr %q", code, out, errOut)
 	}
 }

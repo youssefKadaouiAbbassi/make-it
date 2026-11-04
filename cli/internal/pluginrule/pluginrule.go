@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -169,12 +170,18 @@ type Inputs struct {
 // invalid one is skipped) and settings.json (absent or invalid is empty).
 func Gather(ctx context.Context, c *claudecli.CLI, settingsPath string, getenv func(string) string) (Inputs, error) {
 	in := Inputs{Entries: map[string]map[string]Entry{}, Getenv: getenv}
-	var err error
-	if in.Markets, err = c.Marketplaces(ctx); err != nil {
-		return in, err
+	// The two listings cost 0.6 s each: both at once.
+	var wg sync.WaitGroup
+	var merr, perr error
+	wg.Add(2)
+	go func() { defer wg.Done(); in.Markets, merr = c.Marketplaces(ctx) }()
+	go func() { defer wg.Done(); in.Plugins, perr = c.Plugins(ctx) }()
+	wg.Wait()
+	if merr != nil {
+		return in, merr
 	}
-	if in.Plugins, err = c.Plugins(ctx); err != nil {
-		return in, err
+	if perr != nil {
+		return in, perr
 	}
 	for _, m := range in.Markets {
 		if path, ok := MarketplaceFile(m); ok {

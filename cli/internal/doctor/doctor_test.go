@@ -8,7 +8,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -514,5 +517,51 @@ func TestDoctorProfileCheckFish(t *testing.T) {
 	}
 	if got := byID(t, Run(context.Background(), m), "path.profile"); got.Level != OK {
 		t.Errorf("with the lines: %+v", got)
+	}
+}
+
+// Doctor's two claude listings run together: a runner that releases each listing only once both
+// are in flight; a Run that lists one after the other hits the deadline and reports it.
+func TestRunListsConcurrently(t *testing.T) {
+	m, f := healthy(t)
+	var arrived atomic.Int32
+	open := make(chan struct{})
+	var once sync.Once
+	m.Claude = &claudecli.CLI{Path: nativePath, Run: func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		key := strings.Join(c.Argv[1:], " ")
+		if key == "plugin list --json" || key == "plugin marketplace list --json" {
+			if arrived.Add(1) == 2 {
+				once.Do(func() { close(open) })
+			}
+			select {
+			case <-open:
+			case <-time.After(2 * time.Second):
+				return execx.Result{Code: 1, Stderr: "deadline: the listings ran one after the other"}, nil
+			}
+		}
+		return f.run(ctx, c)
+	}}
+	for _, c := range Run(context.Background(), m) {
+		if (c.ID == "plugin.list" || c.ID == "marketplace") && c.Level == Error {
+			t.Errorf("%s: %s", c.ID, c.Message)
+		}
+	}
+}
+
+// With a Claude Code below the floor, no listing runs at all: the plugin checks are skipped and
+// a listing on an unusable install would only cost time (or a timeout) for nothing.
+func TestUnusableClaudeListsNothing(t *testing.T) {
+	m, f := healthy(t)
+	f.answers["--version"] = text("2.1.100 (Claude Code)\n")
+	listings := 0
+	m.Claude = &claudecli.CLI{Path: nativePath, Run: func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Contains(strings.Join(c.Argv, " "), "list --json") {
+			listings++
+		}
+		return f.run(ctx, c)
+	}}
+	Run(context.Background(), m)
+	if listings != 0 {
+		t.Errorf("%d listings ran on an unusable Claude Code", listings)
 	}
 }

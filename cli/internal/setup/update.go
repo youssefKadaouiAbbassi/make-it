@@ -417,6 +417,11 @@ func (e *env) adoptedStep() plan.Step {
 						e.st.Plugins = initMap(e.st.Plugins)
 						e.st.Plugins[id] = &state.Plugin{InstalledBy: "user", Scope: "user", Observed: state.PluginObserved{GitCommitSha: v.Pin}}
 					}
+					// Recorded like a plugin makeit installed, so a pin move of it reaches the
+					// generation (the daily note names it, rollback puts it back).
+					if e.gen != nil {
+						e.gen.Manifest.Plugins.Updated = append(e.gen.Manifest.Plugins.Updated, id)
+					}
 				}
 			}
 			e.inputs = nil

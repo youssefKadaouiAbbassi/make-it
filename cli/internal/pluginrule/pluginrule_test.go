@@ -6,7 +6,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -190,5 +193,27 @@ func TestGather(t *testing.T) {
 	}
 	if _, err := Gather(context.Background(), c, filepath.Join(home, "absent.json"), nil); err != nil {
 		t.Errorf("absent settings.json: %v", err)
+	}
+}
+
+// Gather's two listings run together: a runner that releases each listing only once both are in
+// flight; a Gather that lists one after the other hits the deadline and fails.
+func TestGatherListsConcurrently(t *testing.T) {
+	var arrived atomic.Int32
+	open := make(chan struct{})
+	var once sync.Once
+	c := &claudecli.CLI{Path: "claude", Run: func(_ context.Context, cmd execx.Cmd) (execx.Result, error) {
+		if arrived.Add(1) == 2 {
+			once.Do(func() { close(open) })
+		}
+		select {
+		case <-open:
+		case <-time.After(2 * time.Second):
+			return execx.Result{Code: 1, Stderr: "deadline: the listings ran one after the other"}, nil
+		}
+		return execx.Result{Stdout: "[]\n"}, nil
+	}}
+	if _, err := Gather(context.Background(), c, filepath.Join(t.TempDir(), "settings.json"), func(string) string { return "" }); err != nil {
+		t.Error(err)
 	}
 }

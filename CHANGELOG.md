@@ -3,6 +3,22 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.1
+
+Fixes:
+
+- makeit starts faster: the home screen shows in about 0.6 s instead of 2.7 s, `makeit doctor` in
+  0.7 s instead of 2.5 s, and `makeit update` with nothing to do finishes in about 1.3 s instead of
+  6 s (measured on one machine, 2026-11-03). The two `claude plugin ... list` calls now run once per
+  process and at the same time (they ran two to four times, one after the other), the version probes
+  (`git ls-remote` per plugin source, `npm view` per MCP package) run concurrently, and the home
+  prints its header and version before it checks.
+- `makeit update` says when a plugin's source could not be reached ("kept at v7.0.1: could not
+  read its releases"); before, git's exit code was dropped and the pin stayed without a word.
+- A release move of a plugin you installed yourself (adopted) is recorded like any other: the
+  daily run's note names it and `makeit rollback` can put it back. Before, the daily run moved
+  such a plugin and said nothing.
+
 ## 0.3.0
 
 Breaking:

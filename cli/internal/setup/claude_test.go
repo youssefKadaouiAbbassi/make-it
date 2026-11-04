@@ -39,8 +39,10 @@ func TestClaudeAdopted(t *testing.T) {
 	if e.claude == nil || e.claude.Path != nativeClaude {
 		t.Errorf("claude = %+v", e.claude)
 	}
-	if got := f.argvs(); len(got) != 1 {
-		t.Errorf("calls %v, want only --version", got)
+	// The check probes the version, then starts both listings together for the checks after it.
+	got := f.argvs()
+	if len(got) != 3 || got[0] != nativeClaude+" --version" || !slices.Contains(got[1:], nativeClaude+" plugin list --json") || !slices.Contains(got[1:], nativeClaude+" plugin marketplace list --json") {
+		t.Errorf("calls %v, want --version then the two listings", got)
 	}
 }
 
