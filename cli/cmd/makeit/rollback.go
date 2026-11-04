@@ -67,7 +67,7 @@ func rolledBack(stack string, n int) bool {
 }
 
 // binaryIsLast reports that the last change was makeit itself, replaced after the newest run that
-// wrote files (an update with nothing else to do writes no generation). After a rollback of the
+// rollback can undo had finished (a run with nothing to undo does not count). After a rollback of the
 // binary its receipt skips the version it left, so a second rollback goes on to the files.
 func binaryIsLast(e selfupdate.Env, g *state.Generation) bool {
 	rec, err := e.Gate()
@@ -78,7 +78,16 @@ func binaryIsLast(e selfupdate.Env, g *state.Generation) bool {
 	if n, cerr := claudecli.Compare(*rec.Previous, rollbackFloor); cerr != nil || n < 0 {
 		return false
 	}
-	return g == nil || rec.InstalledAt.After(g.Manifest.StartedAt.Add(time.Minute))
+	if g == nil {
+		return true
+	}
+	// After the run had finished; an update's own swap comes just before its run starts. An old
+	// manifest without a finish time keeps the minute of slack from its start.
+	end := g.Manifest.FinishedAt
+	if end.IsZero() {
+		end = g.Manifest.StartedAt.Add(time.Minute)
+	}
+	return rec.InstalledAt.After(end)
 }
 
 func binaryMovedIn(e selfupdate.Env, m state.Manifest) bool {
