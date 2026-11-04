@@ -5,7 +5,14 @@ import (
 	"slices"
 	"strings"
 
+	"bytes"
+	"cmp"
+	"context"
+	"encoding/json"
+	"fmt"
+	"makeit/internal/fetch"
 	"makeit/internal/platform"
+	"net/http"
 )
 
 // UpgradeCommand is the upgrade command for an install (setup.md 78-82, 92, 291, 409, 435, 457,
@@ -53,4 +60,25 @@ func BrewOrigin(resolved string) (source, cask string) {
 		}
 	}
 	return "brew", ""
+}
+
+// NewestVersion is the newest Claude Code on a release channel ("latest" when ""; "stable"),
+// read from the npm registry's dist-tags at base (https://registry.npmjs.org). The native
+// installer, the npm package and Anthropic's apt, dnf and apk repositories publish the same
+// versions on the same two channels.
+func NewestVersion(ctx context.Context, c *http.Client, base, channel string) (string, error) {
+	channel = cmp.Or(channel, "latest")
+	var b bytes.Buffer
+	if err := fetch.Get(ctx, c, "makeit", base+"/-/package/@anthropic-ai/claude-code/dist-tags", 1<<16, &b); err != nil {
+		return "", err
+	}
+	var tags map[string]string
+	if err := json.Unmarshal(b.Bytes(), &tags); err != nil {
+		return "", fmt.Errorf("npm dist-tags: %w", err)
+	}
+	v, ok := tags[channel]
+	if !ok || v == "" {
+		return "", fmt.Errorf("no Claude Code release on the %q channel", channel)
+	}
+	return v, nil
 }

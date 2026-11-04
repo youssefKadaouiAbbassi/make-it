@@ -17,6 +17,8 @@ import (
 // runner (as offline), so its carry-forward code runs in every command test; the tests below put
 // back a fake where they need one.
 func TestMain(m *testing.M) {
+	// Nor the npm registry for Claude Code's newest version: a lookup fails fast and nothing moves.
+	_ = os.Setenv("MAKEIT_REGISTRY_URL", "https://127.0.0.1:1")
 	latestApply = func(ctx context.Context, _ execx.Runner, t, current *catalog.Tree, skips map[string][]string) (*catalog.Tree, []state.PinMove, []string) {
 		return latest.Apply(ctx, nil, t, current, skips)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -167,6 +168,7 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	e.Yes, mode = decideRun(p, e.Interactive)
 	e.Background = p.Bool["auto"]
 	e.Offline = p.Bool["offline"]
+	e.RegistryBase = cmp.Or(os.Getenv("MAKEIT_REGISTRY_URL"), "https://registry.npmjs.org")
 	for _, id := range strings.Split(p.String["reinstall"], ",") {
 		if id = strings.TrimSpace(id); id != "" {
 			e.Reinstall = append(e.Reinstall, id)

@@ -48,6 +48,9 @@ type Env struct {
 	// ReleaseBase is where GitHub releases are fetched from (https://github.com when "").
 	Client      *http.Client
 	ReleaseBase string
+	// RegistryBase is the npm registry Claude Code's newest version is read from; "" looks
+	// nothing up (the command sets https://registry.npmjs.org).
+	RegistryBase string
 	// Background is the daily run: no tool installs, no profile edits (both need a terminal).
 	Background bool
 	// Offline: makeit itself makes no network request (--offline); no release is looked up.

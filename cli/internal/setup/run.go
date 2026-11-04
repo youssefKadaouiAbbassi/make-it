@@ -85,7 +85,7 @@ func (e *env) setupRunSteps() []plan.Step {
 // setupSteps are setup's steps in order, with global the global-file steps of the command.
 func (e *env) setupSteps(global []plan.Step) []plan.Step {
 	steps := append(e.prereqSteps(), e.toolUpgradeSteps()...)
-	steps = append(steps, e.claudeStep())
+	steps = append(steps, e.claudeStep(), e.claudeUpgradeStep())
 	steps = append(steps, e.stackSteps()...)
 	steps = append(steps, e.settingsStep())
 	steps = append(steps, global...)
