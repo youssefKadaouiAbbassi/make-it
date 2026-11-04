@@ -16,7 +16,7 @@ docker run --rm --name "stack-eval-$tag" -u node \
   --env-file "$token_env" -e TMPDIR=/tmp -e STACK_TEMPLATES=/stack/templates/project \
   -v "$work/stack:/stack" -v "$out/tmp:/tmp" -v "$out:/out" -w /stack/plugins/makeit "${EVAL_IMAGE:-claude-eval:latest}" \
   claude plugin eval /stack/plugins/makeit --eval-dir evals --ablation none --scaffold --keep-temp \
-  --trust-plugin --no-publish --model "${MODEL:-claude-opus-5-5}" --mocks off --threshold 0 --judge-model "${JUDGE:-sonnet}" -j 1 \
+  --trust-plugin --no-publish --model "${MODEL:-opus}" --mocks off --threshold 0 --judge-model "${JUDGE:-sonnet}" -j 1 \
   --output-dir /out/report --json /out/eval.json "$@" \
   --allow-tools Bash Write Edit >"$out/eval.log" 2>&1
 status=$?

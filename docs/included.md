@@ -142,8 +142,8 @@ when it differs; setup adds only the missing ones. `--dry-run` prints each path 
 | `permissions.defaultMode` | `bypassPermissions` | Claude runs tools without asking, except for the commands below |
 | `skipDangerousModePermissionPrompt` | `true` | skips Claude Code's one-time confirmation for that mode |
 | `permissions.ask` | a list of commands | these always ask first: merging pull requests, `DELETE` calls through `gh api`, pushing to `main` or `master`, force pushes, `git reset --hard`, publishing packages and releases (npm, cargo, uv, twine, gh, eas), `gh pr comment`, `rm -rf` on home, root or parent paths, and the DBHub write tools |
-| `model` | `claude-opus-5-5` | the default model |
-| `advisorModel` | `claude-fable-5-1` | the advisor model |
+| `model` | `opus` | the newest Opus, resolved by Claude Code |
+| `advisorModel` | `fable` | the newest Fable as the advisor, resolved by Claude Code |
 | `cleanupPeriodDays` | `3650` | keeps session transcripts for ten years instead of deleting them |
 | `env.PONYTAIL_DEFAULT_MODE` | `full` | ponytail's level |
 | `env.CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`, `env.DOCS_MCP_TELEMETRY`, `env.REDOCLY_TELEMETRY`, `env.FASTLANE_OPT_OUT_USAGE`, `env.MAESTRO_CLI_NO_ANALYTICS` | off | telemetry off for tools the plugins and the CI checks run |
