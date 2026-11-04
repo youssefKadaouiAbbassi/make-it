@@ -219,14 +219,31 @@ func TestInitGit(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(missing, "CLAUDE.md")); err != nil {
 		t.Errorf("missing dir not set up: %v", err)
 	}
+	// A folder with files and no git is set up without git: everything but the git-only parts,
+	// no repository created, and the run says what it left out.
 	busy := tree(t, map[string]string{"main.go": "package main\n"})
 	e, f = testEnv(t, busy)
-	_, err = Run(context.Background(), e, plan.Apply, nil, Options{})
-	if err == nil || err.Error() != "not a git repository: run git init first, or run makeit init in an empty directory" {
+	busyRep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil {
 		t.Fatalf("non-empty dir without git: %v", err)
 	}
-	if entries, _ := os.ReadDir(busy); len(entries) != 1 || len(f.take()) != 0 {
-		t.Errorf("something was written or run: %v", entries)
+	if _, err := os.Stat(filepath.Join(busy, "CLAUDE.md")); err != nil {
+		t.Errorf("not set up: %v", err)
+	}
+	for _, p := range []string{".git", ".pre-commit-config.yaml"} {
+		if _, err := os.Stat(filepath.Join(busy, p)); err == nil {
+			t.Errorf("%s written in a folder without git", p)
+		}
+	}
+	if slices.Contains(f.take(), "git init -q") {
+		t.Error("git init ran in a folder with files")
+	}
+	if !slices.ContainsFunc(busyRep.Notices, func(n string) bool { return strings.Contains(n, "no git repository") }) || slices.ContainsFunc(busyRep.Notices, func(n string) bool { return strings.Contains(n, "prek install") }) {
+		t.Errorf("notices %v", busyRep.Notices)
+	}
+	e, _ = testEnv(t, tree(t, map[string]string{"main.go": "package main\n"}))
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Rulesets: true}); err == nil || !strings.Contains(err.Error(), "git repository") {
+		t.Errorf("--rulesets without git: %v", err)
 	}
 	e, _ = testEnv(t, t.TempDir())
 	e.Present = func(name string) bool { return name != "git" }

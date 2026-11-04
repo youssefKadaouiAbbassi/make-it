@@ -3,6 +3,14 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.3
+
+New:
+
+- `makeit init` in a folder that has files but no git sets it up without git instead of refusing:
+  every file except the commit-hook config, which only works in a repository; `--rulesets` says
+  it needs one. After `git init`, `makeit init --update` adds the hook config.
+
 ## 0.3.2
 
 Breaking:

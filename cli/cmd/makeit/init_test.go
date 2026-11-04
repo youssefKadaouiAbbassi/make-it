@@ -90,7 +90,7 @@ func TestInitConsentAndUsage(t *testing.T) {
 	}
 	busy := t.TempDir()
 	write(t, filepath.Join(busy, "main.go"), "package main\n")
-	if code, _, errOut := run2(t, "init", "--yes", busy); code != 1 || !strings.Contains(errOut, "not a git repository") {
+	if code, _, errOut := run2(t, "init", "--yes", busy); code != 0 || !strings.Contains(errOut, "no git repository") {
 		t.Errorf("non-empty dir without git: exit %d %q", code, errOut)
 	}
 	if code, out, _ := run2(t, "init", "--help"); code != 0 || !strings.Contains(out, "--update") || !strings.Contains(out, "--rulesets") {
