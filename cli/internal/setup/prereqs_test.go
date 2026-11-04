@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"makeit/internal/execx"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
 	"makeit/internal/state"
@@ -90,7 +91,7 @@ func TestRouteOrder(t *testing.T) {
 	})
 	t.Run("release binary", func(t *testing.T) {
 		e, _ := newEnv(t, core...)
-		if s := stepByID(t, e, "prereq.prek"); s.Detail != "release v0.5.9 from github.com/j178/prek" {
+		if s := stepByID(t, e, "prereq.prek"); s.Detail != "the newest release from github.com/j178/prek" {
 			t.Errorf("detail %q", s.Detail)
 		}
 	})
@@ -134,8 +135,11 @@ func TestReleaseRouteInstalls(t *testing.T) {
 		_, _ = w.Write(b)
 	}))
 	t.Cleanup(srv.Close)
-	e, _ := newEnv(t, "apt-get", "git", "node", "jq")
+	e, f := newEnv(t, "apt-get", "git", "node", "jq")
 	e.Client, e.ReleaseBase = srv.Client(), srv.URL
+	f.answers["git ls-remote --tags https://github.com/j178/prek.git"] = func(execx.Cmd) execx.Result {
+		return execx.Result{Stdout: "a\trefs/tags/v0.5.9\n"}
+	}
 	g, err := state.NewGeneration(e.Roots.Stack, 0, "setup", nil)
 	if err != nil {
 		t.Fatal(err)

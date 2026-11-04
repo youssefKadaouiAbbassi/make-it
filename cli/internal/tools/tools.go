@@ -65,16 +65,16 @@ func VerifyChecksum(sums []byte, asset, sha256hex string) error {
 
 // FetchRelease downloads r's archive for the target from base, verifies it against the project's
 // checksum file, and returns the program's file name (bin, .exe on Windows) and bytes.
-func FetchRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, goos, goarch string) (name string, data []byte, err error) {
-	asset, sums := r.Asset(r.Version, goos, goarch)
+func FetchRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, version, goos, goarch string) (name string, data []byte, err error) {
+	asset, sums := r.Asset(version, goos, goarch)
 	if asset == "" {
 		return "", nil, fmt.Errorf("%w: %s on %s/%s", ErrNoAsset, r.Repo, goos, goarch)
 	}
 	var archive, list bytes.Buffer
-	if err := fetch.Get(ctx, c, ua, r.URL(base, asset), archiveLimit, &archive); err != nil {
+	if err := fetch.Get(ctx, c, ua, r.URL(base, version, asset), archiveLimit, &archive); err != nil {
 		return "", nil, err
 	}
-	if err := fetch.Get(ctx, c, ua, r.URL(base, sums), sumsLimit, &list); err != nil {
+	if err := fetch.Get(ctx, c, ua, r.URL(base, version, sums), sumsLimit, &list); err != nil {
 		return "", nil, err
 	}
 	h := sha256.Sum256(archive.Bytes())
@@ -97,8 +97,8 @@ func FetchRelease(ctx context.Context, c *http.Client, ua, base string, r platfo
 }
 
 // InstallRelease is FetchRelease then a write of dir/<name> (0755); it returns the path.
-func InstallRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, goos, goarch, dir string) (string, error) {
-	name, data, err := FetchRelease(ctx, c, ua, base, r, goos, goarch)
+func InstallRelease(ctx context.Context, c *http.Client, ua, base string, r platform.Release, version, goos, goarch, dir string) (string, error) {
+	name, data, err := FetchRelease(ctx, c, ua, base, r, version, goos, goarch)
 	if err != nil {
 		return "", err
 	}

@@ -61,6 +61,7 @@ func (e *env) rollbackSteps(g *state.Generation) []plan.Step {
 	for i := len(ops) - 1; i >= 0; i-- {
 		steps = append(steps, e.restoreStep(g, ops[i]))
 	}
+	steps = append(steps, e.toolRollbackSteps(g)...)
 	if len(g.Manifest.Pins) > 0 {
 		steps = append(steps, e.pinsStep(g.Manifest.Pins))
 		for _, p := range g.Manifest.Pins {

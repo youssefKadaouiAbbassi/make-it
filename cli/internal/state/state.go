@@ -46,7 +46,9 @@ type State struct {
 	// PluginSkips are the releases makeit rollback undid, per plugin id; update leaves them until a
 	// newer release exists, or until an update run by hand clears them.
 	PluginSkips map[string][]string `json:"pluginSkips,omitempty"`
-	Migrations  []MigrationRun      `json:"migrations,omitempty"`
+	// ToolSkips are the release tags of a tool makeit rollback undid; update leaves them, as for plugins.
+	ToolSkips  map[string][]string `json:"toolSkips,omitempty"`
+	Migrations []MigrationRun      `json:"migrations,omitempty"`
 	// Extra, here and in every record, holds members written by a newer revision, so they
 	// survive a round trip.
 	Extra jsontext.Value `json:",embed"`
@@ -138,9 +140,11 @@ type Prereq struct {
 	InstalledBy string   `json:"installedBy"`
 	Route       string   `json:"route"`
 	Argv        []string `json:"argv,omitempty"`
-	// Sha256 is the installed file's, for a release binary makeit downloaded.
-	Sha256 string         `json:"sha256,omitempty"`
-	Extra  jsontext.Value `json:",embed"`
+	// Sha256 is the installed file's, for a release binary makeit downloaded, and Version its
+	// release (without "v").
+	Sha256  string         `json:"sha256,omitempty"`
+	Version string         `json:"version,omitempty"`
+	Extra   jsontext.Value `json:",embed"`
 }
 
 // StepRecord is the outcome of one plan step, journaled after each step.

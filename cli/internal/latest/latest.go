@@ -123,6 +123,20 @@ func lsRemote(ctx context.Context, run execx.Runner, url string) (map[string]str
 	return parseLsRemote(res.Stdout), nil
 }
 
+// Newest is the highest stable release of a GitHub repository, without its "v", read with git
+// ls-remote (no token, no rate limit); a tag in skip is passed over.
+func Newest(ctx context.Context, run execx.Runner, repo string, skip []string) (string, error) {
+	tags, err := lsRemote(ctx, run, "https://github.com/"+repo+".git")
+	if err != nil {
+		return "", err
+	}
+	tag, _, ok := Pick(tags, "v", "", skip)
+	if !ok {
+		return "", fmt.Errorf("%s has no stable release tag", repo)
+	}
+	return strings.TrimPrefix(tag, "v"), nil
+}
+
 type pin struct{ ref, sha string }
 
 // pins reads a plugin set's release pins by plugin name.

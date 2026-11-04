@@ -271,3 +271,24 @@ func TestUnreachableRemoteIsReported(t *testing.T) {
 		t.Errorf("moves %+v notes %v", moves, notes)
 	}
 }
+
+// Newest is a repository's highest stable release, from git ls-remote; a skipped tag is passed
+// over and an unreachable repository is an error.
+func TestNewest(t *testing.T) {
+	run := func(_ context.Context, c execx.Cmd) (execx.Result, error) {
+		if strings.Join(c.Argv, " ") == "git ls-remote --tags https://github.com/j178/prek.git" {
+			return execx.Result{Stdout: "a\trefs/tags/v0.5.9\nb\trefs/tags/v0.6.0\nc\trefs/tags/v0.7.0-rc.1\nd\trefs/tags/v0.6.0^{}\n"}, nil
+		}
+		return execx.Result{Code: 128, Stderr: "fatal: unable to access"}, nil
+	}
+	ctx := context.Background()
+	if v, err := Newest(ctx, run, "j178/prek", nil); v != "0.6.0" || err != nil {
+		t.Errorf("newest %q %v, want 0.6.0", v, err)
+	}
+	if v, err := Newest(ctx, run, "j178/prek", []string{"v0.6.0"}); v != "0.5.9" || err != nil {
+		t.Errorf("with v0.6.0 skipped: %q %v", v, err)
+	}
+	if v, err := Newest(ctx, run, "o/gone", nil); err == nil {
+		t.Errorf("unreachable: %q, want an error", v)
+	}
+}

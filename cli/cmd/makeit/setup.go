@@ -166,6 +166,7 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	var mode plan.Mode
 	e.Yes, mode = decideRun(p, e.Interactive)
 	e.Background = p.Bool["auto"]
+	e.Offline = p.Bool["offline"]
 	for _, id := range strings.Split(p.String["reinstall"], ",") {
 		if id = strings.TrimSpace(id); id != "" {
 			e.Reinstall = append(e.Reinstall, id)

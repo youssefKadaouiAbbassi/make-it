@@ -34,8 +34,19 @@ type Manifest struct {
 	StateBackup *string `json:"stateBackup"`
 	// Pins are the plugin release moves the run made in the local plugin set (update's latest step).
 	Pins []PinMove `json:"pins,omitempty"`
+	// Changes are the versions the run moved, for the result, the daily note and rollback.
+	Changes []Change `json:"changes,omitempty"`
 	// RolledBack is set once makeit rollback has undone this run, so the next rollback goes further back.
 	RolledBack bool `json:"rolledBack,omitempty"`
+}
+
+// Change is one thing a run moved from one version to another: kind is makeit, claude-code,
+// plugin, mcp or tool; From is "" when the earlier version is not known.
+type Change struct {
+	Kind string `json:"kind"`
+	Item string `json:"item"`
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 // PinMove is one plugin moved from one release to another.

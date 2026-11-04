@@ -53,18 +53,6 @@
         "\"(?<depName>(?:@[a-z0-9-]+/)?[a-z0-9-]+)@(?<currentValue>[0-9][^\"]*)\""
       ],
       "datasourceTemplate": "npm"
-    },
-    {
-      "customType": "regex",
-      "description": "Release binaries makeit installs, pinned in the tool table",
-      "managerFilePatterns": [
-        "/^cli/internal/platform/platform\\.go$/"
-      ],
-      "matchStrings": [
-        "Version:\\s*\"(?<currentValue>[^\"]+)\",?\\s*// renovate: github-releases=(?<depName>[^\\s]+)"
-      ],
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v?(?<version>.+)$"
     }
   ],
   "packageRules": [

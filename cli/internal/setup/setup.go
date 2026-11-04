@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
@@ -49,6 +50,8 @@ type Env struct {
 	ReleaseBase string
 	// Background is the daily run: no tool installs, no profile edits (both need a terminal).
 	Background bool
+	// Offline: makeit itself makes no network request (--offline); no release is looked up.
+	Offline bool
 	// Reinstall names tools to install again although the user removed them.
 	Reinstall []string
 	// Progress, when set, sees each step of the apply pass start and finish (the live view).
@@ -70,6 +73,11 @@ type env struct {
 	command string
 	// kept and hints are what the run left alone and how adopted plugins update, for the report.
 	kept []Kept
+	// changes are the versions this run moved (tools, Claude Code), for the report and generation.
+	changes []state.Change
+	// releases are the newest release of each release tool, looked up once per run, together.
+	releasesOnce sync.Once
+	releases     map[string]release
 	// needsYou are the tools with no install route here.
 	needsYou []NeedsYou
 	hints    []Hint

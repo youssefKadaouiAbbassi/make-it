@@ -36,6 +36,8 @@ type Report struct {
 	Pins []state.PinMove
 	// NeedsYou are the tools with no install route on this machine, each with its manual route.
 	NeedsYou []NeedsYou
+	// Changes are the versions the run moved (tools and Claude Code; plugins are in Pins).
+	Changes []state.Change
 }
 
 // NeedsYou is a tool makeit cannot install on this machine.
@@ -82,7 +84,7 @@ func (e *env) setupRunSteps() []plan.Step {
 
 // setupSteps are setup's steps in order, with global the global-file steps of the command.
 func (e *env) setupSteps(global []plan.Step) []plan.Step {
-	steps := e.prereqSteps()
+	steps := append(e.prereqSteps(), e.toolUpgradeSteps()...)
 	steps = append(steps, e.claudeStep())
 	steps = append(steps, e.stackSteps()...)
 	steps = append(steps, e.settingsStep())
@@ -147,7 +149,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	// The apply pass checks every step again, so it reports what it keeps afresh.
 	// needsYou is decided when the plan is built, once; hints and kept come from the steps,
 	// which run again now.
-	en.hints, en.kept = nil, nil
+	en.hints, en.kept, en.changes = nil, nil, nil
 	var saveErr error
 	rep.Plan = runPhases(ctx, phases, plan.Options{Before: func(s plan.Step) {
 		if e.Progress != nil {
@@ -173,6 +175,8 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	// Only the moves whose plugin really updated: the next session announces them, rollback undoes them.
 	gen.Manifest.Pins = updatedPins(e.Pins, gen.Manifest.Plugins.Updated)
 	rep.Pins = gen.Manifest.Pins
+	gen.Manifest.Changes = append(gen.Manifest.Changes, en.changes...)
+	rep.Changes = en.changes
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())

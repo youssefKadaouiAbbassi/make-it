@@ -223,12 +223,9 @@ func (r *report) prereqs(m Machine) {
 		// keeps its manual line.
 		packages := s.Prereq.Required || m.Root || m.HasSudo || m.Platform.PM == platform.Brew || m.Platform.PM == platform.WinGet
 		_, pkgOK := platform.InstallCommand(s.Prereq, m.Platform.PM, true, false)
-		var asset string
-		if s.Prereq.Release != nil {
-			asset, _ = s.Prereq.Release.Asset(s.Prereq.Release.Version, m.Platform.OS, m.Platform.Arch)
-		}
+		ships := s.Prereq.Release != nil && s.Prereq.Release.Ships(m.Platform.OS, m.Platform.Arch)
 		fix := s.Prereq.Manual
-		if s.Via != nil || (pkgOK && packages) || (s.Prereq.PkgFile[m.Platform.PM] != "" && m.Platform.Arch == "amd64" && packages) || asset != "" {
+		if s.Via != nil || (pkgOK && packages) || (s.Prereq.PkgFile[m.Platform.PM] != "" && m.Platform.Arch == "amd64" && packages) || ships {
 			fix = "makeit setup"
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)
