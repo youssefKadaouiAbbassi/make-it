@@ -49,27 +49,52 @@ clean=$(printf '%s\n' "$msg" | awk '/^[[:space:]]*```/ { f = !f; next } !f && !/
 # " · ", so other languages pass without a word list (and a run in that layout with no marker word
 # passes too). The user answers it with one digit whatever trails it, so blocking would only print
 # the options twice. É is listed because awk's tolower does not fold it in the C locale or in mawk.
-opts=$(printf '%s\n' "$clean" | awk '
-  function marked(l) {
+# emit TEXT: Stop additionalContext reaches Claude as a reminder at the end of the turn and continues
+# it, with no "Stop hook error" (decision:block) under the reply; it is phrased as facts, not
+# commands, as the hooks docs advise.
+emit() { jq -cn --arg r "$1" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'; }
+marked_fn='function marked(l) {
     return tolower(l) ~ /\(recommended\)|\(recommand(é|É)\)|· recommended|· recommand(é|É)/ || l ~ /[*][*][^*]+[*][*][[:space:]]*·/
-  }
+  }'
+opts=$(printf '%s\n' "$clean" | awk "$marked_fn"'
   NF == 0 { next }
   { i++ }
-  /^[[:space:]]*(\*\*)?[0-9]+[.)](\*\*)?[[:space:]]/ {
-    if (!run) { run = 1; rec = 0; last = 0; joined = 0 }
-    end = i; if (marked($0)) rec = 1
-    # A top-level number not above the one before it: two lists a terminal shows as one.
-    if ($0 ~ /^(\*\*)?[0-9]/) { n = $0; sub(/^\*\*/, "", n); n += 0; if (last && n <= last) joined = 1; last = n }
-    next
-  }
+  /^[[:space:]]*(\*\*)?[0-9]+[.)](\*\*)?[[:space:]]/ { if (!run) { run = 1; rec = 0 }; end = i; if (marked($0)) rec = 1; next }
   run && /^[[:space:]][[:space:]]/ { end = i; if (marked($0)) rec = 1; next }
-  { if (run) { run = 0; done_rec = rec; done_end = end; done_joined = joined } }
-  END { if (run) { done_rec = rec; done_end = end; done_joined = joined }; if (done_rec && i - done_end <= 2) print (done_joined ? "joined" : "yes") }') || true
-[ "$opts" = yes ] && exit 0
-# Choices joined to a numbered list above them: the terminal renumbers them, so the plain line is asked for.
-if [ "$opts" = joined ]; then
-  jq -cn --arg r 'The numbered choices that end this reply come right after another numbered list with nothing but blank or indented lines between, so the terminal joins the two lists and shows the choices renumbered (11, 12 instead of 1, 2). The owner'\''s rule puts a plain line that is not a list item before the choices. Only that plain line and the choices are written again; the rest of the reply stays as it is.' \
-    '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'
+  { if (run) { run = 0; done_rec = rec; done_end = end } }
+  END { if (run) { done_rec = rec; done_end = end }; if (done_rec && i - done_end <= 2) print "yes" }') || true
+if [ "$opts" = yes ]; then
+  # The options may still show renumbered: Claude Code numbers an ordered list as marked parses it,
+  # its start plus each item's place, and Markdown keeps a list going across empty lines, lines
+  # indented into the item and a line written right under an item. This pass follows those rules
+  # on the raw reply (a code fence, a quote, a heading, a rule, a bullet or a 1) after 1. ends the
+  # list) and says yes when an option up to the last marked one shows another number than the one
+  # written. A list whose items all carry one number (1, 1) counts up from it and is left alone.
+  joined=$(printf '%s\n' "$msg" | awk "$marked_fn"'
+    function lead(s) { match(s, /^ */); return RLENGTH }
+    fence != "" { if ($0 ~ ("^ *" fence)) fence = ""; next }
+    /^[[:space:]]*$/ { blank = 1; next }
+    {
+      k = lead($0); rest = substr($0, k + 1); isfence = rest ~ /^(```|~~~)/
+      if (on && k >= col) { if (isfence) fence = substr(rest, 1, 3); blank = 0; next }
+      if (k <= 3 && match(rest, /^[0-9]+[.)]([ \t]|$)/)) {
+        num = substr(rest, 1, RLENGTH); d = num; gsub(/[0-9 \t]/, "", d)
+        if (!(on && d == delim)) { n++; start[n] = num + 0; cnt[n] = 0; delim = d; on = 1 }
+        c = cnt[n]++; wrote[n, c] = num + 0; mk[n, c] = marked($0); col = k + RLENGTH; blank = 0; next
+      }
+      if (isfence) fence = substr(rest, 1, 3)
+      else if (on && !blank && rest !~ /^(#|>|[-*+][ \t]|(- *- *-|\* *\* *\*|_ *_ *_)[-*_ ]*$)/) next
+      on = 0; blank = 0
+    }
+    END {
+      for (l = n; l >= 1; l--) { last = -1; for (c = 0; c < cnt[l]; c++) if (mk[l, c]) last = c; if (last >= 0) break }
+      if (l < 1) exit
+      same = 1; for (c = 1; c < cnt[l]; c++) if (wrote[l, c] != wrote[l, 0]) same = 0
+      if (same) exit
+      for (c = 0; c <= last; c++) if (wrote[l, c] != start[l] + c) { print "yes"; exit }
+    }') || true
+  [ "$joined" = yes ] || exit 0
+  emit 'The numbered choices that end this reply belong, for the terminal, to a numbered list above them, so it shows them renumbered (11, 12 instead of 1, 2): Markdown keeps a list going across empty lines, indented lines and a line written right under an item. The owner'\''s rule puts a plain line that is not a list item before the choices, with an empty line above it. Only that plain line and the choices are written again; the rest of the reply stays as it is.'
   exit 0
 fi
 # The last two paragraphs (the last one is often ponytail's not-checked line, with the handback
@@ -79,12 +104,9 @@ tail=$(printf '%s\n' "$clean" | awk 'BEGIN { RS = "" } { a = b; b = $0 } END { i
 asks=$(printf '%s\n' "$tail" | awk 'BEGIN { RS = "" } { sub(/\n+$/, ""); n = split($0, l, "\n"); print l[n] }' |
   sed -E 's/[][[:space:]*_`"»”)]+$//' | grep -c '?$') || true
 hand=$(IFS='|' && printf '%s' "${pats[*]}")
-# Stop additionalContext reaches Claude as a reminder at the end of the turn and continues it, with
-# no "Stop hook error" (decision:block) under the reply; it is phrased as facts, not commands, as the
-# hooks docs advise. AskUserQuestion is allowed only when the work cannot go on: on a false flag (a finished
-# report ending on a rhetorical "?") the dialog would hide the report.
+# AskUserQuestion is allowed only when the work cannot go on: on a false flag (a finished report
+# ending on a rhetorical "?") the dialog would hide the report.
 if [ "${asks:-0}" -gt 0 ] || grep -Eqi -- "$hand" <<<"$tail"; then
-  jq -cn --arg r 'This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a delete, a go-ahead, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on, unless it needs reading first (a plan, a release, merge or publish step): then the reply gives the full text, then a TL;DR and the decisions as lettered lines with their picks, a plain line, then 2-3 numbered choices, nothing in a dialog preview; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.' \
-    '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'
+  emit 'This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a delete, a go-ahead, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on, unless it needs reading first (a plan, a release, merge or publish step): then the reply gives the full text, then a TL;DR and the decisions as lettered lines with their picks, a plain line, then 2-3 numbered choices, nothing in a dialog preview; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.'
 fi
 exit 0

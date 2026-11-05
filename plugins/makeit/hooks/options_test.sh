@@ -92,13 +92,29 @@ check "(Recommandé) in prose, no numbers" fire "$human" false $'C\'est sur dev.
 # A plan approval asked in the reply (templates/global/CLAUDE.md): the plan's own numbered steps
 # sit right above the choices.
 check "plan approval in the reply" quiet "$human" false $'## Backend\n1. PaymentMethodTypeEnum.INTERNE\n2. VENTES export: 6 columns at the end\n3. 409 on deleting a user with orders\n\nTL;DR\n- backend: Interne + 6 export columns\n- app: welcome texts in the org colour\n\nDecisions (my pick, change any by letter)\n  a. welcome text colour → a colour field\n  b. ID RCU → hidden without READ_USER_SSO_IDS\n\nYour answer:\n\n1. **Go** · recommended\n   build all three repos; stop before any push\n2. **Change something**\n   say what, or a: … to switch a decision'
-# Choices right under another numbered list with only blank lines between: a terminal joins the two
-# lists and shows the choices as 11, 12 (the 2026-11-05 Uni-CE reply). Nested numbers under an item
-# and a plain line before the choices do not join.
+# Choices that a terminal shows renumbered because Markdown joins them to a numbered list above
+# (the 2026-11-05 Uni-CE reply showed 11, 12). Claude Code numbers a list as its start plus each
+# item's place, from marked's parse; every expected result below is what marked 18.1.3 builds.
 renum=$'The design\n1. **Why:** prod moves to OVH.\n2. **Cluster:** 3 zones.\n   - one node per zone\n3. **Not in this round:** the switch night.\n\n1. **Approve, write the build plan** · recommended\n   next is the step-by-step plan\n2. **Change something**\n   tell me which line'
-check "choices joined to the plan's numbered list" fire "$human" false "$renum"
-check "choices joined to a list, bold numbers" fire "$human" false $'Left:\n**1.** the alert\n**2.** the secrets\n\n**1.** Fix both (Recommended)\n**2.** Leave them'
-check "numbered steps nested under a choice" quiet "$human" false "$close"$'\n\n1. **Go** · recommended\n   1. dev first\n   2. then prod\n2. **Change something**'
+go=$'1. **Go** · recommended\n2. **Stop**'
+check "joined: choices under the plan's list" fire "$human" false "$renum"
+check "joined: plain line with no empty line above" fire "$human" false $'1. step\n2. step\nPick one:\n\n'"$go"
+check "joined: one plan step, then the choices" fire "$human" false $'1. step\n\n'"$go"
+check "joined: plan indented 3 spaces" fire "$human" false $'   1. step\n   2. step\n\n'"$go"
+check "joined: choices indented 1 space" fire "$human" false $'1. step\n2. step\n\n 1. **Go** · recommended\n 2. **Stop**'
+check "joined: plan, then choices numbered 1, 1" fire "$human" false $'1. a\n2. b\n\n1. **Go** · recommended\n1. **Stop**'
+check "apart: plain line with an empty line above" quiet "$human" false $'1. step\n2. step\n\nYour answer:\n\n'"$go"
+check "apart: code block between" quiet "$human" false $'1. step\n2. step\n\n```\ncode\n```\n\n'"$go"
+check "apart: quote between" quiet "$human" false $'1. step\n2. step\n\n> note\n\n'"$go"
+check "apart: heading between" quiet "$human" false $'1. step\n2. step\n## Choices\n'"$go"
+check "apart: rule between" quiet "$human" false $'1. a\n2. b\n\n---\n\n'"$go"
+check "apart: 1. list, then 1) choices" quiet "$human" false $'1. step\n2. step\n\n1) **Go** · recommended\n2) **Stop**'
+check "apart: bullet list above" quiet "$human" false $'- a\n- b\nnote\n\n'"$go"
+check "apart: 2-space line after an empty line" quiet "$human" false $'1. a\n2. b\n\n  just two spaces\n\n'"$go"
+check "apart: bold numbers are not a list" quiet "$human" false $'Left:\n**1.** the alert\n**2.** the secrets\n\n**1.** Fix both (Recommended)\n**2.** Leave them'
+check "one list: choices numbered 1, 1" quiet "$human" false $'Next:\n\n1. **Go** · recommended\n   why\n1. **Stop**'
+check "one list: numbered steps nested under a choice" quiet "$human" false "$close"$'\n\n1. **Go** · recommended\n   1. dev first\n   2. then prod\n2. **Change something**'
+check "one list: a code block inside a choice" quiet "$human" false $'Done.\n\n1. **Go** · recommended\n   ```\n   make it\n   ```\n2. **Stop**'
 # The rule's own example (templates/global/CLAUDE.md), dedented as a reply would print it, passes.
 rule=$here/../../../templates/global/CLAUDE.md
 if [ -f "$rule" ]; then
@@ -123,7 +139,7 @@ else
   echo "FAIL  Stop output differs: $got"
   fail=1
 fi
-want_renum='The numbered choices that end this reply come right after another numbered list with nothing but blank or indented lines between, so the terminal joins the two lists and shows the choices renumbered (11, 12 instead of 1, 2). The owner'\''s rule puts a plain line that is not a list item before the choices. Only that plain line and the choices are written again; the rest of the reply stays as it is.'
+want_renum='The numbered choices that end this reply belong, for the terminal, to a numbered list above them, so it shows them renumbered (11, 12 instead of 1, 2): Markdown keeps a list going across empty lines, indented lines and a line written right under an item. The owner'\''s rule puts a plain line that is not a list item before the choices, with an empty line above it. Only that plain line and the choices are written again; the rest of the reply stays as it is.'
 payload=$(jq -n --arg t "$human" --arg m "$renum" '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: $m}')
 got=$(bash "$hook" <<<"$payload")
 if [ "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$got" 2>/dev/null)" = "$want_renum" ] && [ "$(jq -r '.decision // "none"' <<<"$got")" = none ]; then

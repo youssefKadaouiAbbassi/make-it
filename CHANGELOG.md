@@ -7,9 +7,11 @@ raises the minor version.
 
 Fixes:
 
-- The end-of-reply check now catches numbered choices placed right under another numbered list
-  (a plan's steps) with only blank lines between, which a terminal shows renumbered (11, 12); the
-  session is told to write a plain line before them. Such a reply used to pass as a correct ending.
+- The end-of-reply check now catches numbered choices that a terminal shows renumbered (11, 12)
+  because Markdown joins them to a numbered list above them: across empty lines, indented lines,
+  or a plain line written right under the list's last item. It follows the parser Claude Code
+  renders with, so a code block, quote, heading or rule between the two lists passes. The rule in
+  the global CLAUDE.md now says the plain line before the choices needs an empty line above it.
 
 ## 0.3.5
 

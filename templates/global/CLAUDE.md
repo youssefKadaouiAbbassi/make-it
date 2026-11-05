@@ -31,9 +31,9 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   Ask it in the reply instead, in this order: the full text (every line of
   the plan; for a release step the exact commands and what each does), then
   a TL;DR of at most five lines and the open decisions as lettered lines each
-  with your pick (the owner reads the end), then a plain line that is not a
-  list item, then 2-3 numbered choices laid out like the picker below
-  (without that plain line, a terminal joins them to a list above and
+  with your pick (the owner reads the end), then an empty line and a plain
+  line that is not a list item, then 2-3 numbered choices laid out like the
+  picker below (without both, a terminal joins them to a list above and
   renumbers them). The TL;DR is the close: after the choices, at most one not-checked
   line. A digit runs that
   choice with every pick as written; "a: ..." changes a pick, after which you
