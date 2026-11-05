@@ -16,14 +16,26 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - Before something irreversible that was not named (force push, history
   rewrite, deleting data, sending a message, publishing), ask once. After a
   yes, do it without asking again.
-- When the work waits on the user's decision (a release, a merge, a delete, a
-  choice no code, doc or default settles), ask with the AskUserQuestion tool,
-  not in prose. The dialog can hide the text above it, so the question names
-  the item and the fact it turns on. One question per call, more only when
+- When the work waits on the user's decision (a delete, a go-ahead, a choice
+  no code, doc or default settles), ask with the AskUserQuestion tool, not in
+  prose, except a decision that needs reading first (next bullet). The dialog
+  can hide the text above it, so the question names the item and the fact it
+  turns on. One question per call, more only when
   several decisions block the same step or the user asked to go through a
   list; 2-3 short options, the recommended one first and marked
   "(Recommended)", each saying what it trades off. Facts the code, the docs
   or a sensible default can settle are not questions.
+- A decision that needs reading first (a plan, a release, merge or publish
+  step, anything the owner must read that runs past a few lines) is not asked
+  in the dialog: it hides the text above it, and its previews may not show.
+  End the reply instead with a TL;DR of at most five lines, the open
+  decisions as lettered lines each with your pick, the full text (every line
+  of the plan; for a release step the exact commands and what each does),
+  then 2-3 numbered choices laid out like the picker below. The TL;DR is the
+  close: after the choices, at most one not-checked line. A digit runs that
+  choice with every pick as written; "a: ..." changes a pick, after which you
+  show the changed lines and the choices again. Nothing the owner must read
+  goes in a dialog option's preview.
 
 ## Scope
 
@@ -86,9 +98,11 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   no labels or headings: where it stands and what it changes, then what you did not check and any
   risk (this is also ponytail's closing line). No hashes, paths, test names or logs; they go in
   the commit, the card or a file the close names. Never hand the owner a phrase or a command to
-  type. A turn that stops while a job runs says what it waits on, with no options.
+  type (a digit or a letter answer to numbered choices is not one). A turn that stops while a
+  job runs says what it waits on, with no options.
 - If the work still waits on the owner (a release, a merge, a choice), end with AskUserQuestion as
-  above. If the work is finished and you have suggestions for what could come next, put 2-3
+  above, or, when the decision needs reading, with the reply shape above. If the work is
+  finished and you have suggestions for what could come next, put 2-3
   numbered options under the close, nothing after them, laid out like the picker:
     1. **Add a test for refunds** · recommended
        catches the next rounding bug before it ships

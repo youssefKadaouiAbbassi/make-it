@@ -89,6 +89,9 @@ check "Spanish · recomendado passes by layout" quiet "$human" false $'Está en 
 check "· recommended in a - list under a question" fire "$human" false $'Which one?\n\n- **Release now** · recommended\n- **Wait one night**'
 check "· recommended in prose, no numbers" fire "$human" false "$close"$'\nRelease now · recommended, or wait a night.'
 check "(Recommandé) in prose, no numbers" fire "$human" false $'C\'est sur dev.\nPublier maintenant (Recommandé), ou attendre.'
+# A plan approval asked in the reply (templates/global/CLAUDE.md): the plan's own numbered steps
+# sit right above the choices.
+check "plan approval in the reply" quiet "$human" false $'Plan #2281 · IGESA point 3\n\nTL;DR\n- backend: Interne + 6 export columns\n- app: welcome texts in the org colour\n- still from IGESA: the sign-up URL\n\nDecisions (my pick, change any by letter)\n  a. welcome text colour → a colour field\n  b. ID RCU → hidden without READ_USER_SSO_IDS\n\n## Backend\n1. PaymentMethodTypeEnum.INTERNE\n2. VENTES export: 6 columns at the end\n3. 409 on deleting a user with orders\n\n1. **Go** · recommended\n   build all three repos; stop before any push\n2. **Change something**\n   say what, or a: … to switch a decision'
 # The rule's own example (templates/global/CLAUDE.md), dedented as a reply would print it, passes.
 rule=$here/../../../templates/global/CLAUDE.md
 if [ -f "$rule" ]; then
@@ -103,7 +106,7 @@ fi
 # The context text, word for word: it acts on the model, so a change to it is a change to the hook.
 # It goes out as Stop additionalContext (non-error feedback), never as decision:block, which Claude
 # Code shows as "Stop hook error".
-want='This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a release, a merge, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.'
+want='This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a delete, a go-ahead, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on, unless it needs reading first (a plan, a release, merge or publish step): then the reply ends with a TL;DR, the decisions as lettered lines with their picks, the full text and 2-3 numbered choices, nothing in a dialog preview; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.'
 payload=$(jq -n --arg t "$human" '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: "Should I release it?"}')
 got=$(bash "$hook" <<<"$payload")
 if [ "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$got" 2>/dev/null)" = "$want" ] &&

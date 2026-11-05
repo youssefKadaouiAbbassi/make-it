@@ -3,6 +3,20 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.4
+
+New:
+
+- The global CLAUDE.md asks Claude to put a plan or a release step you have to approve in the reply
+  itself: a short TL;DR, the open decisions with its picks, every line of the plan (or the exact
+  commands), then numbered choices you answer with a digit; the question dialog, which hides the
+  text above it, stays for short choices.
+
+Fixes:
+
+- The `/makeit:init` skill no longer tells Claude that a folder without git is an error; since 0.3.3
+  init sets such a folder up without git.
+
 ## 0.3.3
 
 New:
