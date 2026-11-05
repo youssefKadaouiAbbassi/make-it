@@ -72,7 +72,9 @@ func (e *env) updateGlobalSteps() []plan.Step {
 					rec = &state.File{Class: "owned", Source: src, PreExisted: true}
 					e.st.Files[key] = rec
 				}
-				handBack(rec, cur, want, rerr)
+				if handBack(rec, cur, want, rerr) {
+					e.recordChanged = true
+				}
 				switch {
 				// The user's: there before makeit and not the text makeit last recorded for it.
 				case rec.PreExisted && (rec.Sha256 == "" || fsx.Sha256(cur) != rec.Sha256):

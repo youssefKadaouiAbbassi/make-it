@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -154,5 +155,91 @@ func TestGlobalDifferentStaysYours(t *testing.T) {
 	}
 	if done, _ := step(t, e.updateGlobalSteps(), "global.CLAUDE.md").Already(context.Background()); !done {
 		t.Fatal("update planned to overwrite a file of yours")
+	}
+	if r := keptReason(e, key); r != "yours; the plugin set's version differs" {
+		t.Errorf("kept %q", r)
+	}
+}
+
+// Review I1: an update with nothing else to do still saves a takeover, or the next release finds
+// the record unchanged and leaves the file stuck.
+func TestQuietUpdateSavesTakeover(t *testing.T) {
+	m := converged(t)
+	want, err := catalog.Embedded.ReadFile("templates/global/CLAUDE.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(m.env.Roots.Claude, "CLAUDE.md")
+	writeFile(t, path, string(want))
+	statePath := filepath.Join(m.env.Roots.Stack, "state.json")
+	st, _, err := state.LoadState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := m.env.Roots.Portable(path)
+	st.Files[key] = &state.File{Class: "owned", Source: "templates/global/CLAUDE.md", PreExisted: true}
+	if err := state.SaveState(statePath, st); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+	if err != nil || rep.Generation != 0 {
+		t.Fatalf("generation %d err %v, want a quiet run", rep.Generation, err)
+	}
+	after, _, _ := state.LoadState(statePath)
+	if r := after.Files[key]; r == nil || r.Sha256 != fsx.Sha256(want) {
+		t.Errorf("record after a quiet update %+v: the takeover was not saved", r)
+	}
+}
+
+// Review I2: a file holding an older makeit release's text (the owner's case) is taken over too,
+// so the update writes the current version.
+func TestGlobalOlderMakeitVersionTakenOver(t *testing.T) {
+	old := "makeit's CLAUDE.md as an earlier release shipped it\n"
+	saved := globalHistory
+	globalHistory = map[string][]string{"templates/global/CLAUDE.md": {fsx.Sha256([]byte(old))}}
+	t.Cleanup(func() { globalHistory = saved })
+	e := globalEnv(t)
+	path := filepath.Join(e.Roots.Claude, "CLAUDE.md")
+	writeFile(t, path, old)
+	key := e.Roots.Portable(path)
+	e.st.Files = map[string]*state.File{key: {Class: "owned", Source: "templates/global/CLAUDE.md", PreExisted: true}}
+	if done, _ := step(t, e.updateGlobalSteps(), "global.CLAUDE.md").Already(context.Background()); done {
+		t.Errorf("an older makeit text was kept as yours: %v", e.kept)
+	}
+}
+
+// Review M6: a file taken over, which the user then made identical to makeit's newer text, is
+// makeit's again (the stale sha would otherwise mark it as theirs).
+func TestGlobalStaleShaRetaken(t *testing.T) {
+	want, err := catalog.Embedded.ReadFile("templates/global/CLAUDE.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := globalEnv(t)
+	path := filepath.Join(e.Roots.Claude, "CLAUDE.md")
+	writeFile(t, path, string(want))
+	key := e.Roots.Portable(path)
+	e.st.Files = map[string]*state.File{key: {Class: "owned", Source: "templates/global/CLAUDE.md", PreExisted: true, Sha256: fsx.Sha256([]byte("older"))}}
+	if done, _ := step(t, e.updateGlobalSteps(), "global.CLAUDE.md").Already(context.Background()); !done {
+		t.Fatal("planned a write over makeit's own text")
+	}
+	if r := e.st.Files[key]; r.Sha256 != fsx.Sha256(want) || keptReason(e, key) != "" {
+		t.Errorf("record %+v kept %q", r, keptReason(e, key))
+	}
+}
+
+// Every makeit version of each global template is known, so an older copy can be taken over.
+func TestGlobalHistoryIsCurrent(t *testing.T) {
+	repo, _ := filepath.Abs("../../..")
+	if out, err := exec.Command("git", "-C", repo, "rev-parse", "--is-shallow-repository").Output(); err != nil || strings.TrimSpace(string(out)) != "false" {
+		t.Skip("no full git history here")
+	}
+	got, err := exec.Command("go", "run", "../../tools/globalhistory", "-repo", repo).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	have, err := os.ReadFile("globalhistory_gen.go")
+	if err != nil || string(have) != string(got) {
+		t.Fatalf("globalhistory_gen.go is stale: run go generate ./... (%v)", err)
 	}
 }

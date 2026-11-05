@@ -16,9 +16,10 @@ New:
 
 Fixes:
 
-- A file in `~/.claude` that was there before makeit and is identical to makeit's version now gets
-  makeit's updates (it was skipped as yours forever); `makeit uninstall` still leaves it, and a
-  file with any edit of yours stays yours.
+- A file in `~/.claude` that was there before makeit and still holds makeit's text, of this
+  release or any earlier one, now gets makeit's updates (it was skipped as yours forever, even
+  when it was makeit's own text); `makeit uninstall` still leaves it, and a file with any edit of
+  yours stays yours.
 
 ## 0.3.4
 

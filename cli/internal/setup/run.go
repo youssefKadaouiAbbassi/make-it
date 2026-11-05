@@ -123,6 +123,10 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	rep := Report{Plan: runPhases(ctx, phases, plan.Options{DryRun: true})}
 	rep.Hints, rep.Kept, rep.NeedsYou = en.hints, en.kept, en.needsYou
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {
+		// Nothing to apply, but a check took a global file back: save that (the lock is held).
+		if en.recordChanged && !rep.Plan.Failed() && (mode == plan.Apply || mode == plan.Prompt) {
+			return rep, en, state.SaveState(statePath, st)
+		}
 		return rep, en, nil
 	}
 	switch mode {

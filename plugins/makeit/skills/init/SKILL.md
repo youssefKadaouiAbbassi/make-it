@@ -52,7 +52,10 @@ in the steps below; makeit indexed the project's dependencies at their versions.
 - CLAUDE.md: replace each remaining `<...>` placeholder with what the code shows (the one-sentence
   description, the layout lines, the known traps you find). The **Product priority** line must be
   in the user's words: ask once, with AskUserQuestion, and write their answer as given.
-- A CLAUDE.md that `kept` lists as the user's is rebuilt, with the user's yes:
+- A CLAUDE.md that `kept` lists as "yours: kept as it is" is rebuilt, with the user's yes. Not a
+  CLAUDE.md that is a symlink (`kept` says so; leave it and the file it points to alone), and not
+  when `CLAUDE.md.before-makeit` already exists (it was rebuilt before: add only the template's
+  missing sections). Ask the **Product priority** question first, so the draft carries the answer:
   1. Read it, and `AGENTS.md`, `.cursorrules` and `CONTRIBUTING.md` when they exist, and the code
      they describe.
   2. Draft a new CLAUDE.md in the structure of `templates/project/CLAUDE.md` (in the makeit plugin
@@ -61,10 +64,12 @@ in the steps below; makeit indexed the project's dependencies at their versions.
      template or with another line, or not about this project. Write nothing yet.
   3. Ask in the reply, in the global CLAUDE.md's reading shape: the new file in full, then every
      cut line quoted with its reason, then a TL;DR, a plain line, and the choices: write it,
-     change something first, or keep the old file as it is.
-  4. On a yes, rename the old file to `CLAUDE.md.before-makeit` and write the new one. On "keep",
-     leave it and add only the template's missing sections, as for CONSTRAINTS.md. The other
-     files are read, never changed.
+     change something first, or keep mine and add only the missing sections.
+  4. On a yes, rename the old file to `CLAUDE.md.before-makeit` (never over an existing one) and
+     write the new one; the backup stays out of the first commit (step 8), and the user deletes it
+     when satisfied. On "keep mine", add only the template's missing sections, as for
+     CONSTRAINTS.md. The other files are read, never changed.
+  5. After the answer, go on with step 3.
 - A CONSTRAINTS.md that `kept` lists as the user's: add the sections of
   `templates/project/CONSTRAINTS.md` that it lacks, and keep every section it has. Never rewrite
   it.
