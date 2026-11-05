@@ -2,9 +2,10 @@
 // renders with: it numbers an ordered list as its start plus each item's place. Reads the reply on
 // stdin and prints one word: "joined" when it ends on numbered options that show another number
 // than the one written on them, "options" when it ends on options that show as written, "none"
-// when it does not end on them. With no ordered list holding a marked item it prints nothing:
-// options written with bold numbers ("**1.** Release", not a list in Markdown) are the awk's to
-// judge. Exits 3 with no output when no marked is found; options.sh then runs its awk passes.
+// when it does not end on them. With no ordered list holding a marked item it prints nothing
+// when a marked line sits in ordinary text (options written with bold numbers, "**1.** Release",
+// are no list in Markdown: the awk judges them), and "none" when every one is inside code or HTML,
+// where no choices show at all. Exits 3 with no output when no marked is found; options.sh then runs its awk passes.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -51,7 +52,7 @@ const at = tokens.findLastIndex((t) => t.type === 'list' && t.ordered && t.items
 const after = tokens.slice(at + 1).filter((t) => !['space', 'code', 'blockquote'].includes(t.type));
 const lines = after.flatMap((t) => t.raw.split('\n')).filter((l) => l.trim() !== '' && !l.includes('claude --resume'));
 if (at < 0) {
-  // no list of options: the awk decides
+  if (!tokens.some((t) => !['code', 'html'].includes(t.type) && t.raw.split('\n').some(marked))) console.log('none');
 } else if (after.some((t) => t.type === 'list') || lines.length > 2) {
   console.log('none');
 } else {

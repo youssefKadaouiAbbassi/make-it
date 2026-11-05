@@ -190,6 +190,12 @@ if [ "$OPT_MODE" = node ]; then
   chmod +x "$work"/node-*/node
   PATH="$work/node-fail:$PATH" check "node: node fails, the awk answers" fire "$human" false "$renum"
   PATH="$work/node-odd:$PATH" check "node: odd output, the awk answers" fire "$human" false "$renum"
+  # Choices swallowed by an HTML block are no list on screen: not "renumbered".
+  payload=$(jq -n --arg t "$human" --arg m $'<div>x</div>\n3. Tag it:\nPick:\n1. **Go** · recommended\n  ships\n2. **Wait**\n  keeps' '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: $m}')
+  if bash "$hook" <<<"$payload" | grep -q 'belong, for the terminal'; then
+    echo "FAIL  node: choices inside an HTML block are not called renumbered [$OPT_MODE]"
+    fail=1
+  else echo "ok    node: choices inside an HTML block are not called renumbered [$OPT_MODE]"; fi
   start=$(date +%s)
   PATH="$work/node-hang:$PATH" check "node: node hangs, the awk answers" fire "$human" false "$renum"
   if [ $(($(date +%s) - start)) -lt 5 ]; then echo "ok    node: a hang costs under 5 s [$OPT_MODE]"; else
