@@ -683,8 +683,14 @@ func (e *env) toolSteps() []plan.Step {
 			e.keep(id, "installed by makeit through "+rec.Route+"; to remove: "+removeCommand(rec.Route, id))
 			continue
 		}
+		i := slices.IndexFunc(platform.Prereqs, func(r platform.Prereq) bool { return r.ID == id })
+		if i < 0 {
+			// A newer makeit's tool, after a self rollback: this binary does not know its file.
+			e.keep(id, "installed by another makeit version; this one does not know its file, so it stays")
+			continue
+		}
 		bin := id
-		if r := platform.Find(id).Release; r != nil {
+		if r := platform.Prereqs[i].Release; r != nil {
 			bin = r.Bin
 		}
 		if e.Platform.OS == "windows" {

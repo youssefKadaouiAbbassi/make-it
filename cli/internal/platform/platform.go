@@ -295,15 +295,6 @@ func goreleaserAsset(name, sums string, windowsArm64 bool) func(v, goos, goarch 
 	}
 }
 
-// Find returns the row with id; an unknown id is a programming error.
-func Find(id string) Prereq {
-	i := slices.IndexFunc(Prereqs, func(r Prereq) bool { return r.ID == id })
-	if i < 0 {
-		panic("platform: no prerequisite " + id)
-	}
-	return Prereqs[i]
-}
-
 // hasCABundle reports a CA bundle on disk, read from the files Go's crypto/x509 reads (and
 // SSL_CERT_FILE, SSL_CERT_DIR). It must not call x509.SystemCertPool: Go loads that pool once per
 // process, and this probe runs before setup installs ca-certificates, so it would cache an empty

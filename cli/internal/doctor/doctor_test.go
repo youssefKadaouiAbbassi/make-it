@@ -137,8 +137,8 @@ func TestPrereqFixFollowsSetupsRoutes(t *testing.T) {
 	m, _ := healthy(t)
 	m.HasSudo = true
 	m.Prereqs = []platform.State{
-		{Prereq: platform.Find("git")}, {Prereq: platform.Find("gh")}, {Prereq: platform.Find("chrome")}, {Prereq: platform.Find("prek")},
-		{Prereq: platform.Find("rust-analyzer"), Via: []string{"rustup", "component", "add", "rust-analyzer"}},
+		{Prereq: findRow("git")}, {Prereq: findRow("gh")}, {Prereq: findRow("chrome")}, {Prereq: findRow("prek")},
+		{Prereq: findRow("rust-analyzer"), Via: []string{"rustup", "component", "add", "rust-analyzer"}},
 	}
 	checks := Run(context.Background(), m)
 	for _, id := range []string{"prereq.git", "prereq.gh", "prereq.chrome", "prereq.prek", "prereq.rust-analyzer"} {
@@ -421,8 +421,8 @@ func TestPrereqRoutedFixIsSetup(t *testing.T) {
 	m, _ := healthy(t)
 	m.HasSudo = true
 	m.Prereqs = []platform.State{
-		{Prereq: platform.Find("prek")},   // release binary, no package on apt
-		{Prereq: platform.Find("chrome")}, // Google's .deb on apt
+		{Prereq: findRow("prek")},   // release binary, no package on apt
+		{Prereq: findRow("chrome")}, // Google's .deb on apt
 	}
 	checks := Run(context.Background(), m)
 	for _, id := range []string{"prereq.prek", "prereq.chrome"} {
@@ -564,4 +564,9 @@ func TestUnusableClaudeListsNothing(t *testing.T) {
 	if listings != 0 {
 		t.Errorf("%d listings ran on an unusable Claude Code", listings)
 	}
+}
+
+// findRow is the tool table's row with id.
+func findRow(id string) platform.Prereq {
+	return platform.Prereqs[slices.IndexFunc(platform.Prereqs, func(r platform.Prereq) bool { return r.ID == id })]
 }
