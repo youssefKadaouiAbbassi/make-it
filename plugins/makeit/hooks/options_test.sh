@@ -91,7 +91,7 @@ check "· recommended in prose, no numbers" fire "$human" false "$close"$'\nRele
 check "(Recommandé) in prose, no numbers" fire "$human" false $'C\'est sur dev.\nPublier maintenant (Recommandé), ou attendre.'
 # A plan approval asked in the reply (templates/global/CLAUDE.md): the plan's own numbered steps
 # sit right above the choices.
-check "plan approval in the reply" quiet "$human" false $'Plan #2281 · IGESA point 3\n\nTL;DR\n- backend: Interne + 6 export columns\n- app: welcome texts in the org colour\n- still from IGESA: the sign-up URL\n\nDecisions (my pick, change any by letter)\n  a. welcome text colour → a colour field\n  b. ID RCU → hidden without READ_USER_SSO_IDS\n\n## Backend\n1. PaymentMethodTypeEnum.INTERNE\n2. VENTES export: 6 columns at the end\n3. 409 on deleting a user with orders\n\n1. **Go** · recommended\n   build all three repos; stop before any push\n2. **Change something**\n   say what, or a: … to switch a decision'
+check "plan approval in the reply" quiet "$human" false $'## Backend\n1. PaymentMethodTypeEnum.INTERNE\n2. VENTES export: 6 columns at the end\n3. 409 on deleting a user with orders\n\nTL;DR\n- backend: Interne + 6 export columns\n- app: welcome texts in the org colour\n\nDecisions (my pick, change any by letter)\n  a. welcome text colour → a colour field\n  b. ID RCU → hidden without READ_USER_SSO_IDS\n\nYour answer:\n\n1. **Go** · recommended\n   build all three repos; stop before any push\n2. **Change something**\n   say what, or a: … to switch a decision'
 # The rule's own example (templates/global/CLAUDE.md), dedented as a reply would print it, passes.
 rule=$here/../../../templates/global/CLAUDE.md
 if [ -f "$rule" ]; then
