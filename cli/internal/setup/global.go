@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
 	"strings"
@@ -36,14 +37,17 @@ func (e *env) globalSteps() []plan.Step {
 		}
 		steps = append(steps, plan.Step{ID: "global." + rel, Title: "Write " + path, Detail: detail,
 			Already: func(context.Context) (bool, error) {
-				_, found, err := fsx.ReadOptional(path)
+				cur, found, err := fsx.ReadOptional(path)
 				if err != nil || !found {
 					return false, err
 				}
 				e.st.Files = initMap(e.st.Files)
-				if e.st.Files[key] == nil {
-					e.st.Files[key] = &state.File{Class: "owned", Source: src, PreExisted: true}
+				rec := e.st.Files[key]
+				if rec == nil {
+					rec = &state.File{Class: "owned", Source: src, PreExisted: true}
+					e.st.Files[key] = rec
 				}
+				handBack(rec, cur, data, rerr)
 				return true, nil
 			},
 			Run: func(context.Context) (string, error) {
@@ -60,4 +64,14 @@ func (e *env) globalSteps() []plan.Step {
 			}})
 	}
 	return steps
+}
+
+// handBack lets makeit's updates reach a global file that was there before makeit once it is
+// byte-identical to makeit's version: the sha is recorded, so the next release sees the file
+// unchanged and writes the new version. PreExisted stays: uninstall still leaves the file, which
+// the user had before makeit. A file with any difference stays the user's.
+func handBack(rec *state.File, cur, want []byte, wantErr error) {
+	if rec.PreExisted && rec.Sha256 == "" && wantErr == nil && bytes.Equal(cur, want) {
+		rec.Sha256 = fsx.Sha256(want)
+	}
 }
