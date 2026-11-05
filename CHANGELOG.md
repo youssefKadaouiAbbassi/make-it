@@ -12,6 +12,9 @@ Fixes:
   or a plain line written right under the list's last item. It follows the parser Claude Code
   renders with, so a code block, quote, heading or rule between the two lists passes. The rule in
   the global CLAUDE.md now says the plain line before the choices needs an empty line above it.
+- A download that a server answers with an error on its side (500, 502, 503, 504) is tried twice
+  more, after 2 and 4 seconds, so one bad answer from GitHub no longer fails setup and skips every
+  step after it.
 
 ## 0.3.5
 

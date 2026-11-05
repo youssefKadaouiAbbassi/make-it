@@ -123,3 +123,59 @@ func TestClientKeepsPlatformVerifier(t *testing.T) {
 		t.Error("the bundle file was not used where Go reads files")
 	}
 }
+
+// flaky answers each request with the next status in codes (200 once they run out) and counts them.
+func flaky(t *testing.T, codes ...int) (*httptest.Server, *int) {
+	t.Helper()
+	n := 0
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		if n <= len(codes) {
+			w.WriteHeader(codes[n-1])
+			return
+		}
+		_, _ = w.Write([]byte("hello"))
+	}))
+	t.Cleanup(s.Close)
+	return s, &n
+}
+
+// A server error on GitHub's side (the 2026-11-05 distro run got a 504 for prek) is retried, so
+// one bad answer does not fail setup and skip every step after it.
+func TestGetRetriesServerErrors(t *testing.T) {
+	retryWait = time.Millisecond
+	s, n := flaky(t, http.StatusGatewayTimeout, http.StatusBadGateway)
+	var b bytes.Buffer
+	if err := Get(context.Background(), s.Client(), "makeit/test", s.URL+"/x", 100, &b); err != nil || b.String() != "hello" || *n != 3 {
+		t.Errorf("%q %v after %d requests", b.String(), err, *n)
+	}
+}
+
+func TestGetGivesUpAfterThreeTries(t *testing.T) {
+	retryWait = time.Millisecond
+	s, n := flaky(t, 503, 503, 503, 503)
+	if err := Get(context.Background(), s.Client(), "makeit/test", s.URL+"/x", 100, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "503") || *n != 3 {
+		t.Errorf("err %v after %d requests", err, *n)
+	}
+}
+
+// A client error is the answer, not a hiccup: no second request.
+func TestGetDoesNotRetryNotFound(t *testing.T) {
+	retryWait = time.Millisecond
+	s, n := flaky(t, http.StatusNotFound)
+	if err := Get(context.Background(), s.Client(), "makeit/test", s.URL+"/x", 100, &bytes.Buffer{}); err == nil || *n != 1 {
+		t.Errorf("err %v after %d requests", err, *n)
+	}
+}
+
+// A cancelled run stops waiting between tries.
+func TestGetRetryStopsOnCancel(t *testing.T) {
+	retryWait = time.Hour
+	s, _ := flaky(t, 504, 504)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if err := Get(ctx, s.Client(), "makeit/test", s.URL+"/x", 100, &bytes.Buffer{}); err == nil || time.Since(start) > 5*time.Second {
+		t.Errorf("err %v after %s", err, time.Since(start))
+	}
+}
