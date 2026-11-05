@@ -24,6 +24,15 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   list; 2-3 short options, the recommended one first and marked
   "(Recommended)", each saying what it trades off. Facts the code, the docs
   or a sensible default can settle are not questions.
+- A decision that needs reading first (a plan, a release, merge or publish
+  step, anything longer than the question) is not asked in the dialog: it
+  hides the text above it, and its previews may not show. End the reply
+  instead with a TL;DR of at most five lines, the open decisions as lettered
+  lines each with your pick, the full text (every line of the plan; for a
+  release step the exact commands and what each does), then 2-3 numbered
+  choices laid out like the picker below. A digit runs that choice with
+  every pick as written; "a: ..." changes a pick. Nothing the owner must
+  read goes in a dialog option's preview.
 
 ## Scope
 
@@ -88,7 +97,7 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   the commit, the card or a file the close names. Never hand the owner a phrase or a command to
   type. A turn that stops while a job runs says what it waits on, with no options.
 - If the work still waits on the owner (a release, a merge, a choice), end with AskUserQuestion as
-  above. If the work is finished and you have suggestions for what could come next, put 2-3
+  above, or, when the decision needs reading, with the reply shape above. If the work is finished and you have suggestions for what could come next, put 2-3
   numbered options under the close, nothing after them, laid out like the picker:
     1. **Add a test for refunds** · recommended
        catches the next rounding bug before it ships
