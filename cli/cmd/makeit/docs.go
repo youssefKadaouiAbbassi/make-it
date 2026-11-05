@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -68,7 +69,7 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 		say("docs: %v", err)
 		return 0
 	}
-	if rec := docs.LoadRecord(roots.Stack, dir); p.Bool["if-changed"] && sameManifests(rec.Manifests, proj.Manifests) &&
+	if rec := docs.LoadRecord(roots.Stack, dir); p.Bool["if-changed"] && maps.Equal(rec.Manifests, proj.Manifests) &&
 		(!rec.Failed || time.Since(rec.SyncedAt) < retryFailed) {
 		return 0
 	}
@@ -94,18 +95,6 @@ func runDocs(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 		say("docs: %v", err)
 	}
 	return 0
-}
-
-func sameManifests(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
 }
 
 // docsOptions start the server the plugin pins: from the synced catalog when there is one, else

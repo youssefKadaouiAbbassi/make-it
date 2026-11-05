@@ -457,7 +457,7 @@ func (r *run) recordStep() plan.Step {
 				return false, err
 			}
 			next := build()
-			return exists && reflect.DeepEqual(next.Files, r.prev.Files) && slicesEqual(next.Answers.Types, r.prev.Answers.Types) &&
+			return exists && reflect.DeepEqual(next.Files, r.prev.Files) && slices.Equal(next.Answers.Types, r.prev.Answers.Types) &&
 				next.ManualSha256 == r.prev.ManualSha256, nil
 		},
 		Run: func(context.Context) (string, error) {
@@ -476,18 +476,6 @@ func Libs(p Project) []docs.Lib {
 		out = append(out, docs.Lib{Name: d.Name, Version: d.Version, Ecosystem: d.Ecosystem})
 	}
 	return out
-}
-
-func slicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func writeFile(path string, b []byte) error {
