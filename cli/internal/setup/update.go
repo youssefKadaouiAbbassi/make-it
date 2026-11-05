@@ -72,8 +72,12 @@ func (e *env) updateGlobalSteps() []plan.Step {
 					rec = &state.File{Class: "owned", Source: src, PreExisted: true}
 					e.st.Files[key] = rec
 				}
+				if handBack(rec, cur, want, rerr) {
+					e.recordChanged = true
+				}
 				switch {
-				case rec.PreExisted:
+				// The user's: there before makeit and not the text makeit last recorded for it.
+				case rec.PreExisted && (rec.Sha256 == "" || fsx.Sha256(cur) != rec.Sha256):
 					if !bytes.Equal(cur, want) {
 						e.keep(key, "yours; the plugin set's version differs")
 					}
@@ -96,7 +100,8 @@ func (e *env) updateGlobalSteps() []plan.Step {
 					return "", err
 				}
 				e.st.Files = initMap(e.st.Files)
-				e.st.Files[key] = &state.File{Class: "owned", Source: src, Sha256: fsx.Sha256(want), Generation: e.st.Generation}
+				pre := e.st.Files[key] != nil && e.st.Files[key].PreExisted // uninstall keeps what was there before makeit
+				e.st.Files[key] = &state.File{Class: "owned", Source: src, Sha256: fsx.Sha256(want), PreExisted: pre, Generation: e.st.Generation}
 				return "", nil
 			}})
 	}

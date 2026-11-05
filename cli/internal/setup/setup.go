@@ -95,6 +95,9 @@ type env struct {
 	// resolved: Resolve ran; notes are what it and the upgrade steps had to say.
 	resolved bool
 	notes    []string
+	// recordChanged: a check changed a record (a global file handed back); a run with nothing else
+	// to do still saves state, or the change is lost.
+	recordChanged bool
 	// claudeNewest is Claude Code's newest version, read once per run.
 	claudeNewestOnce sync.Once
 	claudeNewest     string

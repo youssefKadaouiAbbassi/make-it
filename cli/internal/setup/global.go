@@ -1,8 +1,10 @@
 package setup
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"makeit/internal/catalog"
@@ -36,13 +38,18 @@ func (e *env) globalSteps() []plan.Step {
 		}
 		steps = append(steps, plan.Step{ID: "global." + rel, Title: "Write " + path, Detail: detail,
 			Already: func(context.Context) (bool, error) {
-				_, found, err := fsx.ReadOptional(path)
+				cur, found, err := fsx.ReadOptional(path)
 				if err != nil || !found {
 					return false, err
 				}
 				e.st.Files = initMap(e.st.Files)
-				if e.st.Files[key] == nil {
-					e.st.Files[key] = &state.File{Class: "owned", Source: src, PreExisted: true}
+				rec := e.st.Files[key]
+				if rec == nil {
+					rec = &state.File{Class: "owned", Source: src, PreExisted: true}
+					e.st.Files[key] = rec
+				}
+				if handBack(rec, cur, data, rerr) {
+					e.recordChanged = true
 				}
 				return true, nil
 			},
@@ -60,4 +67,23 @@ func (e *env) globalSteps() []plan.Step {
 			}})
 	}
 	return steps
+}
+
+//go:generate go run ../../tools/globalhistory -repo ../../.. -out globalhistory_gen.go
+
+// handBack lets makeit's updates reach a global file that was there before makeit once it holds
+// makeit's text: the running version, or any earlier one (globalHistory). Its sha is recorded, so
+// update sees the file unchanged and writes the current version. PreExisted stays: uninstall still
+// leaves the file, which the user had before makeit. A file with any other text stays the user's.
+// It reports whether the record changed, so a run with nothing else to do still saves it.
+func handBack(rec *state.File, cur, want []byte, wantErr error) bool {
+	if !rec.PreExisted || wantErr != nil {
+		return false
+	}
+	sha := fsx.Sha256(cur)
+	if rec.Sha256 == sha || (!bytes.Equal(cur, want) && !slices.Contains(globalHistory[rec.Source], sha)) {
+		return false
+	}
+	rec.Sha256 = sha
+	return true
 }
