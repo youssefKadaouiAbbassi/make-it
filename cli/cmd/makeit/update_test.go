@@ -152,14 +152,16 @@ func TestUpdateAdoptedRunsOnlyVersionUpdates(t *testing.T) {
 			t.Errorf("run %d changed %q, want %q", run, got, want[run-1])
 		}
 	}
+	// The first update made one generation, the second none (prune may drop setup's empty one).
 	es, _ := os.ReadDir(state.GenerationsDir(stack))
-	if len(es) != len(gens)+1 {
-		for _, fi := range es {
-			if n, err := strconv.Atoi(fi.Name()); err == nil && n > len(gens) {
-				t.Logf("DEBUG generation %d: %+v", n, manifest(t, stack, n).Ops)
-			}
+	top := 0
+	for _, fi := range es {
+		if n, err := strconv.Atoi(fi.Name()); err == nil && n > top {
+			top = n
 		}
-		t.Errorf("%d generations after setup's %d, want one more: the second update had nothing to do", len(es), len(gens))
+	}
+	if top != len(gens)+1 {
+		t.Errorf("newest generation %d after setup's %d, want one more: the second update had nothing to do", top, len(gens))
 	}
 	if after := snapshot(t, claudeDir); !sameFiles(before, after) {
 		t.Error("update changed a file in the Claude directory of an adopted machine")

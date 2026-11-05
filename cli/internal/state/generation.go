@@ -40,6 +40,13 @@ type Manifest struct {
 	RolledBack bool `json:"rolledBack,omitempty"`
 }
 
+// Undoable reports whether rollback has anything to undo in this run: files, plugin releases, MCP
+// server versions or tools. Claude Code's own moves, makeit's and the npm tools' are left as they
+// are (never pin), so a run with only those is not one rollback picks.
+func (m Manifest) Undoable() bool {
+	return len(m.Ops) > 0 || len(m.Pins) > 0 || slices.ContainsFunc(m.Changes, func(c Change) bool { return c.Kind == "mcp" || c.Kind == "tool" })
+}
+
 // Change is one thing a run moved from one version to another: kind is makeit, claude-code,
 // plugin, mcp or tool; From is "" when the earlier version is not known.
 type Change struct {
@@ -140,10 +147,24 @@ func (g *Generation) Save() error {
 	return save(filepath.Join(g.Dir, "manifest.json"), &g.Manifest, 0o600)
 }
 
-// Prune deletes all but the newest Keep generations. Call it only after a successful apply.
+// Prune deletes the generations rollback has nothing to undo in, except the newest, then all but
+// the newest Keep of the rest. Call it only after a successful apply.
 // shortcut: generations referenced by an unresolved conflict are not pinned yet; add a keep set
 // when conflicts start pointing at generations.
 func Prune(stackDir string) error {
+	gens, err := LoadGenerations(stackDir)
+	if err != nil {
+		return err
+	}
+	// Runs with nothing to undo go first, except the newest (the home screen and the daily note read
+	// it); then the newest Keep of the rest stay.
+	for i, g := range gens {
+		if i > 0 && !g.Manifest.Undoable() {
+			if err := os.RemoveAll(g.Dir); err != nil {
+				return err
+			}
+		}
+	}
 	ns, err := generations(stackDir)
 	if err != nil {
 		return err

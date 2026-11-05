@@ -30,7 +30,7 @@ func lastUndoable(stack string) (*state.Generation, error) {
 		return nil, err
 	}
 	for _, g := range gens {
-		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" && undoable(g.Manifest) {
+		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" && g.Manifest.Undoable() {
 			return g, nil
 		}
 	}
@@ -52,12 +52,6 @@ func Rollback(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Ou
 		err = g.Save()
 	}
 	return rep, err
-}
-
-// undoable reports whether a run left something rollback can put back: files, plugin releases or
-// MCP versions. A run that only saw Claude Code move has nothing (Claude Code only goes forward).
-func undoable(m state.Manifest) bool {
-	return len(m.Ops) > 0 || len(m.Pins) > 0 || slices.ContainsFunc(m.Changes, func(c state.Change) bool { return c.Kind == "mcp" || c.Kind == "tool" })
 }
 
 // mcpChanges are the MCP servers a run moved.

@@ -169,7 +169,7 @@ func TestUninstallListsMarked(t *testing.T) {
 
 // npm moves are not undone (never pin): a run that only moved npm tools is no run to roll back.
 func TestNPMChangesAreNotUndoable(t *testing.T) {
-	if undoable(state.Manifest{Changes: []state.Change{{Kind: "npm", Item: "pyright", From: "1.1.400", To: "1.1.401"}}}) {
+	if (state.Manifest{Changes: []state.Change{{Kind: "npm", Item: "pyright", From: "1.1.400", To: "1.1.401"}}}).Undoable() {
 		t.Error("a run that only moved an npm tool counts as undoable")
 	}
 }
