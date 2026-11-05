@@ -17,18 +17,15 @@ import (
 // configuration directory under the same names. A file already there is the user's: adopted,
 // recorded and never changed.
 func (e *env) globalSteps() []plan.Step {
-	m, err := catalog.EmbeddedManifest()
+	// The files come from the catalog in use: a git or directory catalog may hold fewer or more.
+	files, err := catalog.List(e.Catalog, "templates/global/")
 	if err != nil {
 		return []plan.Step{{ID: "global", Title: "Write the global files",
 			Already: func(context.Context) (bool, error) { return false, err }}}
 	}
 	var steps []plan.Step
-	for _, f := range m.Files {
-		rel, ok := strings.CutPrefix(f.Path, "templates/global/")
-		if !ok {
-			continue
-		}
-		src := f.Path
+	for _, src := range files {
+		rel := strings.TrimPrefix(src, "templates/global/")
 		path := filepath.Join(e.Roots.Claude, filepath.FromSlash(rel))
 		key := e.Roots.Portable(path)
 		data, rerr := e.Catalog.ReadFile(src)

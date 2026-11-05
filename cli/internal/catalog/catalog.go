@@ -78,6 +78,52 @@ func (d Dir) ReadFile(p string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(string(d), filepath.FromSlash(p)))
 }
 
+// List returns the catalog paths under prefix in src, sorted: the embedded catalog's manifest, a
+// git catalog's tree, or the regular files of a directory catalog.
+func List(src Source, prefix string) ([]string, error) {
+	var out []string
+	switch c := src.(type) {
+	case embedded:
+		m, err := EmbeddedManifest()
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range m.Files {
+			if strings.HasPrefix(f.Path, prefix) {
+				out = append(out, f.Path)
+			}
+		}
+	case *Tree:
+		for p := range c.Files {
+			if strings.HasPrefix(p, prefix) {
+				out = append(out, p)
+			}
+		}
+	case Dir:
+		root := filepath.Join(string(c), filepath.FromSlash(prefix))
+		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			if err != nil || !d.Type().IsRegular() {
+				return err
+			}
+			rel, err := filepath.Rel(string(c), p)
+			if err == nil {
+				out = append(out, filepath.ToSlash(rel))
+			}
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("catalog %T cannot list its files", src)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // EmbeddedManifest returns the manifest of the compiled-in catalog.
 func EmbeddedManifest() (Manifest, error) {
 	var m Manifest
