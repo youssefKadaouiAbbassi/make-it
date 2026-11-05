@@ -5,9 +5,20 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 hook=${1:-$here/options.sh}
+# Every case runs twice: through the awk pass, and through lists.mjs with the marked found at
+# MARKED_PREFIX (hooks/test.sh installs one there). Without one the node run is skipped, said so.
+if [ -z "${OPT_MODE:-}" ]; then
+  st=0
+  env OPT_MODE=awk bash "$0" "$@" || st=1
+  if [ -n "${MARKED_PREFIX:-}" ]; then env OPT_MODE=node bash "$0" "$@" || st=1; else echo "SKIP  node path: MARKED_PREFIX is not set"; fi
+  exit "$st"
+fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/options-test.XXXXXX")
 trap '/bin/rm -rf "$work"' EXIT
 fail=0
+mkdir -p "$work/empty" "$work/home"
+export HOME="$work/home"
+if [ "$OPT_MODE" = awk ]; then export MAKEIT_NO_NODE=1 MAKEIT_NPM_PREFIX="$work/empty"; else export MAKEIT_NPM_PREFIX="$MARKED_PREFIX"; fi
 # transcript KIND ENTRYPOINT -> path of a one-prompt transcript (KIND "none" = no origin, as in -p)
 transcript() {
   local f="$work/$1-$2.jsonl"
@@ -31,9 +42,9 @@ check() {
   local got=quiet
   if jq -e '(.decision == "block") or ((.hookSpecificOutput.additionalContext // "") | length > 0)' <<<"$out" >/dev/null 2>&1; then got=fire; fi
   if [ "$got" = "$2" ] && [ "$code" = 0 ]; then
-    echo "ok    $1"
+    echo "ok    $1 [$OPT_MODE]"
   else
-    echo "FAIL  $1 (want $2, got $got, exit $code)"
+    echo "FAIL  $1 [$OPT_MODE] (want $2, got $got, exit $code)"
     fail=1
   fi
 }
@@ -166,6 +177,26 @@ check "one list: 1, 1, marker on the second" quiet "$human" false $'Done.\n\n1. 
 check "one list: choices numbered 1, 1" quiet "$human" false $'Next:\n\n1. **Go** · recommended\n   why\n1. **Stop**'
 check "one list: numbered steps nested under a choice" quiet "$human" false "$close"$'\n\n1. **Go** · recommended\n   1. dev first\n   2. then prod\n2. **Change something**'
 check "one list: a code block inside a choice" quiet "$human" false $'Done.\n\n1. **Go** · recommended\n   ```\n   make it\n   ```\n2. **Stop**'
+# The node path: what only marked can tell, and every way it can fail, which gives the awk's answer.
+if [ "$OPT_MODE" = node ]; then
+  check "node: plan and choices all numbered 1" fire "$human" false $'1. a\n1. b\n\n1. **Go** · recommended\n1. **Stop**'
+  check "node: a fence indented 4 spaces is code" fire "$human" false $'Text\n\n    ```\n1. a\n2. b\n\n1. **Go** · recommended\n2. **Stop**'
+  check "node: tab-indented step text, then the choices" fire "$human" false $'1. a\n\tmore\n\n1. **Go** · recommended\n2. **Stop**'
+  MAKEIT_NPM_PREFIX="$work/empty" check "node: marked missing, the awk answers" fire "$human" false "$renum"
+  mkdir -p "$work/node-fail" "$work/node-hang" "$work/node-odd"
+  printf '#!/bin/sh\nexit 1\n' >"$work/node-fail/node"
+  printf '#!/bin/sh\nexec sleep 30\n' >"$work/node-hang/node"
+  printf '#!/bin/sh\necho maybe\n' >"$work/node-odd/node"
+  chmod +x "$work"/node-*/node
+  PATH="$work/node-fail:$PATH" check "node: node fails, the awk answers" fire "$human" false "$renum"
+  PATH="$work/node-odd:$PATH" check "node: odd output, the awk answers" fire "$human" false "$renum"
+  start=$(date +%s)
+  PATH="$work/node-hang:$PATH" check "node: node hangs, the awk answers" fire "$human" false "$renum"
+  if [ $(($(date +%s) - start)) -lt 5 ]; then echo "ok    node: a hang costs under 5 s [$OPT_MODE]"; else
+    echo "FAIL  node: a hang took $(($(date +%s) - start)) s [$OPT_MODE]"
+    fail=1
+  fi
+fi
 # The rule's own example (templates/global/CLAUDE.md), dedented as a reply would print it, passes.
 rule=$here/../../../templates/global/CLAUDE.md
 if [ -f "$rule" ]; then

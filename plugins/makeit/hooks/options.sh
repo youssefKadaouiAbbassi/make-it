@@ -44,7 +44,8 @@ msg=$(jq -r '.last_assistant_message // empty' <<<"$input") || exit 0
 # A fence closes on a run of its own character at least as long as the one that opened it; a line
 # with a backtick after its opening run (```make``` runs it) is inline code, not a fence.
 # shortcut: a fence opens at any indent (one in a nested item is still code), so a top-level line
-# of four spaces and backticks, which marked reads as indented code, hides what follows.
+# of four spaces and backticks, which marked reads as indented code, hides what follows; lists.mjs
+# reads the ending itself where marked is installed, so this bites only without it.
 clean=$(printf '%s\n' "$msg" | awk '
   f != "" { if ($0 ~ ("^[[:space:]]*" f "+[[:space:]]*$")) f = ""; next }
   match($0, /^[[:space:]]*(```+|~~~+)/) && !/^[[:space:]]*`+[^`]+`/ { f = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", f); next }
@@ -60,10 +61,35 @@ clean=$(printf '%s\n' "$msg" | awk '
 # it, with no "Stop hook error" (decision:block) under the reply; it is phrased as facts, not
 # commands, as the hooks docs advise.
 emit() { jq -cn --arg r "$1" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'; }
+renumbered='The numbered choices that end this reply belong, for the terminal, to a numbered list above them, so it shows them renumbered (11, 12 instead of 1, 2): Markdown keeps a list going across empty lines, indented lines and a line written right under an item. The owner'\''s rule puts a plain line that is not a list item before the choices, with an empty line above it. Only that plain line and the choices are written again; the rest of the reply stays as it is.'
+# lists TEXT: lists.mjs's answer, or nothing when it fails or takes more than 2 seconds. The
+# watchdog holds no pipe of the hook's, so a hang never keeps Claude Code waiting.
+lists() {
+  local out pid dog
+  out=$(mktemp "${TMPDIR:-/tmp}/makeit-lists.XXXXXX") || return 0
+  printf '%s\n' "$1" | node "$(dirname "${BASH_SOURCE[0]}")/lists.mjs" >"$out" 2>/dev/null &
+  pid=$!
+  (sleep 2 && kill "$pid") >/dev/null 2>&1 </dev/null &
+  dog=$!
+  wait "$pid" 2>/dev/null || true
+  kill "$dog" 2>/dev/null || true
+  cat "$out"
+  /bin/rm -f "$out"
+}
 marked_fn='function marked(l) {
     return tolower(l) ~ /\(recommended\)|\(recommand(é|É)\)|· recommended|· recommand(é|É)/ || l ~ /[*][*][^*]+[*][*][[:space:]]*·/
   }'
-opts=$(printf '%s\n' "$clean" | awk "$marked_fn"'
+# marked itself reads the ending when node and makeit's marked are here (lists.mjs, 2 s at most);
+# any other outcome (no node, no marked, an error, a hang, an odd answer) leaves it to the awk.
+answer=
+if [ -z "${MAKEIT_NO_NODE:-}" ] && command -v node >/dev/null 2>&1; then answer=$(lists "$msg"); fi
+case "$answer" in
+joined) emit "$renumbered" && exit 0 ;;
+options) exit 0 ;;
+none) opts=no ;;
+*) opts= ;;
+esac
+[ -n "$opts" ] || opts=$(printf '%s\n' "$clean" | awk "$marked_fn"'
   NF == 0 { next }
   { i++ }
   /^[[:space:]]*(\*\*)?[0-9]+[.)](\*\*)?[[:space:]]/ { if (!run) { run = 1; rec = 0 }; end = i; if (marked($0)) rec = 1; next }
@@ -79,9 +105,9 @@ if [ "$opts" = yes ]; then
   # rule, bullet, HTML block or 1) after 1. at the margin. A number other than 1, or an empty item,
   # cannot start a list under a paragraph line; lines indented into a bullet item are its own. A
   # list whose items all carry one number (1, 1) counts up from it and is left alone.
-  # shortcut: only leading tabs are expanded, and the all-one-number list is never flagged, so
-  # "1. a\n1. b", an empty line, then "1. **Go**\n1. **Stop**" (shown 3, 4) passes; model more of
-  # marked when a real reply hits one of these.
+  # shortcut: this pass runs only where marked is missing (lists.mjs answers everywhere else); it
+  # expands only leading tabs and never flags the all-one-number list, so "1. a\n1. b", an empty
+  # line, then "1. **Go**\n1. **Stop**" (shown 3, 4) passes here.
   joined=$(printf '%s\n' "$msg" | awk "$marked_fn"'
     { while (match($0, /^ *\t/)) $0 = substr($0, 1, RLENGTH - 1) "    " substr($0, RLENGTH + 1) }
     fence != "" { if ($0 ~ ("^ *" fence "+[ \t]*$")) fence = ""; next }
@@ -120,7 +146,7 @@ if [ "$opts" = yes ]; then
       for (c = 0; c <= last; c++) if (wrote[l, c] != start[l] + c) { print "yes"; exit }
     }') || true
   [ "$joined" = yes ] || exit 0
-  emit 'The numbered choices that end this reply belong, for the terminal, to a numbered list above them, so it shows them renumbered (11, 12 instead of 1, 2): Markdown keeps a list going across empty lines, indented lines and a line written right under an item. The owner'\''s rule puts a plain line that is not a list item before the choices, with an empty line above it. Only that plain line and the choices are written again; the rest of the reply stays as it is.'
+  emit "$renumbered"
   exit 0
 fi
 # The last two paragraphs (the last one is often ponytail's not-checked line, with the handback

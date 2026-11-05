@@ -182,6 +182,12 @@ printf '{"name":"t"}\n' >"$cts/package.json"
 expect_empty "check-task no task defined: silent" "$(cpay)"
 
 # --- options.sh: its own cases, under both locales (· and é are multibyte) ----------------------
+# The node path needs marked: installed once here, the newest, as makeit setup does.
+if command -v npm >/dev/null && npm install --silent --no-audit --no-fund --prefix "$tmp/marked" marked >/dev/null 2>&1; then
+  export MARKED_PREFIX="$tmp/marked"
+else
+  echo "SKIP  options.sh node path: npm could not install marked"
+fi
 for loc in C C.UTF-8; do
   if LC_ALL=$loc bash "$here/options_test.sh" >"$tmp/options-$loc.out" 2>&1; then
     ok "options_test.sh under LC_ALL=$loc ($(grep -c '^ok' "$tmp/options-$loc.out") cases)"
