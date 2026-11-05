@@ -35,13 +35,14 @@ take minutes on a repository with many dependencies):
 - Exit 0: read the JSON on stdout: `plan` (what each step did), `kept` (what makeit left as the
   user had it, and why), `manual` (exact text for files makeit does not edit), `notices` (what the
   user should know: prerequisites such as Docker for check:api, `prek install` per clone) and
-  `docs` (the libraries indexed, and those that could not be).
+  `docs` (the libraries indexed, and those that could not be). A `notices` line "no git
+  repository here" means a folder with files and no git, set up without git on purpose: leave
+  the commit hooks out, skip step 8 (no commit, no `git init`) and say so in one line.
 - `makeit: command not found`: makeit is not installed. Stop and say so in one line; do not set
   the project up another way.
 - Exit 1: a step failed, or init refused before changing anything; the JSON's `error` says why.
-  Show it in one line and stop. (A folder with files and no git is not an error: init sets it up
-  without git and says so in `notices`; leave the commit hooks out of the steps below.) Exit 2
-  should not happen with `--yes`; if it does, show the error and stop.
+  Show it in one line and stop. Exit 2 should not happen with `--yes`; if it does, show the
+  error and stop.
 
 Search the docs index (search_docs, or the docs-search skill) before you rely on a library's API
 in the steps below; makeit indexed the project's dependencies at their versions.
@@ -108,6 +109,9 @@ Run the repository's `check:full` and fix what fails, until it passes or a failu
 (say which, and why, in one line).
 
 ## 8. The first commit
+
+Skip this step in a folder makeit set up without git (its `notices` say "no git repository
+here"): make no commit and run no `git init`; say in one line that the folder has no git.
 
 Ask with AskUserQuestion before committing: name the branch and what the commit holds. On a yes:
 

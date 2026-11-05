@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # options.sh: Stop. When a turn the user started ends by handing them a question, a wait, an offer or
 # a phrase to type in prose, block once. The reason sends a decision the work cannot go on without to
-# AskUserQuestion, and suggestions after finished work to numbered options laid out like the picker
-# (the closing rule in templates/global/CLAUDE.md). A reply that already ends on such options passes
+# AskUserQuestion, a decision that needs reading first (a plan, a release step) to the reply shape
+# that ends on numbered choices, and suggestions after finished work to numbered options laid out
+# like the picker (the rules in templates/global/CLAUDE.md). A reply that already ends on such options passes
 # before any pattern is tried. stop_hook_active guards the loop.
 # Only turns whose prompt line in the transcript has origin.kind human or task-notification and
 # entrypoint cli are checked: claude -p (entrypoint sdk-cli, no origin) and messages from other
@@ -70,7 +71,7 @@ hand=$(IFS='|' && printf '%s' "${pats[*]}")
 # hooks docs advise. AskUserQuestion is allowed only when the work cannot go on: on a false flag (a finished
 # report ending on a rhetorical "?") the dialog would hide the report.
 if [ "${asks:-0}" -gt 0 ] || grep -Eqi -- "$hand" <<<"$tail"; then
-  jq -cn --arg r 'This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a release, a merge, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on, unless it needs reading first (a plan, a release step): then the reply ends with a TL;DR, the decisions as lettered lines with their picks, the full text and 2-3 numbered choices, nothing in a dialog preview; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.' \
+  jq -cn --arg r 'This reply ends on a question or a request in prose. The owner'\''s rule: a decision the work cannot go on without (a delete, a go-ahead, a choice, a step only they can do) goes in AskUserQuestion, the question naming the item and the fact it turns on, unless it needs reading first (a plan, a release, merge or publish step): then the reply ends with a TL;DR, the decisions as lettered lines with their picks, the full text and 2-3 numbered choices, nothing in a dialog preview; finished work with next-step suggestions ends on 2-3 numbered options under the close, laid out like the picker (1. **Action** · recommended, the reason indented on the next line), with nothing after them; an answer to a question ends on the answer; with nothing for the user, the reply ends on one plain line. The ending is rewritten without repeating the reply.' \
     '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'
 fi
 exit 0
