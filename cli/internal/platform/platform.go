@@ -436,7 +436,7 @@ const (
 // on the latest channel (setup.md 363-460). doctor shows it as is and setup runs it, with sudo
 // as a shell function so --yes can add -n. ok is false for a manager with no repository.
 func RepoScript(pm PM) (script string, ok bool) {
-	head := "set -e\nexport GNUPGHOME=\"$(mktemp -d)\"\nkey=\"$(mktemp)\"\n"
+	head := "set -e\nexport GNUPGHOME=\"$(mktemp -d)\"\nkey=\"$(mktemp)\"\ntrap 'rm -rf \"$GNUPGHOME\" \"$key\"' EXIT\n"
 	switch pm {
 	case APT:
 		return head + `command -v curl >/dev/null && command -v gpg >/dev/null || { sudo apt-get update && sudo apt-get install -y curl gnupg; }
