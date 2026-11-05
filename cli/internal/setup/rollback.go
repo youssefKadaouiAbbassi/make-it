@@ -45,13 +45,20 @@ func Rollback(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Ou
 		return Report{}, err
 	}
 	rep, _, err := execute(ctx, e, "rollback", mode, confirm, argv, func(en *env) []phase {
-		return []phase{{steps: append([]plan.Step{en.claudeStep()}, en.rollbackSteps(g)...)}}
+		return []phase{{steps: en.rollbackPlan(g)}}
 	})
 	if err == nil && rep.Generation > 0 && !rep.Plan.Failed() {
 		g.Manifest.RolledBack = true
 		err = g.Save()
 	}
 	return rep, err
+}
+
+// rollbackPlan is rollback's steps for g: find Claude Code (an undo never installs it), then g's
+// files and plugin releases.
+func (e *env) rollbackPlan(g *state.Generation) []plan.Step {
+	find := e.findClaudeStep("not usable here, so the plugin releases this run moved stay: run `makeit rollback` again once Claude Code is back")
+	return append([]plan.Step{find}, e.rollbackSteps(g)...)
 }
 
 // mcpChanges are the MCP servers a run moved.

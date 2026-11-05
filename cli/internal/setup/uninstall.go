@@ -112,7 +112,7 @@ func (e *env) backupData(names ...string) error {
 // uninstallSteps are uninstall's steps, in order.
 func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 	e.keepSettings = opts.KeepSettings
-	steps := []plan.Step{e.findClaudeStep()}
+	steps := []plan.Step{e.findClaudeStep("not usable here, so makeit's plugins and its marketplace stay: run `makeit uninstall` again once Claude Code is back")}
 	var deps []string
 	for id := range e.st.Plugins {
 		if e.owned(id) && id != e.req.Bundle {
@@ -164,11 +164,11 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 }
 
 // findClaudeStep finds a usable Claude Code; without one, nothing is uninstalled.
-func (e *env) findClaudeStep() plan.Step {
+func (e *env) findClaudeStep(missing string) plan.Step {
 	return plan.Step{ID: "claude", Title: "Find Claude Code",
 		Already: func(ctx context.Context) (bool, error) {
 			if _, _, ok := e.findClaude(ctx); !ok {
-				e.keep("claude", "not usable here, so makeit's plugins and its marketplace stay: run `makeit uninstall` again once Claude Code is back")
+				e.keep("claude", missing)
 			}
 			return true, nil
 		}}
