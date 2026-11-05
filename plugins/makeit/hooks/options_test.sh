@@ -118,6 +118,28 @@ check "joined: #3 right under an item is not a heading" fire "$human" false $'1.
 check "joined: tab-indented paragraph in a step" fire "$human" false $'1. a\n\n\tmore about a\n\n'"$go"
 check "joined: two spaces after the plan's marker" fire "$human" false $'1.  a\n\n    more\n2. b\n\n'"$go"
 check "joined: a heading, then a list from 4" fire "$human" false $'## Left\n4. a\n5. b\n\n'"$go"
+check "joined: indented code, then a list from 2" fire "$human" false $'Run this:\n\n    make test\n2. then deploy\n\n'"$go"
+check "joined: a bullet's lazy line, then a list from 3" fire "$human" false $'- a\nlazy\n3. x\n\n'"$go"
+check "joined: a bullet's wrapped line, then a list from 4" fire "$human" false $'- a\n  wrapped\n4. x\n5. y\n\n'"$go"
+check "joined: a === heading, then a list from 4" fire "$human" false $'Title\n===\n4. a\n5. b\n\n'"$go"
+check "joined: === right under an item is its text" fire "$human" false $'1. a\n2. b\n===\n\n'"$go"
+check "apart: numbered steps nested under a bullet" quiet "$human" false $'- a\n  1. x\n  2. y\n\n'"$go"
+check "apart: numbered steps under two bullets" quiet "$human" false $'- a\n  1. x\n- b\n  1. y\n\n'"$go"
+check "apart: a deeper line, then a lazy line" quiet "$human" false $'1. a\n       deeper text\nlazy\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: a deeper line in the plan, then a lazy line" quiet "$human" false $'1. step one\n2. step two\n        see below\nwhy it matters\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: a heading in an item, then a lazy line" quiet "$human" false $'1. a\n   ### Notes\nlazy\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: a rule in an item, then a lazy line" quiet "$human" false $'1. a\n   ***\nlazy\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: HTML in an item, then a lazy line" quiet "$human" false $'1. a\n   <details>\nlazy\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: <details> right under an item" quiet "$human" false $'1. a\n2. b\n<details>\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: <div> right under an item" quiet "$human" false $'1. a\n2. b\n<div>x</div>\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: an empty 1. under a sentence" quiet "$human" false $'Text\n1.\n2. b\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: an empty 1., an empty line, then text" quiet "$human" false $'1.\n\n   text\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: a ten-digit number is not an item" quiet "$human" false $'1234567890. a\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: a tab after the marker" quiet "$human" false $'1.\ta\n\n   three\n\n1. **Go** · recommended\n2. **Stop**'
+check "joined: a 4-backtick fence holds a 3-backtick line" fire "$human" false $'1. a\n2. b\n\n````\n```\n````\n3. c\n\n1. **Go** · recommended\n2. **Stop**'
+check "joined: seven # is not a heading" fire "$human" false $'1. a\n2. b\n####### not\n\n1. **Go** · recommended\n2. **Stop**'
+check "apart: code right after the marker, then a lazy line" quiet "$human" false $'1.      code\nlazy\n\n1. **Go** · recommended\n2. **Stop**'
+check "not the layout: the marker on a lazy line under a choice" fire "$human" false $'1. a\n2. b\n\n1. Go\n(Recommended) because\n2. Stop'
 check "apart: quote right under an item" quiet "$human" false $'1. a\n2. b\n> note\n\n'"$go"
 check "apart: bullet right under an item" quiet "$human" false $'1. a\n2. b\n- note\n\n'"$go"
 check "apart: lone dash right under an item" quiet "$human" false $'1. a\n2. b\n-\n\n'"$go"
