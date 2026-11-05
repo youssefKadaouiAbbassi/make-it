@@ -238,7 +238,7 @@ installed() { env PATH="$HOME/.local/bin:$PATH" sh -c "command -v \"\$1\"" -- "$
 tools="prek deja grype"
 if command -v sudo >/dev/null; then tools="gh $tools"; fi
 # The npm route needs npm: setup installs it with node where it may; the no-sudo pass has it preinstalled.
-if command -v npm >/dev/null; then tools="$tools typescript-language-server pyright-langserver"; fi
+if command -v npm >/dev/null; then tools="$tools typescript-language-server pyright-langserver marked"; fi
 for t in $tools; do
   installed "$t" || { echo "$t not installed"; exit 1; }
 done
@@ -255,6 +255,15 @@ echo "profile block: ok"
 # A brand new terminal: no ~/.local/bin on PATH until .profile adds it.
 env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c '. "$HOME/.profile"; command -v prek' >/dev/null
 echo "PATH through the profile: ok"
+# The plugin's reply check asks the marked setup installed: a reply whose choices join the plan's
+# list reads as joined, one with a plain line between as options.
+if command -v npm >/dev/null; then
+  lists=$(find "$HOME/.claude/plugins" -name lists.mjs | head -n 1)
+  [ -n "$lists" ] || { echo "lists.mjs not installed"; exit 1; }
+  [ "$(printf '1. a\n2. b\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = joined ] || { echo "lists.mjs did not read joined"; exit 1; }
+  [ "$(printf '1. a\n2. b\n\nPick:\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = options ] || { echo "lists.mjs did not read options"; exit 1; }
+  echo "reply check through marked: ok"
+fi
 EOS
 chmod 755 /tmp/toolcheck.sh
 TOOLCHECK
