@@ -9,7 +9,7 @@
 # Only the binary is mounted; no credentials or tokens enter a container (--rm cleans up).
 # Checks that something is absent use `if ...; then exit 1; fi`: under set -e a failing `! cmd` line
 # does not stop the script.
-#   bash cli/scripts/test-setup-distros.sh [image...]
+#   bash cli/scripts/test-setup-distros.sh [image...]   (all passes run at once)
 set -euo pipefail
 cli=$(cd "$(dirname "$0")/.." && pwd)
 "$cli/scripts/go.sh" go build -o dist/makeit ./cmd/makeit
@@ -302,20 +302,27 @@ su - u -c "sh /tmp/catchain.sh"
 '"$initchain"'
 su - u -c "sh /tmp/initchain.sh"'
 
-run() { # name image script
+run() { # name image script; prints its result in one write, so parallel passes do not interleave
   local log="$cli/dist/setup-$1.log"
   if docker run --rm -v "$cli/dist/makeit:/usr/local/bin/makeit:ro" -v "$cli/dist/rel:/opt/rel:ro" -v "$catsrc:/opt/catsrc:ro" "$2" sh -c "$3" >"$log" 2>&1; then
-    echo "PASS $1"
-    grep -E ': ok$' "$log" | sed 's/^/  /' || true
+    local ok
+    ok=$(grep -E ': ok$' "$log" | sed 's/^/  /') || true
+    printf '%s\n' "PASS $1" ${ok:+"$ok"}
   else
-    echo "FAIL $1 (log: $log)"
-    status=1
+    printf 'FAIL %s (log: %s)\n' "$1" "$log"
+    return 1
   fi
 }
 
-status=0
+# The passes share only read-only mounts and write their own logs, so they run at once; the time is
+# about the slowest pass instead of the sum.
+pids=()
 for img in "${images[@]}"; do
-  run "$(echo "$img" | tr ':/' '__')" "$img" "$sudo_user"
+  run "$(echo "$img" | tr ':/' '__')" "$img" "$sudo_user" &
+  pids+=($!)
 done
-run ubuntu-no-sudo ubuntu:24.04 "$no_sudo"
+run ubuntu-no-sudo ubuntu:24.04 "$no_sudo" &
+pids+=($!)
+status=0
+for p in "${pids[@]}"; do wait "$p" || status=1; done
 exit $status
