@@ -102,7 +102,7 @@ func fakeRun(fail map[string]bool) execx.Runner {
 			return execx.Result{Stdout: "aaa\trefs/tags/v7.0.1\nnew1\trefs/tags/v7.1.0\n"}, nil
 		case strings.Contains(cmd, "impeccable"):
 			return execx.Result{Stdout: "bbb\trefs/tags/skill-v4.8.0\nnew2\trefs/tags/skill-v4.9.0\nx\trefs/tags/cli-v9.0.0\n"}, nil
-		case strings.Contains(cmd, "npm view @arabold/docs-mcp-server version"):
+		case strings.Contains(cmd, "npm view -g @arabold/docs-mcp-server version"):
 			return execx.Result{Stdout: "3.5.0\n"}, nil
 		case strings.Contains(cmd, "--heads") && strings.Contains(cmd, "security-audit-skill"):
 			return execx.Result{Stdout: "ccc\trefs/heads/main\n"}, nil

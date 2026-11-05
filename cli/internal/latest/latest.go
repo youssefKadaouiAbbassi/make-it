@@ -56,6 +56,17 @@ func semver(v string) (n [3]int, ok bool) {
 	return n, true
 }
 
+// Newer reports whether v is a stable x.y.z release above have; a have that is no stable version
+// (a pre-release) counts as below any stable one.
+func Newer(have, v string) bool {
+	nv, ok := semver(v)
+	if !ok {
+		return false
+	}
+	nh, ok := semver(have)
+	return !ok || less(nh, nv)
+}
+
 func less(a, b [3]int) bool {
 	for i := range a {
 		if a[i] != b[i] {
@@ -444,7 +455,8 @@ func applyMCP(ctx context.Context, run execx.Runner, b, current []byte) ([]byte,
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", j.pkg, "version"}, Timeout: 30 * time.Second})
+			// -g: the global registry, not the one a project's .npmrc names (the daily run starts in a project).
+			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", "-g", j.pkg, "version"}, Timeout: 30 * time.Second})
 			if err == nil {
 				j.latest = strings.TrimSpace(res.Stdout)
 			}
