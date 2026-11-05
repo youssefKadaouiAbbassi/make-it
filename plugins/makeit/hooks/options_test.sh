@@ -92,6 +92,13 @@ check "(Recommandé) in prose, no numbers" fire "$human" false $'C\'est sur dev.
 # A plan approval asked in the reply (templates/global/CLAUDE.md): the plan's own numbered steps
 # sit right above the choices.
 check "plan approval in the reply" quiet "$human" false $'## Backend\n1. PaymentMethodTypeEnum.INTERNE\n2. VENTES export: 6 columns at the end\n3. 409 on deleting a user with orders\n\nTL;DR\n- backend: Interne + 6 export columns\n- app: welcome texts in the org colour\n\nDecisions (my pick, change any by letter)\n  a. welcome text colour → a colour field\n  b. ID RCU → hidden without READ_USER_SSO_IDS\n\nYour answer:\n\n1. **Go** · recommended\n   build all three repos; stop before any push\n2. **Change something**\n   say what, or a: … to switch a decision'
+# Choices right under another numbered list with only blank lines between: a terminal joins the two
+# lists and shows the choices as 11, 12 (the 2026-11-05 Uni-CE reply). Nested numbers under an item
+# and a plain line before the choices do not join.
+renum=$'The design\n1. **Why:** prod moves to OVH.\n2. **Cluster:** 3 zones.\n   - one node per zone\n3. **Not in this round:** the switch night.\n\n1. **Approve, write the build plan** · recommended\n   next is the step-by-step plan\n2. **Change something**\n   tell me which line'
+check "choices joined to the plan's numbered list" fire "$human" false "$renum"
+check "choices joined to a list, bold numbers" fire "$human" false $'Left:\n**1.** the alert\n**2.** the secrets\n\n**1.** Fix both (Recommended)\n**2.** Leave them'
+check "numbered steps nested under a choice" quiet "$human" false "$close"$'\n\n1. **Go** · recommended\n   1. dev first\n   2. then prod\n2. **Change something**'
 # The rule's own example (templates/global/CLAUDE.md), dedented as a reply would print it, passes.
 rule=$here/../../../templates/global/CLAUDE.md
 if [ -f "$rule" ]; then
@@ -114,6 +121,15 @@ if [ "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$got" 2>/dev/null)" = 
   echo "ok    Stop additionalContext, word for word, no decision"
 else
   echo "FAIL  Stop output differs: $got"
+  fail=1
+fi
+want_renum='The numbered choices that end this reply come right after another numbered list with nothing but blank or indented lines between, so the terminal joins the two lists and shows the choices renumbered (11, 12 instead of 1, 2). The owner'\''s rule puts a plain line that is not a list item before the choices. Only that plain line and the choices are written again; the rest of the reply stays as it is.'
+payload=$(jq -n --arg t "$human" --arg m "$renum" '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: $m}')
+got=$(bash "$hook" <<<"$payload")
+if [ "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$got" 2>/dev/null)" = "$want_renum" ] && [ "$(jq -r '.decision // "none"' <<<"$got")" = none ]; then
+  echo "ok    joined choices: additionalContext, word for word"
+else
+  echo "FAIL  joined choices output differs: $got"
   fail=1
 fi
 out=$(bash "$hook" <<<'not json') && code=0 || code=$?

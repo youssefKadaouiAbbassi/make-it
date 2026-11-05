@@ -3,6 +3,14 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## Unreleased
+
+Fixes:
+
+- The end-of-reply check now catches numbered choices placed right under another numbered list
+  (a plan's steps) with only blank lines between, which a terminal shows renumbered (11, 12); the
+  session is told to write a plain line before them. Such a reply used to pass as a correct ending.
+
 ## 0.3.5
 
 New:

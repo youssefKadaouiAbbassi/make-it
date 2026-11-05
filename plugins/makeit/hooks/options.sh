@@ -4,7 +4,8 @@
 # AskUserQuestion, a decision that needs reading first (a plan, a release step) to the reply shape
 # that ends on numbered choices, and suggestions after finished work to numbered options laid out
 # like the picker (the rules in templates/global/CLAUDE.md). A reply that already ends on such options passes
-# before any pattern is tried. stop_hook_active guards the loop.
+# before any pattern is tried, unless they sit right under another numbered list (a terminal joins the
+# two and renumbers the choices): then the reason asks for the plain line before them. stop_hook_active guards the loop.
 # Only turns whose prompt line in the transcript has origin.kind human or task-notification and
 # entrypoint cli are checked: claude -p (entrypoint sdk-cli, no origin) and messages from other
 # sessions (origin peer) pass untouched, and Stop does not fire for subagents.
@@ -54,11 +55,23 @@ opts=$(printf '%s\n' "$clean" | awk '
   }
   NF == 0 { next }
   { i++ }
-  /^[[:space:]]*(\*\*)?[0-9]+[.)](\*\*)?[[:space:]]/ { if (!run) { run = 1; rec = 0 }; end = i; if (marked($0)) rec = 1; next }
+  /^[[:space:]]*(\*\*)?[0-9]+[.)](\*\*)?[[:space:]]/ {
+    if (!run) { run = 1; rec = 0; last = 0; joined = 0 }
+    end = i; if (marked($0)) rec = 1
+    # A top-level number not above the one before it: two lists a terminal shows as one.
+    if ($0 ~ /^(\*\*)?[0-9]/) { n = $0; sub(/^\*\*/, "", n); n += 0; if (last && n <= last) joined = 1; last = n }
+    next
+  }
   run && /^[[:space:]][[:space:]]/ { end = i; if (marked($0)) rec = 1; next }
-  { if (run) { run = 0; done_rec = rec; done_end = end } }
-  END { if (run) { done_rec = rec; done_end = end }; if (done_rec && i - done_end <= 2) print "yes" }') || true
+  { if (run) { run = 0; done_rec = rec; done_end = end; done_joined = joined } }
+  END { if (run) { done_rec = rec; done_end = end; done_joined = joined }; if (done_rec && i - done_end <= 2) print (done_joined ? "joined" : "yes") }') || true
 [ "$opts" = yes ] && exit 0
+# Choices joined to a numbered list above them: the terminal renumbers them, so the plain line is asked for.
+if [ "$opts" = joined ]; then
+  jq -cn --arg r 'The numbered choices that end this reply come right after another numbered list with nothing but blank or indented lines between, so the terminal joins the two lists and shows the choices renumbered (11, 12 instead of 1, 2). The owner'\''s rule puts a plain line that is not a list item before the choices. Only that plain line and the choices are written again; the rest of the reply stays as it is.' \
+    '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'
+  exit 0
+fi
 # The last two paragraphs (the last one is often ponytail's not-checked line, with the handback
 # just above it).
 tail=$(printf '%s\n' "$clean" | awk 'BEGIN { RS = "" } { a = b; b = $0 } END { if (a != "") print a "\n"; print b }') || exit 0
