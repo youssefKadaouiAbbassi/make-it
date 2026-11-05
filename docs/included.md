@@ -68,7 +68,7 @@ bundle has no content of its own: installing it installs these plugins.
 
 | plugin | version | what it does | tested |
 |---|---|---|---|
-| makeit | 0.3.4 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
+| makeit | 0.3.5 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
 | superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review | yes: on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost; a tie on a second hard test |
 | ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` | yes: the cheapest and fastest option on the UI tasks, chosen over Caveman |
 | chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) | yes: compared with other browser tools; the only one with traces, Lighthouse and device emulation |

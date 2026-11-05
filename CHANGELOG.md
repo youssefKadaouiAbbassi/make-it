@@ -3,6 +3,23 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.5
+
+New:
+
+- `/makeit:init` in a project that already has a CLAUDE.md reads it (and `AGENTS.md`,
+  `.cursorrules`, `CONTRIBUTING.md`) and drafts a new one in makeit's structure with what is still
+  relevant and true of the code. It shows the new file and every line it cut, with the reason, and
+  writes it only on your yes, keeping the old one as `CLAUDE.md.before-makeit`.
+- Approval replies end with the TL;DR and the open decisions just above the choices, and a plain
+  line before the choices, so a terminal never renumbers them.
+
+Fixes:
+
+- A file in `~/.claude` that was there before makeit and is identical to makeit's version now gets
+  makeit's updates (it was skipped as yours forever); `makeit uninstall` still leaves it, and a
+  file with any edit of yours stays yours.
+
 ## 0.3.4
 
 New:
