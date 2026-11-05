@@ -182,13 +182,23 @@ func finishLive(u *ui.UI, name string, rep setup.Report, self *selfMove, elapsed
 	if slices.ContainsFunc(rep.Plan.Outcomes, func(o plan.Outcome) bool { return o.ID == "path.profile" && o.Status == plan.Done }) {
 		u.Next("Open a new terminal to pick up PATH.")
 	}
+	// Rollback is named only when it has this run to undo, or the makeit it replaced to put back.
+	next := func(line string) {
+		lines := []string{line}
+		if rep.Undoable || self != nil {
+			lines = append(lines, "undo: makeit rollback")
+		}
+		if line != "" || len(lines) > 1 {
+			u.Next(lines...)
+		}
+	}
 	switch {
 	case name == "setup":
-		u.Next("Open Claude Code to start.", "undo: makeit rollback")
+		next("Open Claude Code to start.")
 	case name == "update" && rep.Reload:
-		u.Next("Restart Claude Code to load the changes.", "undo: makeit rollback")
+		next("Restart Claude Code to load the changes.")
 	case name == "update":
-		u.Next("", "undo: makeit rollback")
+		next("")
 	case name == "init":
 		u.Next("In Claude Code, run /makeit:init for the project facts and the checks.")
 	}

@@ -81,7 +81,7 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 		notice: func(context.Context) string { return notice },
 		after: func(w io.Writer, rep setup.Report, live bool) {
 			if auto {
-				if err := finishAuto(stack, allChanges(moved, rep)); err != nil {
+				if err := finishAuto(stack, allChanges(moved, rep), rep.Undoable); err != nil {
 					fmt.Fprintf(w, "%s: %v\n", prog, err)
 				}
 				return

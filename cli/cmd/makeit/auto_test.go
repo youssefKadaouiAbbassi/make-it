@@ -59,10 +59,22 @@ func TestAutoNote(t *testing.T) {
 		{Kind: "tool", Item: "grype", From: "", To: "0.122.0"},
 	}
 	want := "makeit updated: makeit 0.2.0 → 0.2.1, superpowers 7.0.1 → 7.1.0, grype → 0.122.0 · undo: makeit rollback"
-	if got := autoNote(changes); got != want {
+	if got := autoNote(changes, true); got != want {
 		t.Errorf("note\n%q\nwant\n%q", got, want)
 	}
-	if n := autoNote(nil); n != "" {
+	if n := autoNote(nil, false); n != "" {
 		t.Errorf("a run that changed nothing left a note: %q", n)
+	}
+}
+
+// A daily run that only moved npm tools has nothing rollback undoes: no undo hint (the 0.3.6 review).
+func TestAutoNoteNoUndoWhenNothingToUndo(t *testing.T) {
+	got := autoNote([]state.Change{{Kind: "npm", Item: "pyright", From: "1.1.413", To: "1.1.414"}}, false)
+	if want := "makeit updated: pyright 1.1.413 → 1.1.414"; got != want {
+		t.Errorf("note %q, want %q", got, want)
+	}
+	// makeit itself moved: rollback can put the old binary back.
+	if got := autoNote([]state.Change{{Kind: "makeit", Item: "makeit", From: "0.3.5", To: "0.3.6"}}, false); !strings.Contains(got, "undo: makeit rollback") {
+		t.Errorf("note %q, want the undo hint after a self update", got)
 	}
 }
