@@ -3,6 +3,29 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.6
+
+New:
+
+- The end-of-reply check asks `marked`, the Markdown library Claude Code renders with, how the
+  reply's lists are numbered, instead of imitating its rules. setup installs `marked` with npm;
+  without it, or when Node fails, the check falls back to its own reading.
+- The npm tools makeit installs (`marked` and the TypeScript and Python language servers) now move
+  to npm's newest release on every setup, update and daily run, and each move is listed. The two
+  language servers used to stay at the version first installed. `makeit rollback` leaves these
+  moves in place, so a run that only moved npm tools is not the one it undoes.
+
+Fixes:
+
+- The end-of-reply check now catches numbered choices that a terminal shows renumbered (11, 12)
+  because Markdown joins them to a numbered list above them: across empty lines, indented lines,
+  or a plain line written right under the list's last item. It follows the parser Claude Code
+  renders with, so a code block, quote, heading or rule between the two lists passes. The rule in
+  the global CLAUDE.md now says the plain line before the choices needs an empty line above it.
+- A download that a server answers with an error on its side (500, 502, 503, 504) is tried twice
+  more, after 2 and 4 seconds, so one bad answer from GitHub no longer fails setup and skips every
+  step after it.
+
 ## 0.3.5
 
 New:

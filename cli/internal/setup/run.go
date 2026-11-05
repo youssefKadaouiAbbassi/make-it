@@ -89,6 +89,7 @@ func (e *env) setupRunSteps() []plan.Step {
 // setupSteps are setup's steps in order, with global the global-file steps of the command.
 func (e *env) setupSteps(global []plan.Step) []plan.Step {
 	steps := append(e.prereqSteps(), e.toolUpgradeSteps()...)
+	steps = append(steps, e.npmUpgradeSteps()...)
 	steps = append(steps, e.claudeStep(), e.claudeSeenStep(), e.claudeUpgradeStep())
 	steps = append(steps, e.stackSteps()...)
 	steps = append(steps, e.settingsStep())
@@ -262,7 +263,7 @@ func reportChanges(own []state.Change, pins []state.PinMove, mcp []state.Change,
 		out = append(out, mcp...)
 	}
 	out = append(out, own...)
-	rank := map[string]int{"makeit": 0, "claude-code": 1, "plugin": 2, "mcp": 3, "tool": 4}
+	rank := map[string]int{"makeit": 0, "claude-code": 1, "plugin": 2, "mcp": 3, "tool": 4, "npm": 4}
 	slices.SortStableFunc(out, func(a, b state.Change) int { return rank[a.Kind] - rank[b.Kind] })
 	// One item moved twice in a run (Claude Code updated itself, then makeit upgraded it) is one
 	// change, from the first version to the last.

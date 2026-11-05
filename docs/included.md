@@ -16,7 +16,9 @@ shows each command, `sudo` included, before anything runs. A tool makeit install
 afterward stays removed; `makeit setup --reinstall <tool>` brings it back. Only a tool with
 nothing to install from on this machine (Chrome where neither your package manager nor Google
 ships one for it) is left to you, listed with the one line to do it by hand; `makeit doctor` shows
-the same and, at a terminal, can run the fix for you.
+the same and, at a terminal, can run the fix for you. Every setup, `makeit update` and the daily run move
+the release binaries and the npm tools makeit installed to their newest release, and list each
+move.
 
 | tool | how setup installs it | what it is for |
 |---|---|---|
@@ -31,6 +33,7 @@ the same and, at a terminal, can run the fix for you.
 | grype | Homebrew, winget, or the newest release binary from github.com/anchore/grype | the vulnerability scan, run locally (the CI checks run it too) |
 | typescript-language-server | Homebrew, or `npm install -g --prefix ~/.local` | the typescript-lsp plugin runs it for `.ts` and `.js` files |
 | pyright | Homebrew, or `npm install -g --prefix ~/.local` | the pyright-lsp plugin runs it for `.py` files |
+| marked | `npm install -g --prefix ~/.local` | the makeit plugin's reply check numbers lists the way Claude Code shows them |
 | rust-analyzer | checked only when `cargo` or `rustup` is on `PATH`: Homebrew, apk, dnf, or `rustup component add` | the rust-analyzer-lsp plugin runs it for `.rs` files |
 | gopls | checked only when `go` is on `PATH`: Homebrew, apt, apk, or `go install` into `~/.local/bin` | the gopls-lsp plugin runs it for `.go` files |
 
@@ -68,7 +71,7 @@ bundle has no content of its own: installing it installs these plugins.
 
 | plugin | version | what it does | tested |
 |---|---|---|---|
-| makeit | 0.3.5 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
+| makeit | 0.3.6 | makeit's own plugin: the MCP servers, hooks and skills below | its own test suite |
 | superpowers | 7.0.1 | skills for a working method: brainstorming, plans, test-driven development, debugging, code review | yes: on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost; a tie on a second hard test |
 | ponytail | 5.3.2 | keeps changes small: the smallest complete change, no code nobody asked for; set to level `full` | yes: the cheapest and fastest option on the UI tasks, chosen over Caveman |
 | chrome-devtools-mcp | 1.12.0 | the browser skills of chrome-devtools-mcp (the server itself runs from the makeit plugin) | yes: compared with other browser tools; the only one with traces, Lighthouse and device emulation |

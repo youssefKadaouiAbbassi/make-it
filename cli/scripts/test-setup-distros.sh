@@ -9,7 +9,7 @@
 # Only the binary is mounted; no credentials or tokens enter a container (--rm cleans up).
 # Checks that something is absent use `if ...; then exit 1; fi`: under set -e a failing `! cmd` line
 # does not stop the script.
-#   bash cli/scripts/test-setup-distros.sh [image...]
+#   bash cli/scripts/test-setup-distros.sh [image...]   (all passes run at once)
 set -euo pipefail
 cli=$(cd "$(dirname "$0")/.." && pwd)
 "$cli/scripts/go.sh" go build -o dist/makeit ./cmd/makeit
@@ -53,6 +53,11 @@ makeit update --yes --json > /tmp/update.json || { cat /tmp/update.json; exit 1;
 cat /tmp/update.json
 if grep -q "\"status\": \"failed\"" /tmp/update.json; then echo "update failed a step"; exit 1; fi
 if grep -q "\"status\": \"done\"" /tmp/update.json; then echo "a second update changed something"; exit 1; fi
+# The npm tools makeit installed are checked against the real registry (marked, where npm is).
+if command -v npm >/dev/null; then
+  grep -q "\"id\": \"upgrade.marked\"" /tmp/update.json || { echo "update has no marked upgrade step"; exit 1; }
+  if grep -q "could not read the npm registry" /tmp/update.json; then echo "update could not read the npm registry"; exit 1; fi
+fi
 makeit uninstall --yes --json > /tmp/uninstall.json || { cat /tmp/uninstall.json; exit 1; }
 cat /tmp/uninstall.json
 if claude plugin list --json | grep -q "@makeit\""; then echo "a makeit plugin is still installed"; exit 1; fi
@@ -238,7 +243,7 @@ installed() { env PATH="$HOME/.local/bin:$PATH" sh -c "command -v \"\$1\"" -- "$
 tools="prek deja grype"
 if command -v sudo >/dev/null; then tools="gh $tools"; fi
 # The npm route needs npm: setup installs it with node where it may; the no-sudo pass has it preinstalled.
-if command -v npm >/dev/null; then tools="$tools typescript-language-server pyright-langserver"; fi
+if command -v npm >/dev/null; then tools="$tools typescript-language-server pyright-langserver marked"; fi
 for t in $tools; do
   installed "$t" || { echo "$t not installed"; exit 1; }
 done
@@ -255,6 +260,15 @@ echo "profile block: ok"
 # A brand new terminal: no ~/.local/bin on PATH until .profile adds it.
 env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c '. "$HOME/.profile"; command -v prek' >/dev/null
 echo "PATH through the profile: ok"
+# The plugin's reply check asks the marked setup installed: a reply whose choices join the plan's
+# list reads as joined, one with a plain line between as options.
+if command -v npm >/dev/null; then
+  lists=$(find "$HOME/.claude/plugins" -name lists.mjs | head -n 1)
+  [ -n "$lists" ] || { echo "lists.mjs not installed"; exit 1; }
+  [ "$(printf '1. a\n2. b\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = joined ] || { echo "lists.mjs did not read joined"; exit 1; }
+  [ "$(printf '1. a\n2. b\n\nPick:\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = options ] || { echo "lists.mjs did not read options"; exit 1; }
+  echo "reply check through marked: ok"
+fi
 EOS
 chmod 755 /tmp/toolcheck.sh
 TOOLCHECK
@@ -302,20 +316,31 @@ su - u -c "sh /tmp/catchain.sh"
 '"$initchain"'
 su - u -c "sh /tmp/initchain.sh"'
 
-run() { # name image script
+run() { # name image script; prints its result in one write, so parallel passes do not interleave
   local log="$cli/dist/setup-$1.log"
   if docker run --rm -v "$cli/dist/makeit:/usr/local/bin/makeit:ro" -v "$cli/dist/rel:/opt/rel:ro" -v "$catsrc:/opt/catsrc:ro" "$2" sh -c "$3" >"$log" 2>&1; then
-    echo "PASS $1"
-    grep -E ': ok$' "$log" | sed 's/^/  /' || true
+    local ok
+    ok=$(grep -E ': ok$' "$log" | sed 's/^/  /') || true
+    printf '%s\n' "PASS $1" ${ok:+"$ok"}
   else
-    echo "FAIL $1 (log: $log)"
-    status=1
+    printf 'FAIL %s (log: %s)\n' "$1" "$log"
+    return 1
   fi
 }
 
-status=0
+# The passes share only read-only mounts and write their own logs, so they run at once; the time is
+# about the slowest pass instead of the sum.
+# An image named twice runs once: two passes of it would write the same log.
+pids=()
+seen=" "
 for img in "${images[@]}"; do
-  run "$(echo "$img" | tr ':/' '__')" "$img" "$sudo_user"
+  case "$seen" in *" $img "*) continue ;; esac
+  seen="$seen$img "
+  run "$(echo "$img" | tr ':/' '__')" "$img" "$sudo_user" &
+  pids+=($!)
 done
-run ubuntu-no-sudo ubuntu:24.04 "$no_sudo"
+run ubuntu-no-sudo ubuntu:24.04 "$no_sudo" &
+pids+=($!)
+status=0
+for p in "${pids[@]}"; do wait "$p" || status=1; done
 exit $status

@@ -6,6 +6,7 @@ package setup
 // holds: a file still holding one of them was written by makeit, not by the user.
 var globalHistory = map[string][]string{
 	"templates/global/CLAUDE.md": {
+		"sha256:03cf01798cfc2e47edc27f04328739940e546daca7091d76c0fc31fe2d31d09d",
 		"sha256:0c5860537666f27c945bf6d7afde55410adb1e1b515e484a87564c1578815699",
 		"sha256:69227964bb86390fdf50a1cdd01b5887a88eafc6ac2db7c7a22dd9a07ca6042c",
 		"sha256:7d39304bf9d0af1e3d4582949d6d6326e409bdf683e02a3a39a2bfb20905c260",

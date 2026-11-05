@@ -70,6 +70,9 @@ func Client(timeout time.Duration, bundles []string) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: t}
 }
 
+// retryWait is the pause before the second try; the third waits twice as long. A var for the tests.
+var retryWait = 2 * time.Second
+
 // Get copies url's body into w: https only, redirects only to https and at most ten, status 200,
 // at most limit bytes, and the User-Agent is all it sends.
 func Get(ctx context.Context, c *http.Client, userAgent, url string, limit int64, w io.Writer) error {
@@ -91,9 +94,23 @@ func Get(ctx context.Context, c *http.Client, userAgent, url string, limit int64
 		}
 		return nil
 	}
-	resp, err := cl.Do(req)
-	if err != nil {
-		return err
+	// A server error (500, 502, 503, 504: a host's own hiccup) is tried twice more, after
+	// retryWait and twice that; nothing reached w yet. Any other answer or error is final.
+	var resp *http.Response
+	for try := 0; ; try++ {
+		resp, err = cl.Do(req)
+		if err != nil {
+			return err
+		}
+		if s := resp.StatusCode; try == 2 || (s != 500 && s != 502 && s != 503 && s != 504) {
+			break
+		}
+		_ = resp.Body.Close()
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%s answered %s, then: %w", url, resp.Status, ctx.Err())
+		case <-time.After(retryWait << try):
+		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
