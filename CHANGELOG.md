@@ -3,6 +3,13 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## Unreleased
+
+Fixes:
+
+- The `/makeit:init` skill no longer tells Claude that a folder without git is an error; since 0.3.3
+  init sets such a folder up without git.
+
 ## 0.3.3
 
 New:

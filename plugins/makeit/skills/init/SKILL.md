@@ -38,9 +38,10 @@ take minutes on a repository with many dependencies):
   `docs` (the libraries indexed, and those that could not be).
 - `makeit: command not found`: makeit is not installed. Stop and say so in one line; do not set
   the project up another way.
-- Exit 1: a step failed, or init refused before changing anything; the JSON's `error` says why
-  ("not a git repository" means the directory has files but no git). Show it in one line and
-  stop. Exit 2 should not happen with `--yes`; if it does, show the error and stop.
+- Exit 1: a step failed, or init refused before changing anything; the JSON's `error` says why.
+  Show it in one line and stop. (A folder with files and no git is not an error: init sets it up
+  without git and says so in `notices`; leave the commit hooks out of the steps below.) Exit 2
+  should not happen with `--yes`; if it does, show the error and stop.
 
 Search the docs index (search_docs, or the docs-search skill) before you rely on a library's API
 in the steps below; makeit indexed the project's dependencies at their versions.
