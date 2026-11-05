@@ -3,7 +3,7 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
-## Unreleased
+## 0.3.4
 
 New:
 
