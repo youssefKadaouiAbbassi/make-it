@@ -47,6 +47,9 @@ check "message from another session (peer)" quiet "$(transcript peer cli)" false
 check "background task notice (the user reads it)" fire "$(transcript task-notification cli)" false $'Done.\nTell me when the DNS is switched.'
 check "prompt line not on disk yet: fail open" quiet "$work/missing.jsonl" false $'Should I?'
 check "resume command after the question" fire "$human" false $'Should I release it?\n\n`cd /x && claude --resume abc`'
+check "handback inside a tilde fence" quiet "$human" false $'Ran:\n\n~~~\ntell me when\n~~~\n\nShipped.'
+check "a \`\`\`js line inside a fence does not close it" quiet "$human" false $'Ran it.\n\n```\nx\n```js\nContinue?\n```'
+check "question after inline triple backticks" fire "$human" false $'```make``` runs it.\n\nShould I ship it?'
 check "question only inside a code block" quiet "$human" false $'Ran it.\n\n```\nread -p "Continue?"\n```'
 check "quoted draft for someone else" quiet "$human" false $'Draft for a colleague:\n\n> On accepte ou on contre-propose ?'
 check "say a quoted phrase" fire "$human" false $'To ship it, say "release dev to master".'
@@ -140,6 +143,11 @@ check "joined: a 4-backtick fence holds a 3-backtick line" fire "$human" false $
 check "joined: seven # is not a heading" fire "$human" false $'1. a\n2. b\n####### not\n\n1. **Go** · recommended\n2. **Stop**'
 check "apart: code right after the marker, then a lazy line" quiet "$human" false $'1.      code\nlazy\n\n1. **Go** · recommended\n2. **Stop**'
 check "not the layout: the marker on a lazy line under a choice" fire "$human" false $'1. a\n2. b\n\n1. Go\n(Recommended) because\n2. Stop'
+check "apart: numbered steps under a * bullet with a bold label" quiet "$human" false $'* **Build**\n  1. make\n  2. sign\n\n1. **Go** · recommended\n   x\n2. **Stop**'
+check "apart: a 4-space bullet is an item's text, not a block" quiet "$human" false $'**8.** Check\n    - logs\n9. Ship\n    - tag\n\n1. **Go** · recommended\n   x\n2. **Stop**'
+check "joined: a fence in a 10. step stays in the step" fire "$human" false $' 10. Deploy\n    ```bash\n    make\n    ```\n\n1. **Go** · recommended\n   x\n2. **Stop**'
+check "apart: a 4-backtick fence with a language tag holds a list" quiet "$human" false $'Draft:\n\n````markdown\n1. a\n2. b\n````\n\n1. **Go** · recommended\n   x\n2. **Stop**'
+check "joined: inline triple backticks open no code block" fire "$human" false $'```make``` runs it.\n\n1. a\n2. b\n\n1. **Go** · recommended\n   x\n2. **Stop**'
 check "apart: quote right under an item" quiet "$human" false $'1. a\n2. b\n> note\n\n'"$go"
 check "apart: bullet right under an item" quiet "$human" false $'1. a\n2. b\n- note\n\n'"$go"
 check "apart: lone dash right under an item" quiet "$human" false $'1. a\n2. b\n-\n\n'"$go"

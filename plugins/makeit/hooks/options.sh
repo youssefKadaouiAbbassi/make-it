@@ -41,12 +41,13 @@ msg=$(jq -r '.last_assistant_message // empty' <<<"$input") || exit 0
 [ -n "$msg" ] || exit 0
 # What the user reads, outside fenced code. Skipped: a resume command (claude --resume) and
 # quoted lines (a draft for someone else, "> ...").
-# A fence closes on a run of its own character at least as long as the one that opened it.
+# A fence closes on a run of its own character at least as long as the one that opened it; a line
+# with a backtick after its opening run (```make``` runs it) is inline code, not a fence.
 # shortcut: a fence opens at any indent (one in a nested item is still code), so a top-level line
 # of four spaces and backticks, which marked reads as indented code, hides what follows.
 clean=$(printf '%s\n' "$msg" | awk '
-  f != "" { t = $0; sub(/^[[:space:]]+/, "", t); sub(/[[:space:]]+$/, "", t); if (index(t, f) == 1 && t ~ /^(`+|~+)$/) f = ""; next }
-  match($0, /^[[:space:]]*(```+|~~~+)/) { f = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", f); next }
+  f != "" { if ($0 ~ ("^[[:space:]]*" f "+[[:space:]]*$")) f = ""; next }
+  match($0, /^[[:space:]]*(```+|~~~+)/) && !/^[[:space:]]*`+[^`]+`/ { f = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", f); next }
   !/claude --resume/ && !/^[[:space:]]*>/') || exit 0
 # The wanted ending: the reply's last run of numbered lines ("1. ", "2) ", "**1.** "; indented
 # lines under an item and blank lines stay in the run) has a marked line and ends at most two lines
@@ -83,13 +84,13 @@ if [ "$opts" = yes ]; then
   # marked when a real reply hits one of these.
   joined=$(printf '%s\n' "$msg" | awk "$marked_fn"'
     { while (match($0, /^ *\t/)) $0 = substr($0, 1, RLENGTH - 1) "    " substr($0, RLENGTH + 1) }
-    fence != "" { t = $0; sub(/^ +/, "", t); sub(/[ \t]+$/, "", t); if (index(t, fence) == 1 && t ~ /^(`+|~+)$/) fence = ""; next }
+    fence != "" { if ($0 ~ ("^ *" fence "+[ \t]*$")) fence = ""; next }
     /^[[:space:]]*$/ { blank = 1; para = 0; next }
     {
       match($0, /^ */); k = RLENGTH; rest = substr($0, k + 1)
       inner = on && k >= col && !(iempty && blank); rel = inner ? k - col : k
-      isfence = match(rest, /^(```+|~~~+)/); if (isfence) f = substr(rest, 1, RLENGTH)
-      blk = rest ~ /^((#|##|###|####|#####|######)([ \t]|$)|(- *- *-|\* *\* *\*|_ *_ *_)[-*_ ]*$|<!--|<\/?(address|article|aside|blockquote|details|dialog|div|dl|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|summary|table|ul)([ \t>\/]|$))/
+      isfence = rel < 4 && match(rest, /^(```+|~~~+)/) && rest !~ /^`+[^`]+`/; if (isfence) f = substr(rest, 1, RLENGTH)
+      blk = rel < 4 && rest ~ /^((#|##|###|####|#####|######)([ \t]|$)|(- *- *-|\* *\* *\*|_ *_ *_)[-*_ ]*$|<!--|<\/?(address|article|aside|blockquote|details|dialog|div|dl|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|summary|table|ul)([ \t>\/]|$))/
       if (inner) { if (marked($0)) mk[n, cnt[n] - 1] = 1; ipara = !isfence && !blk && rel < 4; blank = 0; next }
       if (bon && k >= bcol) { blank = 0; next }
       if (k <= 3 && match(rest, /^[0-9]+[.)]/) && RLENGTH <= 10 && substr(rest, RLENGTH + 1) ~ /^([ \t]|$)/) {
@@ -103,12 +104,12 @@ if [ "$opts" = yes ]; then
           blank = 0; para = 0; bon = 0; next
         }
       }
-      brk = blk || rest ~ /^(>|[-*+]([ \t]|$))/ || (!on && para && rest ~ /^=+[ \t]*$/)
+      brk = blk || rel < 4 && (rest ~ /^(>|[-*+]([ \t]|$))/ || !on && para && rest ~ /^=+[ \t]*$/)
       if (isfence) fence = f
       else if (on && ipara && !blank && !brk) next
       else if (bon && !blank && !brk) next
       # A bullet item: lines indented into it (numbered sub-steps too) and its lazy lines are its own.
-      bon = match(rest, /^[-*+]([ \t]+|$)/) && !(rest ~ /^(- *- *-|\* *\* *\*)/); if (bon) bcol = k + (RLENGTH > 1 ? RLENGTH : 2)
+      bon = !blk && rel < 4 && match(rest, /^[-*+]([ \t]+|$)/); if (bon) bcol = k + (RLENGTH > 1 ? RLENGTH : 2)
       on = 0; blank = 0; para = !isfence && !brk && (para || k < 4)
     }
     END {
