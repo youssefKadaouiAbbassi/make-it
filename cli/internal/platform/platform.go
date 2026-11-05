@@ -227,8 +227,8 @@ var Prereqs = []Prereq{
 		Release: &Release{Repo: "anchore/grype", Bin: "grype", Asset: goreleaserAsset("grype", "grype_%s_checksums.txt", false)},
 		Manual:  "a release binary from github.com/anchore/grype",
 	},
-	// The language servers the bundle's LSP plugins start (LSP-ROWS.md). npm needs node, a
-	// required row, so the two npm servers apply everywhere.
+	// The language servers the bundle's LSP plugins start (LSP-ROWS.md), and marked for the
+	// plugin's reply check. npm needs node, a required row, so the npm rows apply everywhere.
 	{
 		ID: "typescript-language-server", Why: "the typescript-lsp plugin runs it for .ts and .js files", Bins: []string{"typescript-language-server"},
 		Pkgs:   map[PM][]string{Brew: {"typescript-language-server"}},
@@ -240,6 +240,11 @@ var Prereqs = []Prereq{
 		Pkgs:   map[PM][]string{Brew: {"pyright"}},
 		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "--prefix", "~/.local", "pyright"}}},
 		Manual: "npm install -g pyright",
+	},
+	{
+		ID: "marked", Why: "the makeit plugin's reply check numbers lists the way Claude Code shows them", Bins: []string{"marked"},
+		Via:    []Via{{Bin: "npm", Argv: []string{"npm", "install", "-g", "--prefix", "~/.local", "marked"}}},
+		Manual: "npm install -g marked",
 	},
 	{
 		ID: "rust-analyzer", Why: "the rust-analyzer-lsp plugin runs it for .rs files", Bins: []string{"rust-analyzer"},

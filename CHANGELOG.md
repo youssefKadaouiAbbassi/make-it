@@ -5,6 +5,15 @@ raises the minor version.
 
 ## 0.3.6
 
+New:
+
+- The end-of-reply check asks `marked`, the Markdown library Claude Code renders with, how the
+  reply's lists are numbered, so it is exact on every layout. setup installs `marked` with npm;
+  without it, or when Node fails, the check falls back to its own reading.
+- The npm tools makeit installs (`marked` and the TypeScript and Python language servers) now move
+  to npm's newest release on every setup, update and daily run, and each move is listed. The two
+  language servers used to stay at the version first installed.
+
 Fixes:
 
 - The end-of-reply check now catches numbered choices that a terminal shows renumbered (11, 12)
