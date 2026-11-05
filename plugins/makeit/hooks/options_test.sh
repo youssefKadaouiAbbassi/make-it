@@ -112,6 +112,27 @@ check "apart: 1. list, then 1) choices" quiet "$human" false $'1. step\n2. step\
 check "apart: bullet list above" quiet "$human" false $'- a\n- b\nnote\n\n'"$go"
 check "apart: 2-space line after an empty line" quiet "$human" false $'1. a\n2. b\n\n  just two spaces\n\n'"$go"
 check "apart: bold numbers are not a list" quiet "$human" false $'Left:\n**1.** the alert\n**2.** the secrets\n\n**1.** Fix both (Recommended)\n**2.** Leave them'
+check "joined: code block above, then the plan" fire "$human" false $'```\nx\n```\n1. a\n2. b\n\n'"$go"
+check "joined: marker on the indented line under a choice" fire "$human" false $'1. step\n2. step\n\n1. Release now\n   (Recommended) prod is fixed\n2. Wait one night'
+check "joined: #3 right under an item is not a heading" fire "$human" false $'1. a\n2. b\n#3 is the risky one\n\n'"$go"
+check "joined: tab-indented paragraph in a step" fire "$human" false $'1. a\n\n\tmore about a\n\n'"$go"
+check "joined: two spaces after the plan's marker" fire "$human" false $'1.  a\n\n    more\n2. b\n\n'"$go"
+check "joined: a heading, then a list from 4" fire "$human" false $'## Left\n4. a\n5. b\n\n'"$go"
+check "apart: quote right under an item" quiet "$human" false $'1. a\n2. b\n> note\n\n'"$go"
+check "apart: bullet right under an item" quiet "$human" false $'1. a\n2. b\n- note\n\n'"$go"
+check "apart: lone dash right under an item" quiet "$human" false $'1. a\n2. b\n-\n\n'"$go"
+check "apart: rule right under an item" quiet "$human" false $'1. a\n2. b\n***\n\n'"$go"
+check "apart: code block right under an item" quiet "$human" false $'1. a\n2. b\n```\n1. x\n```\n\n'"$go"
+check "apart: HTML comment right under an item" quiet "$human" false $'1. a\n2. b\n<!-- note -->\n\n'"$go"
+check "apart: plain line under a step's code block" quiet "$human" false $'1. a\n   ```\n   x\n   ```\nPlain line\n\n'"$go"
+check "apart: plain line under a step's indented code" quiet "$human" false $'1. a\n\n       code\nunindented\n\n'"$go"
+check "apart: 4-space 1. is code, not a list" quiet "$human" false $'1. a\n\nText\n\n    1. code\n\n'"$go"
+check "apart: 3-space paragraph under a 1.+3 spaces item" quiet "$human" false $'1.   a\n\n   para\n\n'"$go"
+check "apart: 4. 5. under a sentence are its text" quiet "$human" false $'Done with steps 1-3. Left:\n4. tag the release\n5. publish\n\n1. **Go** · recommended\n   build it\n2. **Change something**\n   say what'
+check "apart: 3. under a sentence is its text" quiet "$human" false $'Done up to\n3. Next is the tag\n\n'"$go"
+check "one list: a numbered note after the choices" quiet "$human" false $'Done.\n\n1. **Go** · recommended\n2. **Stop**\n\n1. note'
+check "one list: starting at 5" quiet "$human" false $'Done.\n\n5. **Go** · recommended\n6. **Stop**'
+check "one list: 1, 1, marker on the second" quiet "$human" false $'Done.\n\n1. **Wait**\n1. **Go** · recommended'
 check "one list: choices numbered 1, 1" quiet "$human" false $'Next:\n\n1. **Go** · recommended\n   why\n1. **Stop**'
 check "one list: numbered steps nested under a choice" quiet "$human" false "$close"$'\n\n1. **Go** · recommended\n   1. dev first\n   2. then prod\n2. **Change something**'
 check "one list: a code block inside a choice" quiet "$human" false $'Done.\n\n1. **Go** · recommended\n   ```\n   make it\n   ```\n2. **Stop**'

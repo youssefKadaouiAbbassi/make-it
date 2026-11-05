@@ -66,25 +66,32 @@ opts=$(printf '%s\n' "$clean" | awk "$marked_fn"'
 if [ "$opts" = yes ]; then
   # The options may still show renumbered: Claude Code numbers an ordered list as marked parses it,
   # its start plus each item's place, and Markdown keeps a list going across empty lines, lines
-  # indented into the item and a line written right under an item. This pass follows those rules
-  # on the raw reply (a code fence, a quote, a heading, a rule, a bullet or a 1) after 1. ends the
-  # list) and says yes when an option up to the last marked one shows another number than the one
-  # written. A list whose items all carry one number (1, 1) counts up from it and is left alone.
+  # indented into the item and a paragraph line written right under an item. This pass follows
+  # those rules on the raw reply and says yes when an option up to the last marked one shows
+  # another number than the one written. Ends a list: a code fence, quote, heading, rule, bullet,
+  # HTML comment or 1) after 1. at the margin, and any line right under a fence or indented code
+  # in an item. A number other than 1 cannot start a list under a paragraph line. A list whose
+  # items all carry one number (1, 1) counts up from it and is left alone.
+  # shortcut: tabs count as 4 spaces and the all-one-number list is never flagged, so "1. a\n1. b",
+  # an empty line, then "1. **Go**\n1. **Stop**" (shown 3, 4) passes; model more of marked if a
+  # real reply hits one of these.
   joined=$(printf '%s\n' "$msg" | awk "$marked_fn"'
-    function lead(s) { match(s, /^ */); return RLENGTH }
+    { while (match($0, /^ *\t/)) $0 = substr($0, 1, RLENGTH - 1) "    " substr($0, RLENGTH + 1) }
     fence != "" { if ($0 ~ ("^ *" fence)) fence = ""; next }
-    /^[[:space:]]*$/ { blank = 1; next }
+    /^[[:space:]]*$/ { blank = 1; para = 0; next }
     {
-      k = lead($0); rest = substr($0, k + 1); isfence = rest ~ /^(```|~~~)/
-      if (on && k >= col) { if (isfence) fence = substr(rest, 1, 3); blank = 0; next }
-      if (k <= 3 && match(rest, /^[0-9]+[.)]([ \t]|$)/)) {
-        num = substr(rest, 1, RLENGTH); d = num; gsub(/[0-9 \t]/, "", d)
-        if (!(on && d == delim)) { n++; start[n] = num + 0; cnt[n] = 0; delim = d; on = 1 }
-        c = cnt[n]++; wrote[n, c] = num + 0; mk[n, c] = marked($0); col = k + RLENGTH; blank = 0; next
+      match($0, /^ */); k = RLENGTH; rest = substr($0, k + 1); isfence = rest ~ /^(```|~~~)/
+      if (on && k >= col) { if (marked($0)) mk[n, cnt[n] - 1] = 1; blank = isfence || (blank && k - col >= 4); next }
+      if (k <= 3 && match(rest, /^[0-9]+[.)]/) && substr(rest, RLENGTH + 1) ~ /^([ \t]|$)/ && (on || !para || rest ~ /^1[.)]/)) {
+        m = RLENGTH; d = substr(rest, m, 1); match(substr(rest, m + 1), /^ */); sp = RLENGTH
+        if (!(on && d == delim)) { n++; start[n] = rest + 0; cnt[n] = 0; delim = d; on = 1 }
+        c = cnt[n]++; wrote[n, c] = rest + 0; mk[n, c] = marked($0)
+        col = k + m + (sp == 0 || sp > 4 || m + sp == length(rest) ? 1 : sp); blank = 0; para = 0; next
       }
+      brk = rest ~ /^(#+([ \t]|$)|>|<!--|[-*+]([ \t]|$)|(- *- *-|\* *\* *\*|_ *_ *_)[-*_ ]*$)/
       if (isfence) fence = substr(rest, 1, 3)
-      else if (on && !blank && rest !~ /^(#|>|[-*+][ \t]|(- *- *-|\* *\* *\*|_ *_ *_)[-*_ ]*$)/) next
-      on = 0; blank = 0
+      else if (on && !blank && !brk) next
+      on = 0; blank = 0; para = !isfence && !brk
     }
     END {
       for (l = n; l >= 1; l--) { last = -1; for (c = 0; c < cnt[l]; c++) if (mk[l, c]) last = c; if (last >= 0) break }
