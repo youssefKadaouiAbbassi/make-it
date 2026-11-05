@@ -316,8 +316,12 @@ run() { # name image script; prints its result in one write, so parallel passes 
 
 # The passes share only read-only mounts and write their own logs, so they run at once; the time is
 # about the slowest pass instead of the sum.
+# An image named twice runs once: two passes of it would write the same log.
 pids=()
+seen=" "
 for img in "${images[@]}"; do
+  case "$seen" in *" $img "*) continue ;; esac
+  seen="$seen$img "
   run "$(echo "$img" | tr ':/' '__')" "$img" "$sudo_user" &
   pids+=($!)
 done
