@@ -18,7 +18,6 @@ case "$event" in
   *) msg="$event" ;;
 esac
 msg=${msg:0:200}
-auth=()
-[ -n "${NTFY_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-curl -fsS -m 5 "${auth[@]}" -H "Title: claude - $repo" -d "$msg" "${NTFY_URL:-https://ntfy.sh}/${NTFY_TOPIC}" >/dev/null 2>&1 || true
+# No array: bash 3.2 (macOS) treats an empty one under set -u as unset.
+curl -fsS -m 5 ${NTFY_TOKEN:+-H "Authorization: Bearer ${NTFY_TOKEN}"} -H "Title: claude - $repo" -d "$msg" "${NTFY_URL:-https://ntfy.sh}/${NTFY_TOPIC}" >/dev/null 2>&1 || true
 exit 0

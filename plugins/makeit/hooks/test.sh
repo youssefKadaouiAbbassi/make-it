@@ -26,6 +26,17 @@ printf '{"hook_event_name":"Stop","cwd":"/home/u/proj","session_id":"s"}' | run_
 expect "ntfy Stop posts done" "-d done https://ntfy.example/t0pic" "$(cat "$tmp/curl.log")"
 expect "ntfy title is repo name" "Title: claude - proj" "$(cat "$tmp/curl.log")"
 : >"$tmp/curl.log"
+# macOS ships bash 3.2, where an empty array under set -u is an error: with no token, ntfy must
+# still post (the 2026-11-05 audit). Run there when docker can.
+if command -v docker >/dev/null && docker image inspect bash:3.2 >/dev/null 2>&1 || docker pull -q bash:3.2 >/dev/null 2>&1; then
+  : >"$tmp/curl.log"
+  printf '{"hook_event_name":"Stop","cwd":"/home/u/proj","session_id":"s"}' |
+    docker run --rm -i -v "$here:/h:ro" -v "$tmp:$tmp" -e NTFY_TOPIC=t0pic -e NTFY_URL=https://ntfy.example bash:3.2 \
+      sh -c "apk add -q jq >/dev/null 2>&1; PATH=$tmp/bin:\$PATH bash /h/ntfy.sh"
+  expect "ntfy under bash 3.2 with no token posts" "-d done https://ntfy.example/t0pic" "$(cat "$tmp/curl.log")"
+else
+  echo "SKIP  ntfy under bash 3.2: no docker"
+fi
 printf '{"hook_event_name":"PreToolUse","cwd":"/x/repo","tool_name":"AskUserQuestion","tool_input":{}}' | run_ntfy
 expect "ntfy PreToolUse names the tool" "needs you: AskUserQuestion" "$(cat "$tmp/curl.log")"
 : >"$tmp/curl.log"
