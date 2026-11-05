@@ -53,6 +53,11 @@ makeit update --yes --json > /tmp/update.json || { cat /tmp/update.json; exit 1;
 cat /tmp/update.json
 if grep -q "\"status\": \"failed\"" /tmp/update.json; then echo "update failed a step"; exit 1; fi
 if grep -q "\"status\": \"done\"" /tmp/update.json; then echo "a second update changed something"; exit 1; fi
+# The npm tools makeit installed are checked against the real registry (marked, where npm is).
+if command -v npm >/dev/null; then
+  grep -q "\"id\": \"upgrade.marked\"" /tmp/update.json || { echo "update has no marked upgrade step"; exit 1; }
+  if grep -q "could not read the npm registry" /tmp/update.json; then echo "update could not read the npm registry"; exit 1; fi
+fi
 makeit uninstall --yes --json > /tmp/uninstall.json || { cat /tmp/uninstall.json; exit 1; }
 cat /tmp/uninstall.json
 if claude plugin list --json | grep -q "@makeit\""; then echo "a makeit plugin is still installed"; exit 1; fi

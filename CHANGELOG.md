@@ -8,11 +8,12 @@ raises the minor version.
 New:
 
 - The end-of-reply check asks `marked`, the Markdown library Claude Code renders with, how the
-  reply's lists are numbered, so it is exact on every layout. setup installs `marked` with npm;
+  reply's lists are numbered, instead of imitating its rules. setup installs `marked` with npm;
   without it, or when Node fails, the check falls back to its own reading.
 - The npm tools makeit installs (`marked` and the TypeScript and Python language servers) now move
   to npm's newest release on every setup, update and daily run, and each move is listed. The two
-  language servers used to stay at the version first installed.
+  language servers used to stay at the version first installed. `makeit rollback` leaves these
+  moves in place, so a run that only moved npm tools is not the one it undoes.
 
 Fixes:
 

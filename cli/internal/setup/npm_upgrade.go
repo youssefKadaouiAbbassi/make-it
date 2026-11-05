@@ -18,9 +18,12 @@ import (
 
 // npmUpgradeSteps move each tool makeit installed with npm (the two language servers, marked) to
 // npm's newest release, read with npm view like the MCP servers' versions: setup, update and the
-// daily run alike. A tool whose package folders are all gone was removed by you and stays so.
+// daily run alike. A tool whose package folders are all gone was removed by you and stays so. The
+// moves are kind "npm": rollback leaves them (never pin), so a run that only moved npm tools is
+// not one rollback picks.
 func (e *env) npmUpgradeSteps() []plan.Step {
 	var steps []plan.Step
+	down := false // one registry failure per run: the other tools are not asked again
 	for _, r := range platform.Prereqs {
 		rec := e.st.Prereqs[r.ID]
 		if rec == nil || rec.InstalledBy != "makeit" || rec.Route != "npm" {
@@ -52,19 +55,28 @@ func (e *env) npmUpgradeSteps() []plan.Step {
 		var behind []string
 		steps = append(steps, plan.Step{ID: "upgrade." + id, Title: "Update " + id,
 			Already: func(ctx context.Context) (bool, error) {
-				if e.Offline || e.Run == nil {
+				if e.Offline || e.Run == nil || down {
 					return true, nil
 				}
 				behind = nil
 				for _, p := range present {
-					res, err := e.Run(ctx, execx.Cmd{Argv: []string{"npm", "view", p, "version"}, Timeout: 30 * time.Second})
-					v := strings.TrimSpace(res.Stdout)
+					res, err := e.Run(ctx, execx.Cmd{Argv: []string{"npm", "view", p, "version", "--fetch-retries=0"}, Timeout: 30 * time.Second})
+					// npm can print a warning line first: the version is the last line.
+					out := strings.Fields(res.Stdout)
+					v := ""
+					if len(out) > 0 {
+						v = out[len(out)-1]
+					}
 					if err != nil || res.Code != 0 || v == "" {
-						why := res.Text()
+						why := strings.TrimSpace(res.Text())
 						if err != nil {
 							why = err.Error()
 						}
-						e.keep(id, fmt.Sprintf("kept at %s: could not read the npm registry (%s)", have[p], strings.TrimSpace(why)))
+						if why == "" {
+							why = "npm printed no version"
+						}
+						down = true
+						e.keep(id, fmt.Sprintf("kept at %s: could not read the npm registry (%s)", have[p], why))
 						return true, nil
 					}
 					newest[p] = v
@@ -85,7 +97,7 @@ func (e *env) npmUpgradeSteps() []plan.Step {
 				}
 				var moved []string
 				for _, p := range behind {
-					e.changes = append(e.changes, state.Change{Kind: "tool", Item: p, From: have[p], To: newest[p]})
+					e.changes = append(e.changes, state.Change{Kind: "npm", Item: p, From: have[p], To: newest[p]})
 					moved = append(moved, p+" "+have[p]+" → "+newest[p])
 				}
 				return strings.Join(moved, ", "), nil

@@ -33,7 +33,7 @@ func npmEnv(t *testing.T, id string, pkgs []string, installed, newest map[string
 			}
 		}
 		v := newest[p]
-		f.answers["npm view "+p+" version"] = func(execx.Cmd) execx.Result {
+		f.answers["npm view "+p+" version --fetch-retries=0"] = func(execx.Cmd) execx.Result {
 			if v == "" {
 				return execx.Result{Code: 1, Stderr: "npm error network"}
 			}
@@ -71,7 +71,7 @@ func TestNPMUpgradeMovesBehindPackages(t *testing.T) {
 	if !slices.Contains(f.argvs(), want) {
 		t.Errorf("calls %v, want %q", f.argvs(), want)
 	}
-	if c := (state.Change{Kind: "tool", Item: "typescript-language-server", From: "4.0.0", To: "4.1.0"}); !slices.Equal(e.changes, []state.Change{c}) {
+	if c := (state.Change{Kind: "npm", Item: "typescript-language-server", From: "4.0.0", To: "4.1.0"}); !slices.Equal(e.changes, []state.Change{c}) {
 		t.Errorf("changes %+v, want only %+v", e.changes, c)
 	}
 }
@@ -164,5 +164,85 @@ func TestMarkedRowInstallsWithNPM(t *testing.T) {
 func TestUninstallListsMarked(t *testing.T) {
 	if got, want := removeCommand("npm", "marked"), "npm uninstall -g --prefix ~/.local marked"; got != want {
 		t.Errorf("removeCommand %q, want %q", got, want)
+	}
+}
+
+// npm moves are not undone (never pin): a run that only moved npm tools is no run to roll back.
+func TestNPMChangesAreNotUndoable(t *testing.T) {
+	if undoable(state.Manifest{Changes: []state.Change{{Kind: "npm", Item: "pyright", From: "1.1.400", To: "1.1.401"}}}) {
+		t.Error("a run that only moved an npm tool counts as undoable")
+	}
+}
+
+// npm can print a warning line before the version.
+func TestNPMUpgradeReadsTheLastLine(t *testing.T) {
+	e, f, _ := npmEnv(t, "marked", []string{"marked"}, map[string]string{"marked": "18.1.3"}, map[string]string{"marked": "19.0.0"})
+	f.answers["npm view marked version --fetch-retries=0"] = func(execx.Cmd) execx.Result {
+		return execx.Result{Stdout: "npm warn config production Use `--omit=dev` instead.\n19.0.0\n"}
+	}
+	s, _ := npmStep(t, e, "marked")
+	if done, _ := s.Already(context.Background()); done {
+		t.Fatal("already done")
+	}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(f.argvs(), func(a string) bool { return strings.HasSuffix(a, " marked@19.0.0") }) {
+		t.Errorf("calls %v", f.argvs())
+	}
+}
+
+func TestNPMUpgradeNoVersionPrinted(t *testing.T) {
+	e, f, _ := npmEnv(t, "marked", []string{"marked"}, map[string]string{"marked": "18.1.3"}, map[string]string{"marked": "19.0.0"})
+	f.answers["npm view marked version --fetch-retries=0"] = func(execx.Cmd) execx.Result { return execx.Result{} }
+	s, _ := npmStep(t, e, "marked")
+	if done, _ := s.Already(context.Background()); !done {
+		t.Fatal("not done")
+	}
+	if r := keptReason(e, "marked"); !strings.Contains(r, "npm printed no version") {
+		t.Errorf("kept %q", r)
+	}
+}
+
+// One registry failure is enough for the run: the other npm tools are not asked again.
+func TestNPMUpgradeAsksTheRegistryOnceWhenDown(t *testing.T) {
+	e, f, prefix := npmEnv(t, "marked", []string{"marked"}, map[string]string{"marked": "18.1.3"}, map[string]string{"marked": ""})
+	dir := filepath.Join(prefix, "lib", "node_modules", "pyright")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"version":"1.1.400"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.st.Prereqs["pyright"] = &state.Prereq{InstalledBy: "makeit", Route: "npm", Argv: []string{"npm", "install", "-g", "--prefix", prefix, "pyright"}}
+	for _, s := range e.npmUpgradeSteps() {
+		_, _ = s.Already(context.Background())
+	}
+	views := 0
+	for _, a := range f.argvs() {
+		if strings.HasPrefix(a, "npm view ") {
+			views++
+		}
+	}
+	if views != 1 {
+		t.Errorf("%d registry lookups %v, want 1", views, f.argvs())
+	}
+}
+
+// On Windows makeit's npm prefix is ~/.local/bin and the packages sit in <prefix>/node_modules.
+func TestNPMUpgradeWindowsLayout(t *testing.T) {
+	e, _ := newEnv(t, "node", "npm")
+	e.Platform.OS = "windows"
+	prefix := filepath.Join(e.Roots.Home, ".local", "bin")
+	dir := filepath.Join(prefix, "node_modules", "marked")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"version":"18.1.3"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.st.Prereqs = map[string]*state.Prereq{"marked": {InstalledBy: "makeit", Route: "npm", Argv: []string{"npm", "install", "-g", "--prefix", prefix, "marked"}}}
+	if _, ok := npmStep(t, e, "marked"); !ok {
+		t.Error("no upgrade step for a Windows install")
 	}
 }

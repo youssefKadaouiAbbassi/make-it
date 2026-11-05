@@ -86,7 +86,7 @@ if [ -z "${MAKEIT_NO_NODE:-}" ] && command -v node >/dev/null 2>&1; then answer=
 case "$answer" in
 joined) emit "$renumbered" && exit 0 ;;
 options) exit 0 ;;
-none) opts=no ;;
+hidden) opts=no ;;
 *) opts= ;;
 esac
 [ -n "$opts" ] || opts=$(printf '%s\n' "$clean" | awk "$marked_fn"'

@@ -159,6 +159,13 @@ check "apart: a 4-space bullet is an item's text, not a block" quiet "$human" fa
 check "joined: a fence in a 10. step stays in the step" fire "$human" false $' 10. Deploy\n    ```bash\n    make\n    ```\n\n1. **Go** · recommended\n   x\n2. **Stop**'
 check "apart: a 4-backtick fence with a language tag holds a list" quiet "$human" false $'Draft:\n\n````markdown\n1. a\n2. b\n````\n\n1. **Go** · recommended\n   x\n2. **Stop**'
 check "joined: inline triple backticks open no code block" fire "$human" false $'```make``` runs it.\n\n1. a\n2. b\n\n1. **Go** · recommended\n   x\n2. **Stop**'
+check "joined: a plan of bold labels, then the choices" fire "$human" false $'1. **Backend**\n2. **App**\n\n'"$go"
+check "joined: a bold-label plan with a marker, then the choices" fire "$human" false $'1. **Backend** · 3 files\n2. **App**\n\n'"$go"
+check "joined: a plain line right under a bold-label plan" fire "$human" false $'1. **Backend**\n2. **App**\nPick:\n\n'"$go"
+check "apart: a marked list above bold-number options" quiet "$human" false $'1. Plan A (recommended)\n2. Plan B\n\nDone.\n\n**1.** **Ship** · recommended\n**2.** **Wait**'
+check "apart: options, then a bulleted not-checked line" quiet "$human" false "$go"$'\n\n- not checked: x'
+check "apart: a marked list above options nested under a bullet" quiet "$human" false $'1. a (recommended)\n2. b\n\nNext:\n\n- Options:\n  1. **Go** · recommended\n  2. **Stop**'
+check "three lines glued under the last option are an ending of their own" fire "$human" false "$go"$'\nline one\nline two\nline three'
 check "apart: quote right under an item" quiet "$human" false $'1. a\n2. b\n> note\n\n'"$go"
 check "apart: bullet right under an item" quiet "$human" false $'1. a\n2. b\n- note\n\n'"$go"
 check "apart: lone dash right under an item" quiet "$human" false $'1. a\n2. b\n-\n\n'"$go"
@@ -196,6 +203,14 @@ if [ "$OPT_MODE" = node ]; then
     echo "FAIL  node: choices inside an HTML block are not called renumbered [$OPT_MODE]"
     fail=1
   else echo "ok    node: choices inside an HTML block are not called renumbered [$OPT_MODE]"; fi
+  # A half-written marked (package.json, no lib): node errors, the awk answers.
+  mkdir -p "$work/half/node_modules/marked"
+  printf '{"name":"marked","module":"./lib/marked.esm.js"}' >"$work/half/node_modules/marked/package.json"
+  MAKEIT_NPM_PREFIX="$work/half" check "node: a half-written marked, the awk answers" fire "$human" false "$renum"
+  # marked found through a marked program on PATH (no prefix): a reply only marked reads right.
+  mkdir -p "$work/mbin"
+  ln -sf "$MARKED_PREFIX/node_modules/marked/bin/marked.js" "$work/mbin/marked"
+  MAKEIT_NPM_PREFIX='' PATH="$work/mbin:$PATH" check "node: marked through a program on PATH" fire "$human" false $'Text\n\n    ```\n1. a\n2. b\n\n1. **Go** · recommended\n2. **Stop**'
   start=$(date +%s)
   PATH="$work/node-hang:$PATH" check "node: node hangs, the awk answers" fire "$human" false "$renum"
   if [ $(($(date +%s) - start)) -lt 5 ]; then echo "ok    node: a hang costs under 5 s [$OPT_MODE]"; else
