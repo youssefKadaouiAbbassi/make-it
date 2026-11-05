@@ -127,6 +127,8 @@ func TestClientKeepsPlatformVerifier(t *testing.T) {
 // flaky answers each request with the next status in codes (200 once they run out) and counts them.
 func flaky(t *testing.T, codes ...int) (*httptest.Server, *int) {
 	t.Helper()
+	old := retryWait
+	t.Cleanup(func() { retryWait = old })
 	n := 0
 	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n++
@@ -143,8 +145,8 @@ func flaky(t *testing.T, codes ...int) (*httptest.Server, *int) {
 // A server error on GitHub's side (the 2026-11-05 distro run got a 504 for prek) is retried, so
 // one bad answer does not fail setup and skip every step after it.
 func TestGetRetriesServerErrors(t *testing.T) {
-	retryWait = time.Millisecond
 	s, n := flaky(t, http.StatusGatewayTimeout, http.StatusBadGateway)
+	retryWait = time.Millisecond
 	var b bytes.Buffer
 	if err := Get(context.Background(), s.Client(), "makeit/test", s.URL+"/x", 100, &b); err != nil || b.String() != "hello" || *n != 3 {
 		t.Errorf("%q %v after %d requests", b.String(), err, *n)
@@ -152,8 +154,8 @@ func TestGetRetriesServerErrors(t *testing.T) {
 }
 
 func TestGetGivesUpAfterThreeTries(t *testing.T) {
-	retryWait = time.Millisecond
 	s, n := flaky(t, 503, 503, 503, 503)
+	retryWait = time.Millisecond
 	if err := Get(context.Background(), s.Client(), "makeit/test", s.URL+"/x", 100, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "503") || *n != 3 {
 		t.Errorf("err %v after %d requests", err, *n)
 	}
@@ -161,8 +163,8 @@ func TestGetGivesUpAfterThreeTries(t *testing.T) {
 
 // A client error is the answer, not a hiccup: no second request.
 func TestGetDoesNotRetryNotFound(t *testing.T) {
-	retryWait = time.Millisecond
 	s, n := flaky(t, http.StatusNotFound)
+	retryWait = time.Millisecond
 	if err := Get(context.Background(), s.Client(), "makeit/test", s.URL+"/x", 100, &bytes.Buffer{}); err == nil || *n != 1 {
 		t.Errorf("err %v after %d requests", err, *n)
 	}
@@ -170,8 +172,8 @@ func TestGetDoesNotRetryNotFound(t *testing.T) {
 
 // A cancelled run stops waiting between tries.
 func TestGetRetryStopsOnCancel(t *testing.T) {
-	retryWait = time.Hour
 	s, _ := flaky(t, 504, 504)
+	retryWait = time.Hour
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	start := time.Now()
