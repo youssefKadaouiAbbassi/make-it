@@ -132,9 +132,13 @@ default branch, and the refusal names the missing ones.
 
 A second run with nothing new reports every step as already done. These rules decide what a re-run touches:
 
-- A file that was there before init's first run is yours, and init never rewrites it. For your
-  own `CLAUDE.md` and `CONSTRAINTS.md`, `/makeit:init` has Claude add only the sections they lack,
-  and only missing items to your `HANDOFF.md`. The merged files below are the exception.
+- A file that was there before init's first run is yours, and `makeit init` never rewrites it.
+  For your own `CLAUDE.md`, `/makeit:init` has Claude read it (and `AGENTS.md`, `.cursorrules` and
+  `CONTRIBUTING.md` when present) and draft a new one in makeit's structure with what is still
+  relevant; it shows you the new file and every line it cut, with the reason, and writes it only on
+  your yes, keeping the old one as `CLAUDE.md.before-makeit`. For your own `CONSTRAINTS.md` it adds
+  only the sections it lacks, and only missing items to your `HANDOFF.md`. The merged files below
+  are the exception.
 - A file init wrote or merged into is left as it is on a plain re-run. When makeit has a newer version of it,
   init says so and names `makeit init --update`.
 - `makeit init --update` rewrites a file init wrote only while it is exactly as init wrote it. A

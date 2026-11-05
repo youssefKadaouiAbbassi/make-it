@@ -52,9 +52,22 @@ in the steps below; makeit indexed the project's dependencies at their versions.
 - CLAUDE.md: replace each remaining `<...>` placeholder with what the code shows (the one-sentence
   description, the layout lines, the known traps you find). The **Product priority** line must be
   in the user's words: ask once, with AskUserQuestion, and write their answer as given.
-- A CLAUDE.md or CONSTRAINTS.md that `kept` lists as the user's: add the sections of
-  `templates/project/` (in the makeit plugin set, `~/.makeit/catalog`) that it lacks, and keep every
-  section it has. Never rewrite theirs.
+- A CLAUDE.md that `kept` lists as the user's is rebuilt, with the user's yes:
+  1. Read it, and `AGENTS.md`, `.cursorrules` and `CONTRIBUTING.md` when they exist, and the code
+     they describe.
+  2. Draft a new CLAUDE.md in the structure of `templates/project/CLAUDE.md` (in the makeit plugin
+     set, `~/.makeit/catalog`). Carry over what is still relevant and true of the code; cut what is
+     outdated (a path that no longer exists, a command that no longer runs), redundant with the
+     template or with another line, or not about this project. Write nothing yet.
+  3. Ask in the reply, in the global CLAUDE.md's reading shape: the new file in full, then every
+     cut line quoted with its reason, then a TL;DR, a plain line, and the choices: write it,
+     change something first, or keep the old file as it is.
+  4. On a yes, rename the old file to `CLAUDE.md.before-makeit` and write the new one. On "keep",
+     leave it and add only the template's missing sections, as for CONSTRAINTS.md. The other
+     files are read, never changed.
+- A CONSTRAINTS.md that `kept` lists as the user's: add the sections of
+  `templates/project/CONSTRAINTS.md` that it lacks, and keep every section it has. Never rewrite
+  it.
 - CONSTRAINTS.md: fill each `<...>` with the command that produces the verdict. Delete only the
   rows whose dimension the project does not have (Accessibility and Performance without a UI,
   Migrations without a database). Never delete the Coverage or Mutation row: every project has
