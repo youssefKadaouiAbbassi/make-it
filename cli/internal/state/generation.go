@@ -179,7 +179,7 @@ func Prune(stackDir string) error {
 }
 
 // LoadGenerations reads every generation's manifest, newest first. A folder without a readable
-// manifest is left out.
+// manifest is left out; Unreadable lists those.
 func LoadGenerations(stackDir string) ([]*Generation, error) {
 	ns, err := generations(stackDir)
 	if err != nil {
@@ -187,15 +187,33 @@ func LoadGenerations(stackDir string) ([]*Generation, error) {
 	}
 	var out []*Generation
 	for i := len(ns) - 1; i >= 0; i-- {
-		dir := filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[i]))
-		var m Manifest
-		data, found, err := fsx.ReadOptional(filepath.Join(dir, "manifest.json"))
-		if err != nil || !found || json.Unmarshal(data, &m) != nil {
-			continue
+		if g, ok := readGeneration(stackDir, ns[i]); ok {
+			out = append(out, g)
 		}
-		out = append(out, &Generation{Dir: dir, Manifest: m})
 	}
 	return out, nil
+}
+
+// Unreadable are the generation numbers on disk whose manifest cannot be read, ascending.
+func Unreadable(stackDir string) ([]int, error) {
+	ns, err := generations(stackDir)
+	var bad []int
+	for _, n := range ns {
+		if _, ok := readGeneration(stackDir, n); !ok {
+			bad = append(bad, n)
+		}
+	}
+	return bad, err
+}
+
+func readGeneration(stackDir string, n int) (*Generation, bool) {
+	dir := filepath.Join(GenerationsDir(stackDir), strconv.Itoa(n))
+	var m Manifest
+	data, found, err := fsx.ReadOptional(filepath.Join(dir, "manifest.json"))
+	if err != nil || !found || json.Unmarshal(data, &m) != nil {
+		return nil, false
+	}
+	return &Generation{Dir: dir, Manifest: m}, true
 }
 
 // generations lists the generation numbers on disk, ascending.

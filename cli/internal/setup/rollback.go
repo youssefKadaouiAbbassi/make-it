@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"makeit/internal/catalog"
@@ -29,12 +30,27 @@ func lastUndoable(stack string) (*state.Generation, error) {
 	if err != nil {
 		return nil, err
 	}
+	var pick *state.Generation
 	for _, g := range gens {
 		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" && g.Manifest.Undoable() {
-			return g, nil
+			pick = g
+			break
 		}
 	}
-	return nil, ErrNothingToRollBack
+	// A newer run whose record cannot be read may be the one to undo: stop rather than undo an
+	// older run as if it were the last.
+	bad, err := state.Unreadable(stack)
+	if err != nil {
+		return nil, err
+	}
+	if n := len(bad); n > 0 && (pick == nil || bad[n-1] > pick.Manifest.Generation) {
+		dir := filepath.Join(state.GenerationsDir(stack), strconv.Itoa(bad[n-1]))
+		return nil, fmt.Errorf("the record of run %d cannot be read (%s), so rollback stops rather than undo an older run in its place: fix or remove that folder", bad[n-1], filepath.Join(dir, "manifest.json"))
+	}
+	if pick == nil {
+		return nil, ErrNothingToRollBack
+	}
+	return pick, nil
 }
 
 // Rollback undoes the last run that changed something: its files where nobody edited them since,
