@@ -192,8 +192,13 @@ type Repo struct {
 	Migrations    []MigrationRun          `json:"migrations,omitempty"`
 	// ManualSha256 is the hash of the manual steps the last run printed, so a re-run with the same
 	// ones does not print them again.
-	ManualSha256 string         `json:"manualSha256,omitempty"`
-	Extra        jsontext.Value `json:",embed"`
+	ManualSha256 string `json:"manualSha256,omitempty"`
+	// InitVersion is the newest init change /makeit:init applied (init-changes.json); empty for a
+	// project set up before the list, which gets every change.
+	InitVersion string `json:"initVersion,omitempty"`
+	// Keep are the differences from the current way the user chose to keep, never raised again.
+	Keep  []string       `json:"keep,omitempty"`
+	Extra jsontext.Value `json:",embed"`
 }
 
 // RepoCatalog is the catalog `init` used.

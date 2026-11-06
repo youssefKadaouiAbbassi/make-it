@@ -1,13 +1,17 @@
 package initrepo
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"makeit/internal/catalog"
 	"makeit/internal/latest"
+	"makeit/internal/plan"
 )
 
 func TestPending(t *testing.T) {
@@ -89,4 +93,94 @@ func TestChangesSourcesCurrent(t *testing.T) {
 	if got := SourcesHash(files); got != sources {
 		t.Fatalf("templates or the init skill changed: add an entry to %s, or set sources to %s when no project needs a change", ChangesPath, got)
 	}
+}
+
+func TestRunReportsPendingChanges(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, all, _ := LoadChanges(catalog.Embedded)
+	if len(rep.Changes) != len(all) {
+		t.Fatalf("a project with no initVersion gets %d changes, want all %d", len(rep.Changes), len(all))
+	}
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: true}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Changes) != 0 || rep.Changes == nil {
+		t.Errorf("after --applied: changes %v, want an empty list", rep.Changes)
+	}
+}
+
+// Review Focus 2: --applied writes the record only, and a keep line already there is not added again.
+func TestRunApplied(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, dir)
+	prev := loadRepo(t, dir)
+	for range 2 {
+		rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: true, Keep: "CONSTRAINTS.md: Performance row"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rep.Plan.Outcomes) != 1 || rep.Plan.Outcomes[0].ID != "record" {
+			t.Errorf("--applied ran %v, want the record step only", ids(rep))
+		}
+	}
+	got := loadRepo(t, dir)
+	_, all, _ := LoadChanges(catalog.Embedded)
+	if got.InitVersion != Newest(all) || !slices.Equal(got.Keep, []string{"CONSTRAINTS.md: Performance row"}) {
+		t.Errorf("record initVersion %q keep %q", got.InitVersion, got.Keep)
+	}
+	if !reflect.DeepEqual(got.Files, prev.Files) {
+		t.Errorf("--applied changed the files map")
+	}
+	after := snapshot(t, dir)
+	delete(before, ".makeit.json")
+	delete(after, ".makeit.json")
+	if !reflect.DeepEqual(before, after) {
+		t.Errorf("--applied changed a file other than .makeit.json")
+	}
+}
+
+// Review Focus 1: no record, nothing written.
+func TestRunAppliedNoRecord(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	before := snapshot(t, dir)
+	_, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: true})
+	if err == nil || !strings.Contains(err.Error(), "run makeit init first") {
+		t.Fatalf("err %v", err)
+	}
+	if !reflect.DeepEqual(before, snapshot(t, dir)) {
+		t.Error("--applied without a record wrote something")
+	}
+}
+
+// snapshot is every file under dir and its content.
+func snapshot(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		rel, _ := filepath.Rel(dir, p)
+		out[rel] = string(b)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

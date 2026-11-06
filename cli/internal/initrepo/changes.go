@@ -1,14 +1,22 @@
 package initrepo
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"slices"
+	"time"
 
 	"makeit/internal/catalog"
+	"makeit/internal/fsx"
 	"makeit/internal/latest"
+	"makeit/internal/plan"
+	"makeit/internal/state"
 )
 
 // ChangesPath is the list of init changes per version in the plugin set.
@@ -79,4 +87,56 @@ func SourcesHash(files map[string][]byte) string {
 		h.Write(files[p])
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+// pendingChanges are the changes in src newer than initVersion. A plugin set older than the list
+// has none.
+func pendingChanges(src catalog.Source, initVersion string) ([]Change, error) {
+	_, all, err := LoadChanges(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []Change{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return Pending(all, initVersion), nil
+}
+
+// applied is `makeit init --applied`: it records the newest init change as applied and adds keep
+// to the kept differences. It writes the record only, and needs one: the project was set up.
+func applied(ctx context.Context, e Env, mode plan.Mode, keep string) (Report, error) {
+	path := filepath.Join(e.Dir, RecordName)
+	if mode != plan.DryRunOnly {
+		lock, err := fsx.Acquire(filepath.Join(e.Stack, "lock"), time.Now())
+		if err != nil {
+			return Report{}, err
+		}
+		defer lock.Release()
+	}
+	prev, info, err := state.LoadRepo(path)
+	if err != nil {
+		return Report{}, err
+	}
+	if !info.Found {
+		return Report{}, fmt.Errorf("no %s in %s: run makeit init first", RecordName, e.Dir)
+	}
+	_, all, err := LoadChanges(e.Catalog)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return Report{}, err
+	}
+	next := *prev
+	if v := Newest(all); v != "" {
+		next.InitVersion = v
+	}
+	if keep != "" && !slices.Contains(next.Keep, keep) {
+		next.Keep = append(slices.Clone(next.Keep), keep)
+	}
+	step := plan.Step{ID: "record", Title: "Record the applied init changes in " + RecordName,
+		Already: func(context.Context) (bool, error) {
+			return next.InitVersion == prev.InitVersion && slices.Equal(next.Keep, prev.Keep), nil
+		},
+		Run: func(context.Context) (string, error) { return "", state.SaveRepo(path, &next) }}
+	rep := Report{Plan: plan.Execute(ctx, []plan.Step{step}, plan.Options{DryRun: mode == plan.DryRunOnly}),
+		Changes: Pending(all, next.InitVersion), Keep: next.Keep}
+	return rep, nil
 }

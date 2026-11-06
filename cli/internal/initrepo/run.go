@@ -39,7 +39,13 @@ type Env struct {
 
 // Options are init's flags. Offline skips the docs sync and refuses Rulesets: both need the
 // network.
-type Options struct{ Update, Rulesets, Offline bool }
+type Options struct {
+	Update, Rulesets, Offline bool
+	// Applied records that /makeit:init applied the listed init changes, with Keep (one line)
+	// added to the kept differences; it writes only the record.
+	Applied bool
+	Keep    string
+}
 
 // Report is what an init run did, or would do.
 type Report struct {
@@ -48,6 +54,10 @@ type Report struct {
 	Manual  []string
 	Notices []string
 	Docs    []string
+	// Changes are the init changes newer than the project's initVersion; Keep the differences the
+	// user kept.
+	Changes []Change
+	Keep    []string
 }
 
 // noGitNotice says what init leaves out in a folder with files and no git.
@@ -77,6 +87,12 @@ type run struct {
 // Run plans init and, as mode allows, applies it. confirm is asked once, with the plan, in
 // Prompt mode. A plan with nothing to do applies nothing.
 func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), o Options) (Report, error) {
+	if o.Keep != "" && !o.Applied {
+		return Report{}, errors.New("--keep needs --applied")
+	}
+	if o.Applied {
+		return applied(ctx, e, mode, o.Keep)
+	}
 	if o.Offline && o.Rulesets {
 		return Report{}, errors.New("--rulesets needs the network; drop --offline")
 	}
@@ -105,13 +121,18 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	if err != nil {
 		return Report{}, err
 	}
+	changes, err := pendingChanges(e.Catalog, prev.InitVersion)
+	if err != nil {
+		return Report{}, err
+	}
 	r := &run{Env: e, opts: o, p: p, prev: prev, noGit: noGit}
 	steps, seedRep, err := r.steps(gitInit)
 	if err != nil {
 		return Report{}, err
 	}
 	r.reset()
-	rep := Report{Plan: plan.Execute(ctx, steps, plan.Options{DryRun: true}), Manual: seedRep.Manual, Notices: seedRep.Notices}
+	rep := Report{Plan: plan.Execute(ctx, steps, plan.Options{DryRun: true}), Manual: seedRep.Manual, Notices: seedRep.Notices,
+		Changes: changes, Keep: prev.Keep}
 	rep.Kept = r.kept
 	rep.Notices = append(rep.Notices, r.newerNotice()...)
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {
