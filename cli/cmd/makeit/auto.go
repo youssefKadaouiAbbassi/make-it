@@ -15,22 +15,24 @@ import (
 // autoEvery is how often the daily run goes ahead.
 const autoEvery = 24 * time.Hour
 
-// autoDue reports whether `makeit update --auto` should run now, and why not when it should not.
-func autoDue(stack string, now time.Time) (bool, string) {
+// autoDue returns the held auto lock when `makeit update --auto` should run now (the caller
+// releases it), or nil and why not.
+func autoDue(stack string, now time.Time) (*fsx.Lock, string) {
 	if !autoUpdateOn(stack) {
-		return false, "auto-update is off (" + filepath.Join(stack, "config.json") + ")"
+		return nil, "auto-update is off (" + filepath.Join(stack, "config.json") + ")"
 	}
+	// The check runs under the lock the run keeps, so two sessions starting at once run once.
 	lock, err := fsx.Acquire(filepath.Join(stack, "auto.lock"), time.Now())
 	if err != nil {
-		return false, "another auto update is running"
+		return nil, "another auto update is running"
 	}
-	lock.Release()
 	if b, err := os.ReadFile(filepath.Join(stack, "last-auto")); err == nil {
 		if last, err := time.Parse(time.RFC3339, strings.TrimSpace(string(b))); err == nil && now.Sub(last) < autoEvery {
-			return false, fmt.Sprintf("ran %dh ago", int(now.Sub(last).Hours()))
+			lock.Release()
+			return nil, fmt.Sprintf("ran %dh ago", int(now.Sub(last).Hours()))
 		}
 	}
-	return true, ""
+	return lock, ""
 }
 
 // autoNote is the one line the next Claude Code session shows after a daily run moved something.

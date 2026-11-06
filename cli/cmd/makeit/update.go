@@ -7,14 +7,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/cli"
-	"makeit/internal/fsx"
 	"makeit/internal/paths"
 	"makeit/internal/plan"
 	"makeit/internal/release"
@@ -44,11 +42,8 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 		stack = roots.Stack
 		// A re-executed new makeit runs under its parent's lock and gate.
 		if os.Getenv("MAKEIT_REEXEC") == "" {
-			if due, _ := autoDue(stack, time.Now()); !due {
-				return 0
-			}
-			lock, err := fsx.Acquire(filepath.Join(stack, "auto.lock"), time.Now())
-			if err != nil {
+			lock, _ := autoDue(stack, time.Now())
+			if lock == nil {
 				return 0
 			}
 			defer lock.Release()
