@@ -263,7 +263,7 @@ func TestNPMUpgradeNotAVersion(t *testing.T) {
 	if done, _ := s.Already(context.Background()); !done {
 		t.Error("would install a version npm did not print")
 	}
-	if r := keptReason(e, "marked"); !strings.Contains(r, "not a version") {
+	if r := keptReason(e, "marked"); !strings.Contains(r, "not a stable version") {
 		t.Errorf("kept %q", r)
 	}
 }

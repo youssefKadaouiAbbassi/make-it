@@ -83,7 +83,7 @@ func (e *env) npmUpgradeSteps() []plan.Step {
 						return true, nil
 					}
 					if !latest.Newer("0.0.0", v) {
-						e.keep(id, fmt.Sprintf("kept at %s: npm printed %q, not a version", have[p], v))
+						e.keep(id, fmt.Sprintf("kept at %s: npm printed %q, not a stable version", have[p], v))
 						return true, nil
 					}
 					newest[p] = v

@@ -1,31 +1,20 @@
 package catalog
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 )
 
-func TestListDirAndEmbedded(t *testing.T) {
-	d := t.TempDir()
-	for _, p := range []string{"templates/global/CLAUDE.md", "templates/global/rules/go.md", "templates/project/CLAUDE.md"} {
-		if err := os.MkdirAll(filepath.Join(d, filepath.Dir(p)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(d, p), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got, err := List(Dir(d), "templates/global/")
-	if want := []string{"templates/global/CLAUDE.md", "templates/global/rules/go.md"}; err != nil || !slices.Equal(got, want) {
-		t.Errorf("Dir: %v %v, want %v", got, err, want)
-	}
-	if got, err := List(Dir(d), "templates/none/"); err != nil || len(got) != 0 {
-		t.Errorf("missing prefix: %v %v, want nothing", got, err)
-	}
+func TestListEmbeddedAndTree(t *testing.T) {
 	emb, err := List(Embedded, "templates/global/")
 	if err != nil || !slices.Contains(emb, "templates/global/CLAUDE.md") {
 		t.Errorf("Embedded: %v %v", emb, err)
+	}
+	tree := &Tree{Files: map[string][]byte{"templates/global/b.md": nil, "templates/global/a.md": nil, "templates/project/c.md": nil}}
+	if got, err := List(tree, "templates/global/"); err != nil || !slices.Equal(got, []string{"templates/global/a.md", "templates/global/b.md"}) {
+		t.Errorf("Tree: %v %v", got, err)
+	}
+	if _, err := List(Dir("x"), "templates/global/"); err == nil {
+		t.Error("a directory catalog listed, want an error naming it")
 	}
 }

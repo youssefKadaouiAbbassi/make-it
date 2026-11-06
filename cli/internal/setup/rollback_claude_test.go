@@ -17,6 +17,9 @@ func TestRollbackDoesNotInstallClaude(t *testing.T) {
 	e, f := claudeEnv(t, &none, "apt-get", "sudo", "curl", "bash")
 	g := genWithWrite(t, e, filepath.Join(e.Roots.Claude, "settings.json"))
 	steps := e.rollbackPlan(g)
+	if steps[0].Title != "Find Claude Code" {
+		t.Fatalf("rollback starts with %q, want the find step", steps[0].Title)
+	}
 	plan.Execute(context.Background(), steps[:1], plan.Options{})
 	for _, c := range f.argvs() {
 		if strings.Contains(c, "install") || strings.Contains(c, "curl") {

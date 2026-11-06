@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -78,8 +79,8 @@ func (d Dir) ReadFile(p string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(string(d), filepath.FromSlash(p)))
 }
 
-// List returns the catalog paths under prefix in src, sorted: the embedded catalog's manifest, a
-// git catalog's tree, or the regular files of a directory catalog.
+// List returns the catalog paths under prefix in src, sorted: the embedded catalog's manifest or a
+// git catalog's tree, the two that setup and update read the global files from.
 func List(src Source, prefix string) ([]string, error) {
 	var out []string
 	switch c := src.(type) {
@@ -99,28 +100,10 @@ func List(src Source, prefix string) ([]string, error) {
 				out = append(out, p)
 			}
 		}
-	case Dir:
-		root := filepath.Join(string(c), filepath.FromSlash(prefix))
-		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil
-			}
-			if err != nil || !d.Type().IsRegular() {
-				return err
-			}
-			rel, err := filepath.Rel(string(c), p)
-			if err == nil {
-				out = append(out, filepath.ToSlash(rel))
-			}
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
 	default:
 		return nil, fmt.Errorf("catalog %T cannot list its files", src)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, nil
 }
 

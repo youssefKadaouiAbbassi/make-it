@@ -1,6 +1,8 @@
 package state
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 )
@@ -83,5 +85,49 @@ func TestManifestUndoable(t *testing.T) {
 		if got := c.m.Undoable(); got != c.want {
 			t.Errorf("%+v: %v, want %v", c.m, got, c.want)
 		}
+	}
+}
+
+// A run whose folder holds backups but no ops (uninstall's state.json copy, plugin data saved
+// before a removal) is kept: those copies exist nowhere else (the review of the audit fixes).
+func TestPruneKeepsBackups(t *testing.T) {
+	stack := t.TempDir()
+	g, err := NewGeneration(stack, 0, "uninstall", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(g.Dir, "data", "plugin-x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(g.Dir, "state.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewGeneration(stack, g.Manifest.Generation, "setup", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := Prune(stack); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(g.Dir, "data", "plugin-x")); err != nil {
+		t.Errorf("uninstall's plugin data backup is gone: %v", err)
+	}
+}
+
+// A folder half removed by an interrupted prune is never read as a damaged record: the rename
+// comes first, and a leftover is cleaned up by the next prune.
+func TestPruneLeavesNoHalfRemovedRecord(t *testing.T) {
+	stack := t.TempDir()
+	left := filepath.Join(GenerationsDir(stack), "9.del")
+	if err := os.MkdirAll(left, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Prune(stack); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(left); err == nil {
+		t.Error("a leftover from an interrupted prune is still there")
+	}
+	if bad, _ := Unreadable(stack); len(bad) != 0 {
+		t.Errorf("unreadable %v, want none", bad)
 	}
 }

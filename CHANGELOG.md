@@ -30,7 +30,9 @@ Fixes:
   undoing an older run in its place, it never installs Claude Code, and its "undo" hint appears
   only when it has something to undo.
 - A git plugin set pinned to an older tag no longer blocks every update when a makeit release adds
-  a global file: the global files now come from the plugin set in use.
+  a global file: the global files now come from the plugin set in use, so such a set also
+  removes a global file makeit wrote that it does not have (only when you never changed it;
+  `makeit rollback` brings it back).
 - `makeit uninstall` no longer crashes after a self rollback across a change in the tool list.
 - The npm tools only move forward, to a real version, read from the registry the global install
   uses (a project's own `.npmrc` no longer stops them).

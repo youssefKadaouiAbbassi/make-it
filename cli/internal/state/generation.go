@@ -152,15 +152,22 @@ func (g *Generation) Save() error {
 // shortcut: generations referenced by an unresolved conflict are not pinned yet; add a keep set
 // when conflicts start pointing at generations.
 func Prune(stackDir string) error {
+	// Leftovers of an interrupted prune.
+	leftovers, _ := filepath.Glob(filepath.Join(GenerationsDir(stackDir), "*.del"))
+	for _, d := range leftovers {
+		if err := os.RemoveAll(d); err != nil {
+			return err
+		}
+	}
 	gens, err := LoadGenerations(stackDir)
 	if err != nil {
 		return err
 	}
-	// Runs with nothing to undo go first, except the newest (the home screen and the daily note read
-	// it); then the newest Keep of the rest stay.
+	// Runs with nothing to undo and no backups go first, except the newest (the home screen and the
+	// daily note read it); then the newest Keep of the rest stay.
 	for i, g := range gens {
-		if i > 0 && !g.Manifest.Undoable() {
-			if err := os.RemoveAll(g.Dir); err != nil {
+		if i > 0 && !g.Manifest.Undoable() && !holdsBackups(g.Dir) {
+			if err := removeGeneration(g.Dir); err != nil {
 				return err
 			}
 		}
@@ -170,12 +177,32 @@ func Prune(stackDir string) error {
 		return err
 	}
 	for len(ns) > Keep {
-		if err := os.RemoveAll(filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[0]))); err != nil {
+		if err := removeGeneration(filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[0]))); err != nil {
 			return err
 		}
 		ns = ns[1:]
 	}
 	return nil
+}
+
+// holdsBackups: uninstall's copy of state.json or plugin data saved before a removal, which no op
+// records and no other place keeps.
+func holdsBackups(dir string) bool {
+	for _, name := range []string{"state.json", "data"} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// removeGeneration renames the folder out of the numbered set first, so an interrupted removal
+// never leaves a half record that rollback would refuse to pass.
+func removeGeneration(dir string) error {
+	if err := os.Rename(dir, dir+".del"); err != nil {
+		return err
+	}
+	return os.RemoveAll(dir + ".del")
 }
 
 // LoadGenerations reads every generation's manifest, newest first. A folder without a readable
