@@ -40,6 +40,11 @@ type Project struct {
 	NodeVersion       string
 	// Spec is the OpenAPI file, relative to Dir, when there is one.
 	Spec string
+	// Repos are the repository children of a workspace (a folder outside git whose direct children
+	// hold their own .git directory), sorted; Worktrees counts the worktree children skipped (their
+	// .git is a file). Both are empty outside a workspace.
+	Repos     []string
+	Worktrees int
 	// Deps are the direct dependencies of every manifest to depth 3, sorted by manifest, then name.
 	Deps   []Dep
 	GitHub struct{ Owner, Repo string }
@@ -63,7 +68,8 @@ var lockfiles = map[string]string{"package.json": "package-lock.json", "pyprojec
 
 // ManifestHashes is what Project.Manifests would be for dir now, without parsing anything.
 func ManifestHashes(dir string) (map[string]string, error) {
-	manifests, err := findManifests(dir)
+	repos, _ := workspaceChildren(dir)
+	manifests, err := findManifests(dir, repos)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +116,8 @@ var (
 // Project with no types.
 func Detect(dir string) (Project, error) {
 	p := Project{Dir: dir, Manifests: map[string]string{}, Scripts: map[string]bool{}}
-	manifests, err := findManifests(dir)
+	p.Repos, p.Worktrees = workspaceChildren(dir)
+	manifests, err := findManifests(dir, p.Repos)
 	if err != nil {
 		return p, err
 	}
@@ -291,7 +298,32 @@ func defaultBranch(gitDir string) string {
 
 // findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories
 // and any directory below dir it cannot read (a database bind mount owned by another user).
-func findManifests(dir string) ([]string, error) {
+// workspaceChildren are, for a dir outside any git work tree, the direct children holding their
+// own .git directory, sorted, and the number holding a .git file (worktrees of another repository).
+func workspaceChildren(dir string) (repos []string, worktrees int) {
+	if abs, err := filepath.Abs(dir); err != nil || gitTop(abs) != "" {
+		return nil, 0
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, en := range entries {
+		if !en.IsDir() {
+			continue
+		}
+		fi, err := os.Lstat(filepath.Join(dir, en.Name(), ".git"))
+		switch {
+		case err != nil:
+		case fi.IsDir():
+			repos = append(repos, en.Name())
+		case fi.Mode().IsRegular():
+			worktrees++
+		}
+	}
+	return repos, worktrees
+}
+
+// findManifests lists the manifests under dir to depth 3; with repos (a workspace), a top-level
+// folder is read only when it is one of them.
+func findManifests(dir string, repos []string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -304,6 +336,9 @@ func findManifests(dir string) ([]string, error) {
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if rel != "." && (pruned[d.Name()] || strings.Count(rel, "/") >= 2) {
+				return filepath.SkipDir
+			}
+			if len(repos) > 0 && !strings.Contains(rel, "/") && rel != "." && !slices.Contains(repos, rel) {
 				return filepath.SkipDir
 			}
 			return nil
