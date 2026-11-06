@@ -147,22 +147,14 @@ func keep(selfDir, binPath, version string, windows bool) error {
 	if err := fsx.WriteAtomic(filepath.Join(selfDir, name), data, 0o755); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(selfDir)
+	// The one kept besides it is the newest of the others; older ones go.
+	kept, err := keptVersions(selfDir, suffix)
 	if err != nil {
 		return err
 	}
-	var others []string
-	for _, en := range entries {
-		v, ok := strings.CutPrefix(strings.TrimSuffix(en.Name(), suffix), "makeit-")
-		if ok && en.Name() != name {
-			others = append(others, v)
-		}
-	}
-	slices.SortFunc(others, func(a, b string) int { n, _ := claudecli.Compare(b, a); return n })
-	for i, v := range others {
-		if i > 0 {
-			_ = os.Remove(filepath.Join(selfDir, "makeit-"+v+suffix))
-		}
+	others := slices.DeleteFunc(kept, func(v string) bool { return v == version })
+	for _, v := range others[min(1, len(others)):] {
+		_ = os.Remove(filepath.Join(selfDir, "makeit-"+v+suffix))
 	}
 	return nil
 }
