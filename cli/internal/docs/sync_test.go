@@ -3,6 +3,7 @@ package docs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -38,6 +39,10 @@ func (s *server) run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
 	case "list":
 		if s.listErr != nil {
 			return execx.Result{}, s.listErr
+		}
+		// docs-mcp-server exits before Node flushes a pipe: past 64 KiB a pipe gets a cut-off list.
+		if out := s.listJSON; !c.FileStdout && len(out) > 1<<16 {
+			return execx.Result{Stdout: out[:1<<16]}, nil
 		}
 		return execx.Result{Stdout: s.listJSON}, nil
 	case "scrape":
@@ -151,5 +156,24 @@ func TestReportFailed(t *testing.T) {
 		if got := Sync(context.Background(), c.libs, opts(c.s)).Failed(); got != c.want {
 			t.Errorf("%s: Failed() = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// An index whose list runs past 64 KiB (about 600 libraries) still lists whole: a cut-off list
+// skipped every library on every sync (the Uni-CE init of 2026-11-06, 2,176 of 2,176).
+func TestSyncBigIndex(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("[")
+	for i := range 2000 {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"name": "lib%d", "versions": [{"version": "1.0.0", "indexedAt": "2026-11-01T00:00:00.000Z"}]}`, i)
+	}
+	b.WriteString("]")
+	s := &server{listJSON: b.String()}
+	rep := Sync(context.Background(), []Lib{{Name: "lib7", Version: "1.0.0", Ecosystem: "npm"}}, opts(s))
+	for _, sk := range rep.Skipped {
+		t.Errorf("skipped %s: %s", sk.Lib.Name, sk.Reason)
 	}
 }

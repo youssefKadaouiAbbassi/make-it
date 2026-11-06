@@ -28,7 +28,11 @@ type Cmd struct {
 	Stdin io.Reader
 	// Inherit connects the terminal, for package managers and sudo that prompt the user.
 	Inherit bool
-	Timeout time.Duration
+	// FileStdout gives the child a temporary file as stdout instead of a pipe: a Node program
+	// that exits right after writing (docs-mcp-server list) loses what a pipe has not taken yet,
+	// everything past 64 KiB.
+	FileStdout bool
+	Timeout    time.Duration
 }
 
 // Result is what the program did.
@@ -102,13 +106,28 @@ func Run(ctx context.Context, c Cmd) (Result, error) {
 		cmd.Env = append(env, c.Env...)
 	}
 	var out, errb bytes.Buffer
+	var outFile *os.File
 	if c.Inherit {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr, os.Stderr
 	} else {
 		cmd.Stdin = c.Stdin
 		cmd.Stdout, cmd.Stderr = &out, &errb
+		if c.FileStdout {
+			if outFile, err = os.CreateTemp("", "makeit-out-*"); err != nil {
+				return Result{Code: -1}, err
+			}
+			defer func() { _ = outFile.Close(); _ = os.Remove(outFile.Name()) }()
+			cmd.Stdout = outFile
+		}
 	}
 	err = cmd.Run()
+	if outFile != nil {
+		b, rerr := os.ReadFile(outFile.Name())
+		if rerr != nil && err == nil {
+			err = rerr
+		}
+		out.Write(b)
+	}
 	res := Result{Stdout: out.String(), Stderr: errb.String()}
 	var ee *exec.ExitError
 	switch {

@@ -58,3 +58,17 @@ func TestRunCancelledIsNotATimeout(t *testing.T) {
 		t.Errorf("cancelled run: %v, want context.Canceled and no timeout", err)
 	}
 }
+
+// FileStdout gives the child a file as stdout, not a pipe: a Node program that exits right after
+// writing (docs-mcp-server list) loses everything past the 64 KiB pipe buffer, never a file's.
+func TestRunFileStdout(t *testing.T) {
+	script := `if [ -p /dev/stdout ]; then echo pipe; else echo file; fi; head -c 200000 /dev/zero | tr '\0' x`
+	r, err := Run(context.Background(), Cmd{Argv: []string{"sh", "-c", script}, FileStdout: true})
+	if err != nil || !strings.HasPrefix(r.Stdout, "file\n") || len(r.Stdout) != len("file\n")+200000 {
+		t.Fatalf("stdout starts %q, %d bytes, err %v; want a file and all 200005 bytes", r.Stdout[:min(10, len(r.Stdout))], len(r.Stdout), err)
+	}
+	r, _ = Run(context.Background(), Cmd{Argv: []string{"sh", "-c", script}})
+	if !strings.HasPrefix(r.Stdout, "pipe\n") {
+		t.Errorf("without FileStdout the child should see a pipe, saw %q", r.Stdout[:min(10, len(r.Stdout))])
+	}
+}
