@@ -22,6 +22,22 @@ fi
 
 deps=""
 add() { deps+="$1"$'\n'; }
+# A folder of repositories (outside git, with children holding their own .git directory): the
+# root and each repository, as makeit's index; never a worktree (.git is a file) or another folder.
+roots=("$cwd")
+depth=3
+if ! git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  repos=()
+  for d in "$cwd"/*/; do [ -d "$d.git" ] && repos+=("${d%/}"); done
+  if [ ${#repos[@]} -gt 0 ]; then
+    roots=("${repos[@]}")
+    depth=2
+  fi
+fi
+manifests() {
+  find "$@" \( -name node_modules -o -name vendor -o -name .git -o -name target -o -name '.venv' \) -prune -o \
+    \( -name go.mod -o -name package.json -o -name pyproject.toml -o -name Cargo.toml -o -name requirements.txt \) -type f -print 2>/dev/null
+}
 while IFS= read -r f; do
   rel=${f#"$cwd"/}
   case "$f" in
@@ -53,8 +69,10 @@ else:
 ' "$f" 2>/dev/null)
       ;;
   esac
-done < <(find "$cwd" -maxdepth 3 \( -name node_modules -o -name vendor -o -name .git -o -name target -o -name '.venv' \) -prune -o \
-  \( -name go.mod -o -name package.json -o -name pyproject.toml -o -name Cargo.toml -o -name requirements.txt \) -type f -print 2>/dev/null | sort)
+done < <({
+  [ "$depth" = 2 ] && manifests "$cwd" -maxdepth 1
+  manifests "${roots[@]}" -maxdepth "$depth"
+} | sort -u)
 
 [ -n "$deps" ] || exit 0
 count=$(printf '%s' "$deps" | grep -c .)

@@ -3,6 +3,26 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.7
+
+New:
+
+- `makeit init` in a folder that is not a repository but holds repositories (a workspace you
+  open Claude in) sets up the folder alone: CLAUDE.md, CONSTRAINTS.md, HANDOFF.md, the Claude
+  settings and the check tasks, nothing inside the repositories. The files that only act inside
+  a repository (`.gitignore`, `renovate.json`, `.grype.yaml`, `.env.example`, the commit hooks,
+  the CI workflow) are left out, and `makeit init --update` removes the ones an older makeit wrote
+  there if you never changed them. The docs index reads each repository's dependencies, never a
+  worktree's.
+
+Fixes:
+
+- The docs index works again on a large index: docs-mcp-server cuts its list at 64 KiB when it
+  writes to a pipe, so every library was skipped; makeit now reads the list through a file
+  (reported upstream as arabold/docs-mcp-server#609).
+- The project CONSTRAINTS.md names squawk for Postgres only, and says its budgets are starting
+  points to replace with measured times.
+
 ## 0.3.6
 
 New:

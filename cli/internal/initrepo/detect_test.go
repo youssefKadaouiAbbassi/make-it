@@ -274,3 +274,60 @@ func TestDetectUnreadableDir(t *testing.T) {
 		t.Errorf("ManifestHashes %v %v; Detect read %v", h, err, p.Manifests)
 	}
 }
+
+// A folder outside git whose direct children are repositories is a workspace: each repository's
+// manifests count, a worktree child (.git is a file) and a plain folder do not (2026-11-06,
+// the Uni-CE root: 3 repositories and 23 worktrees, 2,176 libraries).
+func TestDetectWorkspace(t *testing.T) {
+	dir := tree(t, map[string]string{
+		"a/.git/":            "",
+		"a/package.json":     `{"dependencies": {"left-pad": "1.0.0"}}`,
+		"b/.git/":            "",
+		"b/go.mod":           "module b\n\ngo 1.24\n\nrequire golang.org/x/term v0.47.0\n",
+		"a-wt/.git":          "gitdir: ../a/.git/worktrees/a-wt\n",
+		"a-wt/package.json":  `{"dependencies": {"lodash": "4.17.21"}}`,
+		"notes/package.json": `{"dependencies": {"chalk": "5.0.0"}}`,
+	})
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(p.Repos, []string{"a", "b"}) || p.Worktrees != 1 {
+		t.Errorf("repos %v worktrees %d, want [a b] and 1", p.Repos, p.Worktrees)
+	}
+	names := map[string]bool{}
+	for _, d := range p.Deps {
+		names[d.Name] = true
+	}
+	if !names["left-pad"] || !names["golang.org/x/term"] || names["lodash"] || names["chalk"] {
+		t.Errorf("deps %v: want left-pad and golang.org/x/term only", slices.Sorted(maps.Keys(names)))
+	}
+	// The docs hook's --if-changed compares these: the same files Detect read.
+	if h, err := ManifestHashes(dir); err != nil || !maps.Equal(h, p.Manifests) {
+		t.Errorf("ManifestHashes %v (%v), want what Detect read %v", slices.Sorted(maps.Keys(h)), err, slices.Sorted(maps.Keys(p.Manifests)))
+	}
+}
+
+// A folder with files and no repository child keeps 0.3.3's no-git reading.
+func TestDetectPlainFolderUnchanged(t *testing.T) {
+	dir := tree(t, map[string]string{"notes/package.json": `{"dependencies": {"chalk": "5.0.0"}}`})
+	p, err := Detect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Repos != nil || p.Worktrees != 0 || !slices.ContainsFunc(p.Deps, func(d Dep) bool { return d.Name == "chalk" }) {
+		t.Errorf("repos %v worktrees %d deps %v", p.Repos, p.Worktrees, p.Deps)
+	}
+}
+
+// Only a .git file that points into another repository's worktrees counts as a worktree.
+func TestDetectCountsOnlyWorktrees(t *testing.T) {
+	dir := tree(t, map[string]string{
+		"a/.git/":  "",
+		"wt/.git":  "gitdir: /x/a/.git/worktrees/wt\n",
+		"mod/.git": "gitdir: ../.git/modules/mod\n",
+	})
+	if p, err := Detect(dir); err != nil || p.Worktrees != 1 {
+		t.Errorf("worktrees %d (%v), want 1", p.Worktrees, err)
+	}
+}

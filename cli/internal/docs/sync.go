@@ -155,7 +155,8 @@ func (o Options) server(ctx context.Context, args ...string) error {
 
 // list returns name@version -> indexedAt for every indexed version.
 func (o Options) list(ctx context.Context) (map[string]time.Time, error) {
-	res, err := o.Run(ctx, execx.Cmd{Argv: append(append([]string{}, o.Server...), "list", "--output", "json"), Env: serverEnv})
+	// FileStdout: docs-mcp-server exits before Node flushes a pipe, which cut the list at 64 KiB.
+	res, err := o.Run(ctx, execx.Cmd{Argv: append(append([]string{}, o.Server...), "list", "--output", "json"), Env: serverEnv, FileStdout: true})
 	if err != nil {
 		return nil, err
 	}

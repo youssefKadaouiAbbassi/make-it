@@ -37,7 +37,9 @@ take minutes on a repository with many dependencies):
   user should know: prerequisites such as Docker for check:api, `prek install` per clone) and
   `docs` (the libraries indexed, and those that could not be). A `notices` line "no git
   repository here" means a folder with files and no git, set up without git on purpose: leave
-  the commit hooks out, skip step 8 (no commit, no `git init`) and say so in one line.
+  the commit hooks out, skip step 8 (no commit, no `git init`) and say so in one line. A line
+  starting "a folder of repositories" means the folder holds repositories and is set up for the
+  folder alone: the same, and change nothing inside those repositories.
 - `makeit: command not found`: makeit is not installed. Stop and say so in one line; do not set
   the project up another way.
 - Exit 1: a step failed, or init refused before changing anything; the JSON's `error` says why.
@@ -129,7 +131,8 @@ Run the repository's `check:full` and fix what fails, until it passes or a failu
 ## 8. The first commit
 
 Skip this step in a folder makeit set up without git (its `notices` say "no git repository
-here"): make no commit and run no `git init`; say in one line that the folder has no git.
+here" or "a folder of repositories"): make no commit and run no `git init`; say in one line that
+the folder has no git.
 
 Ask with AskUserQuestion before committing: name the branch and what the commit holds. On a yes:
 
