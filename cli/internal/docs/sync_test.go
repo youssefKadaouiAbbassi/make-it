@@ -159,7 +159,7 @@ func TestReportFailed(t *testing.T) {
 	}
 }
 
-// An index whose list runs past 64 KiB (about 600 libraries) still lists whole: a cut-off list
+// An index whose list runs past 64 KiB (205 libraries did on this machine) still lists whole: a cut-off list
 // skipped every library on every sync (the Uni-CE init of 2026-11-06, 2,176 of 2,176).
 func TestSyncBigIndex(t *testing.T) {
 	var b strings.Builder
