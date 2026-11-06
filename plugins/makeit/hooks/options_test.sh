@@ -52,6 +52,10 @@ human=$(transcript human cli)
 # A prose handback fires; anything that is not one stays quiet.
 check "user turn ends with a question" fire "$human" false $'Fixed on dev.\n\nShould I release it to prod now?'
 check "user turn ends with a statement" quiet "$human" false $'Fixed on dev, not on prod.\nA real outage was only simulated.'
+# A fence indented 4 spaces at the margin is indented code for marked, not a fence: what follows shows.
+check "4-space fence at the margin hides nothing" fire "$human" false $'Built it.\n\n    ```\n\nShould I push it to main?'
+# Inside a list item the same line opens a fenced block: its text stays code.
+check "4-space fence in a list item is still code" quiet "$human" false $'Done:\n\n1. run it\n\n    ```sh\n    echo let me know\n    ```'
 check "loop guard: second stop passes" quiet "$human" true $'Should I release it to prod now?'
 check "claude -p turn (sdk-cli, no origin)" quiet "$(transcript none sdk-cli)" false $'Should I release it?'
 check "message from another session (peer)" quiet "$(transcript peer cli)" false $'Should I release it?'
@@ -117,6 +121,9 @@ check "joined: one plan step, then the choices" fire "$human" false $'1. step\n\
 check "joined: plan indented 3 spaces" fire "$human" false $'   1. step\n   2. step\n\n'"$go"
 check "joined: choices indented 1 space" fire "$human" false $'1. step\n2. step\n\n 1. **Go** · recommended\n 2. **Stop**'
 check "joined: plan, then choices numbered 1, 1" fire "$human" false $'1. a\n2. b\n\n1. **Go** · recommended\n1. **Stop**'
+check "joined: plan numbered 1, 1, then choices numbered 1, 1" fire "$human" false $'1. a\n1. b\n\n1. **Go** · recommended\n1. **Stop**'
+check "apart: choices alone numbered 1, 1" quiet "$human" false $'Done.\n\n1. **Go** · recommended\n1. **Stop**'
+check "apart: choices written 1, 3 alone (the first shows as written)" quiet "$human" false $'Done.\n\n1. **Go** · recommended\n3. **Stop**'
 check "apart: plain line with an empty line above" quiet "$human" false $'1. step\n2. step\n\nYour answer:\n\n'"$go"
 check "apart: code block between" quiet "$human" false $'1. step\n2. step\n\n```\ncode\n```\n\n'"$go"
 check "apart: quote between" quiet "$human" false $'1. step\n2. step\n\n> note\n\n'"$go"

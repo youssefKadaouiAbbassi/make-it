@@ -48,6 +48,10 @@ rel=../.github/workflows/release.yml
 if grep -q -- '--prerelease' "$rel" || ! grep -q -- 'gh release create "$TAG" --draft --verify-tag' "$rel"; then
   echo "FAIL release.yml must draft a normal release for an existing tag (--draft --verify-tag, no --prerelease)"; fail=1
 else echo "ok release.yml drafts a normal release for the pushed tag"; fi
+# The scheduled-removal test skips on a "dev" build: the release runs it with the tag's version.
+if grep -q 'go test.*-ldflags "-X makeit/internal/buildinfo.Version=$v".*TestMigrationsRemovedOnSchedule' "$rel"; then
+  echo "ok release.yml runs the migration-removal test with the release version"
+else echo "FAIL release.yml must run TestMigrationsRemovedOnSchedule with -X makeit/internal/buildinfo.Version=\$v"; fail=1; fi
 
 # Public docs: relative links resolve, none points at the local-only INSTALL.md or cli/ design notes,
 # and no emoji.

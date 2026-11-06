@@ -44,6 +44,8 @@ jobs:
           out=$PWD/dist
           mkdir -p "$out"
           (cd cli && go generate ./...)
+          # A migration past its removal version fails the release (the test skips on a "dev" build).
+          (cd cli && go test -count=1 -ldflags "-X makeit/internal/buildinfo.Version=$v" -run TestMigrationsRemovedOnSchedule ./internal/state/)
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             os=${t%/*} arch=${t#*/}
             a=$arch; [ "$a" = amd64 ] && a=x64

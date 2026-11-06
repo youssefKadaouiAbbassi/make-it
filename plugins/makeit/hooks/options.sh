@@ -43,12 +43,12 @@ msg=$(jq -r '.last_assistant_message // empty' <<<"$input") || exit 0
 # quoted lines (a draft for someone else, "> ...").
 # A fence closes on a run of its own character at least as long as the one that opened it; a line
 # with a backtick after its opening run (```make``` runs it) is inline code, not a fence.
-# shortcut: a fence opens at any indent (one in a nested item is still code), so a top-level line
-# of four spaces and backticks, which marked reads as indented code, hides what follows; lists.mjs
-# reads the ending itself where marked is installed, so this bites only without it.
+# A fence indented 4 spaces or more opens only inside a list item (from its marker line to the next
+# line at the margin): at the margin marked reads it as indented code, and the lines after it show.
 clean=$(printf '%s\n' "$msg" | awk '
   f != "" { if ($0 ~ ("^[[:space:]]*" f "+[[:space:]]*$")) f = ""; next }
-  match($0, /^[[:space:]]*(```+|~~~+)/) && !/^[[:space:]]*`+[^`]+`/ { f = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", f); next }
+  /^([-*+]|[0-9]+[.)])([ \t]|$)/ { item = 1 } /^[^[:space:]]/ && !/^([-*+]|[0-9]+[.)])([ \t]|$)/ { item = 0 }
+  match($0, /^[[:space:]]*(```+|~~~+)/) && !/^[[:space:]]*`+[^`]+`/ && (item || $0 !~ /^(    |\t)/) { f = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", f); next }
   !/claude --resume/ && !/^[[:space:]]*>/') || exit 0
 # The wanted ending: the reply's last run of numbered lines ("1. ", "2) ", "**1.** "; indented
 # lines under an item and blank lines stay in the run) has a marked line and ends at most two lines
@@ -103,11 +103,9 @@ if [ "$opts" = yes ]; then
   # A list goes on across empty lines, lines indented into an item, and a lazy line (one written
   # right under an item whose last line is ordinary text). It ends at a fence, quote, heading,
   # rule, bullet, HTML block or 1) after 1. at the margin. A number other than 1, or an empty item,
-  # cannot start a list under a paragraph line; lines indented into a bullet item are its own. A
-  # list whose items all carry one number (1, 1) counts up from it and is left alone.
-  # shortcut: this pass runs only where marked is missing (lists.mjs answers everywhere else); it
-  # expands only leading tabs and never flags the all-one-number list, so "1. a\n1. b", an empty
-  # line, then "1. **Go**\n1. **Stop**" (shown 3, 4) passes here.
+  # cannot start a list under a paragraph line; lines indented into a bullet item are its own. As in
+  # lists.mjs, the options begin after the last empty line above the last marked item, or at an item
+  # numbered lower than the one above it, and the first of them must show the number written on it.
   joined=$(printf '%s\n' "$msg" | awk "$marked_fn"'
     { while (match($0, /^ *\t/)) $0 = substr($0, 1, RLENGTH - 1) "    " substr($0, RLENGTH + 1) }
     fence != "" { if ($0 ~ ("^ *" fence "+[ \t]*$")) fence = ""; next }
@@ -125,7 +123,7 @@ if [ "$opts" = yes ]; then
           if (substr(after, 1, 1) == "\t") sp = 4 - (k + m) % 4; else { match(after, /^ */); sp = RLENGTH }
           d = substr(rest, m, 1)
           if (!(on && d == delim)) { n++; start[n] = rest + 0; cnt[n] = 0; delim = d; on = 1 }
-          c = cnt[n]++; wrote[n, c] = rest + 0; mk[n, c] = marked($0)
+          c = cnt[n]++; wrote[n, c] = rest + 0; mk[n, c] = marked($0); gap[n, c] = blank
           col = k + m + (empty || sp > 4 ? 1 : sp); ipara = !empty && sp <= 4; iempty = empty
           blank = 0; para = 0; bon = 0; next
         }
@@ -141,9 +139,8 @@ if [ "$opts" = yes ]; then
     END {
       for (l = n; l >= 1; l--) { last = -1; for (c = 0; c < cnt[l]; c++) if (mk[l, c]) last = c; if (last >= 0) break }
       if (l < 1) exit
-      same = 1; for (c = 1; c < cnt[l]; c++) if (wrote[l, c] != wrote[l, 0]) same = 0
-      if (same) exit
-      for (c = 0; c <= last; c++) if (wrote[l, c] != start[l] + c) { print "yes"; exit }
+      first = 0; for (c = 1; c <= last; c++) if (gap[l, c] || wrote[l, c] < wrote[l, c - 1]) first = c
+      if (wrote[l, first] != start[l] + first) print "yes"
     }') || true
   [ "$joined" = yes ] || exit 0
   emit "$renumbered"
