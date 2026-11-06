@@ -12,6 +12,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/latest"
 	"makeit/internal/plan"
+	"makeit/internal/state"
 )
 
 func TestPending(t *testing.T) {
@@ -95,7 +96,8 @@ func TestChangesSourcesCurrent(t *testing.T) {
 	}
 }
 
-func TestRunReportsPendingChanges(t *testing.T) {
+// A first init writes the current templates: the project is born with every change.
+func TestRunFreshProjectIsCurrent(t *testing.T) {
 	dir := nodeRepo(t)
 	e, _ := testEnv(t, dir)
 	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
@@ -103,6 +105,31 @@ func TestRunReportsPendingChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, all, _ := LoadChanges(catalog.Embedded)
+	if len(rep.Changes) != 0 || loadRepo(t, dir).InitVersion != Newest(all) {
+		t.Errorf("fresh init: changes %v, initVersion %q, want none and %q", rep.Changes, loadRepo(t, dir).InitVersion, Newest(all))
+	}
+}
+
+// Review Focus 4: a record an older makeit wrote has no initVersion and gets every change.
+func TestRunReportsPendingChanges(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	old := loadRepo(t, dir)
+	old.InitVersion = ""
+	if err := state.SaveRepo(filepath.Join(dir, RecordName), old); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, all, _ := LoadChanges(catalog.Embedded)
+	if loadRepo(t, dir).InitVersion != "" {
+		t.Error("a rerun set initVersion before the changes were applied")
+	}
 	if len(rep.Changes) != len(all) {
 		t.Fatalf("a project with no initVersion gets %d changes, want all %d", len(rep.Changes), len(all))
 	}

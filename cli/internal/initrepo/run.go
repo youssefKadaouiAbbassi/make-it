@@ -80,6 +80,8 @@ type run struct {
 	docs    []string
 	// manual is the hash of the run's manual steps ("" when there are none).
 	manual string
+	// bornAt is the newest init change, set on a first init, whose record starts there.
+	bornAt string
 	// newer are files init wrote, unchanged since, whose template has moved on (without --update).
 	newer []string
 }
@@ -117,15 +119,19 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	if err != nil {
 		return Report{}, err
 	}
-	prev, _, err := state.LoadRepo(filepath.Join(e.Dir, RecordName))
-	if err != nil {
-		return Report{}, err
-	}
-	changes, err := pendingChanges(e.Catalog, prev.InitVersion)
+	prev, info, err := state.LoadRepo(filepath.Join(e.Dir, RecordName))
 	if err != nil {
 		return Report{}, err
 	}
 	r := &run{Env: e, opts: o, p: p, prev: prev, noGit: noGit}
+	changes, newest, err := pendingChanges(e.Catalog, prev.InitVersion)
+	if err != nil {
+		return Report{}, err
+	}
+	if !info.Found {
+		// A first init writes the current templates: the project starts with every change.
+		changes, r.bornAt = []Change{}, newest
+	}
 	steps, seedRep, err := r.steps(gitInit)
 	if err != nil {
 		return Report{}, err
@@ -478,6 +484,9 @@ func (r *run) recordStep() plan.Step {
 		next.Files = r.next
 		next.Catalog = state.RepoCatalog{Kind: r.CatalogKind, Resolved: r.CatalogResolved}
 		next.ManualSha256 = r.manual
+		if r.bornAt != "" {
+			next.InitVersion = r.bornAt
+		}
 		return &next
 	}
 	path := r.path(RecordName)

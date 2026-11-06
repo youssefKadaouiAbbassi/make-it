@@ -89,17 +89,17 @@ func SourcesHash(files map[string][]byte) string {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
-// pendingChanges are the changes in src newer than initVersion. A plugin set older than the list
-// has none.
-func pendingChanges(src catalog.Source, initVersion string) ([]Change, error) {
+// pendingChanges are the changes in src newer than initVersion, and the newest change's version.
+// A plugin set older than the list has none.
+func pendingChanges(src catalog.Source, initVersion string) ([]Change, string, error) {
 	_, all, err := LoadChanges(src)
 	if errors.Is(err, fs.ErrNotExist) {
-		return []Change{}, nil
+		return []Change{}, "", nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return Pending(all, initVersion), nil
+	return Pending(all, initVersion), Newest(all), nil
 }
 
 // applied is `makeit init --applied`: it records the newest init change as applied and adds keep
