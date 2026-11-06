@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -229,7 +230,18 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	}
 	ours := func(path string) bool { f := r.prev.Files[path]; return f != nil && !f.PreExisted }
 	seeds, merges, rep, err := Seeds(r.p, r.Catalog, r.Req, ours)
-	if r.noGit {
+	var drops []plan.Step
+	if r.noGit && len(r.p.Repos) > 0 {
+		// A folder of repositories: the files that act inside a repository are left out, and the
+		// ones an older run wrote here go when nobody changed them.
+		seeds = slices.DeleteFunc(seeds, func(s Seed) bool { return workspaceLeavesOut(s.Path) })
+		merges = slices.DeleteFunc(merges, func(m MergeSeed) bool { return workspaceLeavesOut(m.Path) })
+		rep.Notices = append(slices.DeleteFunc(rep.Notices, mentionsGitOnly), workspaceNotice(r.p))
+		rep.Manual = slices.DeleteFunc(rep.Manual, mentionsGitOnly)
+		var notes []string
+		drops, notes = r.workspaceDrops()
+		rep.Notices = append(rep.Notices, notes...)
+	} else if r.noGit {
 		// Commit hooks only work inside a repository: their config and its lines are left out.
 		seeds = slices.DeleteFunc(seeds, func(s Seed) bool { return s.Path == ".pre-commit-config.yaml" })
 		gitOnly := func(l string) bool {
@@ -250,6 +262,7 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	for _, s := range seeds {
 		steps = append(steps, r.seedStep(s))
 	}
+	steps = append(steps, drops...)
 	if r.opts.Offline {
 		rep.Notices = append(rep.Notices, "--offline: docs not synced")
 	} else {
@@ -483,6 +496,73 @@ func writeFile(path string, b []byte) error {
 		return err
 	}
 	return fsx.WriteAtomic(path, b, 0o644)
+}
+
+// workspaceLeavesOut reports a file a folder of repositories does not get: each acts inside a
+// repository (git, Renovate, the CI scan and workflows, the env template, the commit hooks).
+func workspaceLeavesOut(path string) bool {
+	switch path {
+	case ".gitignore", "renovate.json", ".grype.yaml", ".env.example", ".pre-commit-config.yaml":
+		return true
+	}
+	return strings.HasPrefix(path, ".github/workflows/") || strings.HasPrefix(path, "ci/")
+}
+
+// mentionsGitOnly reports a notice or manual line about one of the files a workspace leaves out.
+func mentionsGitOnly(l string) bool {
+	for _, w := range []string{".gitignore", "renovate", ".grype", ".env.example", ".pre-commit-config", "prek install", "floor-guard", "gate.yml"} {
+		if strings.Contains(l, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// workspaceNotice names the repositories found, what was left out and why.
+func workspaceNotice(p Project) string {
+	n := "a folder of repositories (" + strings.Join(p.Repos, ", ") + "): set up for the folder, the repositories untouched; .gitignore, renovate.json, .grype.yaml, .env.example, the commit hooks and the CI workflow are left out because they act inside a repository: run makeit init in a repository to set it up there"
+	switch p.Worktrees {
+	case 0:
+	case 1:
+		n += "; 1 worktree skipped"
+	default:
+		n += fmt.Sprintf("; %d worktrees skipped", p.Worktrees)
+	}
+	return n
+}
+
+// workspaceDrops are the removals of the files an older run wrote here that a workspace leaves
+// out, when nobody changed them, and the notices for those it keeps.
+func (r *run) workspaceDrops() ([]plan.Step, []string) {
+	var steps []plan.Step
+	var notes []string
+	for _, path := range slices.Sorted(maps.Keys(r.prev.Files)) {
+		f := r.prev.Files[path]
+		if !workspaceLeavesOut(path) {
+			continue
+		}
+		if f.PreExisted {
+			if len(f.Added) > 0 {
+				notes = append(notes, "makeit's lines in "+path+" stay (the file was there before): remove them by hand if you want")
+			}
+			continue
+		}
+		full := r.path(path)
+		steps = append(steps, plan.Step{ID: "drop:" + path, Title: "Remove " + full + " (a folder of repositories does not use it)",
+			Already: func(context.Context) (bool, error) {
+				cur, found, err := fsx.ReadOptional(full)
+				if err != nil || !found {
+					return true, err
+				}
+				if fsx.Sha256(cur) != f.WrittenSha256 {
+					r.keep(path, "changed since makeit wrote it; a folder of repositories does not use it, so it stays yours")
+					return true, nil
+				}
+				return false, nil
+			},
+			Run: func(context.Context) (string, error) { return "", os.Remove(full) }})
+	}
+	return steps, notes
 }
 
 // needsGitInit is true for a missing or empty directory outside any git work tree; a non-empty
