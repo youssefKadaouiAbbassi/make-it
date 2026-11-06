@@ -296,10 +296,9 @@ func defaultBranch(gitDir string) string {
 	return "main"
 }
 
-// findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories
-// and any directory below dir it cannot read (a database bind mount owned by another user).
 // workspaceChildren are, for a dir outside any git work tree, the direct children holding their
-// own .git directory, sorted, and the number holding a .git file (worktrees of another repository).
+// own .git directory, sorted, and the number of worktrees of another repository (a .git file
+// pointing into its worktrees folder).
 func workspaceChildren(dir string) (repos []string, worktrees int) {
 	if abs, err := filepath.Abs(dir); err != nil || gitTop(abs) != "" {
 		return nil, 0
@@ -309,20 +308,25 @@ func workspaceChildren(dir string) (repos []string, worktrees int) {
 		if !en.IsDir() {
 			continue
 		}
-		fi, err := os.Lstat(filepath.Join(dir, en.Name(), ".git"))
+		git := filepath.Join(dir, en.Name(), ".git")
+		fi, err := os.Lstat(git)
 		switch {
 		case err != nil:
 		case fi.IsDir():
 			repos = append(repos, en.Name())
 		case fi.Mode().IsRegular():
-			worktrees++
+			// A worktree's .git points into another repository's worktrees folder.
+			if b, err := os.ReadFile(git); err == nil && strings.Contains(string(b), "/worktrees/") {
+				worktrees++
+			}
 		}
 	}
 	return repos, worktrees
 }
 
-// findManifests lists the manifests under dir to depth 3; with repos (a workspace), a top-level
-// folder is read only when it is one of them.
+// findManifests returns the manifests to depth 3 (slash paths), skipping the pruned directories
+// and any directory below dir it cannot read (a database bind mount owned by another user); with
+// repos (a workspace), a top-level folder is read only when it is one of them.
 func findManifests(dir string, repos []string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {

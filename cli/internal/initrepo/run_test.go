@@ -566,3 +566,123 @@ func TestInitWorkspaceUpdateRemovesOldFiles(t *testing.T) {
 		}
 	}
 }
+
+// oldNoGitSetup is a plain no-git folder an older makeit set up, then turned into a workspace.
+func oldNoGitSetup(t *testing.T) (string, Env) {
+	t.Helper()
+	dir := tree(t, map[string]string{"notes/readme.md": "x\n"})
+	e, _ := testEnv(t, dir)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"a/.git", "b/.git"} {
+		if err := os.MkdirAll(filepath.Join(dir, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir, e
+}
+
+// The cleanup is --update's (the docs say so): a plain run, as /makeit:init's first step is,
+// leaves the old files on disk and in the record for a later --update (the 0.3.7 review).
+func TestInitWorkspaceRemovesOnlyOnUpdate(t *testing.T) {
+	dir, e := oldNoGitSetup(t)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "renovate.json")); err != nil {
+		t.Fatalf("a run without --update removed renovate.json: %v", err)
+	}
+	if loadRepo(t, dir).Files["renovate.json"] == nil {
+		t.Fatal("renovate.json left the record, so --update could no longer remove it")
+	}
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Update: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "renovate.json")); err == nil {
+		t.Error("--update did not remove renovate.json")
+	}
+}
+
+// A removal never follows a symlink: a linked folder or file stays, with its target (the 0.3.7
+// review: ci/ linked elsewhere lost its floor-guard.mjs).
+func TestInitWorkspaceDropFollowsNoLink(t *testing.T) {
+	dir, e := oldNoGitSetup(t)
+	elsewhere := t.TempDir()
+	body, err := os.ReadFile(filepath.Join(dir, "renovate.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(elsewhere, "renovate.json")
+	if err := os.WriteFile(target, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "renovate.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, "renovate.json")); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Update: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("the link's target is gone: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "renovate.json")); err != nil {
+		t.Errorf("the link itself was removed: %v", err)
+	}
+	if !slices.ContainsFunc(rep.Kept, func(k setup.Kept) bool { return k.Item == "renovate.json" && strings.Contains(k.Reason, "symlink") }) {
+		t.Errorf("kept %+v, want renovate.json as a symlink", rep.Kept)
+	}
+}
+
+// After the drops, a folder they emptied goes too (.github/workflows), never one with files.
+func TestInitWorkspaceDropLeavesNoEmptyFolder(t *testing.T) {
+	dir, e := oldNoGitSetup(t)
+	wf := filepath.Join(dir, ".github", "workflows")
+	if err := os.MkdirAll(wf, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rec := loadRepo(t, dir)
+	b := []byte("name: gate\n")
+	if err := os.WriteFile(filepath.Join(wf, "gate.yml"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".github", "CODEOWNERS"), []byte("* @x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec.Files[".github/workflows/gate.yml"] = &state.RepoFile{Class: "ci", Template: "ci/.github/workflows/gate-caller.yml", WrittenSha256: fsx.Sha256(b)}
+	if err := state.SaveRepo(filepath.Join(dir, ".makeit.json"), rec); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Update: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(wf); err == nil {
+		t.Error(".github/workflows, emptied, is still there")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".github", "CODEOWNERS")); err != nil {
+		t.Errorf(".github with your CODEOWNERS was touched: %v", err)
+	}
+}
+
+// A workspace has no CI workflow, so the lines about it do not show (the 0.3.7 review): the npm ci
+// lockfile line for a root package.json, the CI caller notice.
+func TestInitWorkspaceNoCILines(t *testing.T) {
+	dir := workspaceTree(t)
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name": "ws", "scripts": {}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e, _ := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range append(append([]string{}, rep.Manual...), rep.Notices...) {
+		if strings.Contains(l, "npm ci") || strings.Contains(l, "CI caller") {
+			t.Errorf("a CI line in a workspace: %q", l)
+		}
+	}
+}

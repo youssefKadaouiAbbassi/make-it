@@ -510,7 +510,7 @@ func workspaceLeavesOut(path string) bool {
 
 // mentionsGitOnly reports a notice or manual line about one of the files a workspace leaves out.
 func mentionsGitOnly(l string) bool {
-	for _, w := range []string{".gitignore", "renovate", ".grype", ".env.example", ".pre-commit-config", "prek install", "floor-guard", "gate.yml"} {
+	for _, w := range []string{".gitignore", "renovate", ".grype", ".env.example", ".pre-commit-config", "prek install", "floor-guard", "gate.yml", "npm ci", "CI caller"} {
 		if strings.Contains(l, w) {
 			return true
 		}
@@ -548,8 +548,14 @@ func (r *run) workspaceDrops() ([]plan.Step, []string) {
 			continue
 		}
 		full := r.path(path)
-		steps = append(steps, plan.Step{ID: "drop:" + path, Title: "Remove " + full + " (a folder of repositories does not use it)",
+		steps = append(steps, plan.Step{ID: "drop:" + path, Title: "Remove " + path + " (a folder of repositories does not use it)",
 			Already: func(context.Context) (bool, error) {
+				// A link is never followed, and only --update removes: otherwise the entry stays
+				// recorded, so a later --update still finds it.
+				if r.linked(path) || !r.opts.Update {
+					r.next[path] = f
+					return true, nil
+				}
 				cur, found, err := fsx.ReadOptional(full)
 				if err != nil || !found {
 					return true, err
@@ -560,7 +566,22 @@ func (r *run) workspaceDrops() ([]plan.Step, []string) {
 				}
 				return false, nil
 			},
-			Run: func(context.Context) (string, error) { return "", os.Remove(full) }})
+			Run: func(context.Context) (string, error) {
+				if err := os.Remove(full); err != nil {
+					return "", err
+				}
+				// The folders it emptied go too (.github/workflows), up to the project, never one
+				// that still holds something.
+				for d := filepath.Dir(full); d != filepath.Clean(r.Dir) && strings.HasPrefix(d, filepath.Clean(r.Dir)); d = filepath.Dir(d) {
+					if os.Remove(d) != nil {
+						break
+					}
+				}
+				return "", nil
+			}})
+	}
+	if len(steps) > 0 && !r.opts.Update {
+		notes = append(notes, fmt.Sprintf("%d files an older makeit wrote here act only inside a repository: makeit init --update removes the ones you never changed", len(steps)))
 	}
 	return steps, notes
 }

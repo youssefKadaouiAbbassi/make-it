@@ -319,3 +319,15 @@ func TestDetectPlainFolderUnchanged(t *testing.T) {
 		t.Errorf("repos %v worktrees %d deps %v", p.Repos, p.Worktrees, p.Deps)
 	}
 }
+
+// Only a .git file that points into another repository's worktrees counts as a worktree.
+func TestDetectCountsOnlyWorktrees(t *testing.T) {
+	dir := tree(t, map[string]string{
+		"a/.git/":  "",
+		"wt/.git":  "gitdir: /x/a/.git/worktrees/wt\n",
+		"mod/.git": "gitdir: ../.git/modules/mod\n",
+	})
+	if p, err := Detect(dir); err != nil || p.Worktrees != 1 {
+		t.Errorf("worktrees %d (%v), want 1", p.Worktrees, err)
+	}
+}
