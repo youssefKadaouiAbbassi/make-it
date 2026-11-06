@@ -157,4 +157,11 @@ A second run with nothing new reports every step as already done. These rules de
   it is not added again.
 - A symlink is never followed.
 
-After `makeit update`, run `makeit init --update` in each project to take the new files.
+- When a newer makeit changes how init sets a project up (a template row, a rule for the check
+  tasks), `/makeit:init` in a project set up by an older one applies each listed change to your
+  files, keeping the values you filled in. It then lists what else differs from the current way
+  and asks, one line each, whether to apply it or keep yours; a difference you keep is not raised
+  again.
+
+After `makeit update`, run `/makeit:init` (or `makeit init --update`) in each project to take the
+new files and the new way.

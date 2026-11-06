@@ -3,6 +3,17 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.9
+
+New:
+
+- `/makeit:init` brings a project an older makeit set up up to the current way. Each change to
+  how init works is listed per version in the plugin set, and a rerun applies the ones newer than
+  the project's version to the files you filled in, keeping your values: the 0.3.7 migrations row
+  and budgets line, the 0.3.8 Makefile rule. It then lists what else differs from the current
+  templates and steps, and asks; a difference you keep is recorded in `.makeit.json` and not
+  raised again. `makeit init --applied` records it.
+
 ## 0.3.8
 
 Fixes:
