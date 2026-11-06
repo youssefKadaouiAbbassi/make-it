@@ -3,6 +3,15 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.8
+
+Fixes:
+
+- `/makeit:init` wires the check tasks in a Makefile with one target per tool, so
+  `make -k check:full` runs every check and reports every failure; a recipe that chained the
+  tools stopped at the first one that failed and hid the rest. Measured: with the old wording 0 of
+  5 runs wrote such a Makefile, with the new one 5 of 5.
+
 ## 0.3.7
 
 New:
