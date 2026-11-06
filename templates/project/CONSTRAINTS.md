@@ -21,6 +21,8 @@ Format from agent-skills constraint-driven-development (MIT, addyosmani/agent-sk
 | `check:task` | `check:fast` plus the tests related to the change | 90 s |
 | `check:full` | everything CI runs | unlimited, CI |
 
+The budgets are starting points: replace each with the time measured on this project.
+
 ## Enforced with numbers
 
 | Dimension | Rule | Checked by | Runs at |
@@ -35,7 +37,7 @@ Format from agent-skills constraint-driven-development (MIT, addyosmani/agent-sk
 | CI config | No findings | `zizmor .github/workflows/` | CI |
 | Accessibility | Zero critical or serious | `@axe-core/playwright` in the E2E suite | CI, preview |
 | Performance | Budget file passes (LCP <= 2500 ms, CLS <= 0.1, total weight) | `sitespeed.io --budget.configPath budget.json` | preview |
-| Migrations | No squawk error-level rule | `squawk` on new migrations | CI |
+| Migrations | No error-level finding from the database's migration check | `squawk` for Postgres; another database's own check, or delete this row | CI |
 
 Every row names the command that produces the verdict. A dimension with a number and no command is an aspiration, not a constraint. Delete the rows that do not apply to this project type; do not leave them with a placeholder command.
 

@@ -1,9 +1,9 @@
 # Commands
 
-Every command and flag, as `makeit help` prints them in makeit 0.3.6. Run `makeit help <command>` for the same text in your terminal.
+Every command and flag, as `makeit help` prints them in makeit 0.3.7. Run `makeit help <command>` for the same text in your terminal.
 
 ```
-makeit 0.3.6: a tested Claude Code setup for serious coding.
+makeit 0.3.7: a tested Claude Code setup for serious coding.
 
 Usage: makeit [command] [flags]   (no command: status and what to do next)
 

@@ -54,6 +54,13 @@ the plan and writes nothing; `--yes` applies it without asking.
 - A directory with files but no git is set up without git: no repository is created, and the parts
   that only work inside one are left out (the commit-hook config, `--rulesets`), with a line saying
   so. After `git init`, `makeit init --update` adds the hook config.
+- A directory with no git that holds repositories as direct children (a workspace you open Claude
+  in) is set up for the folder alone: CLAUDE.md, CONSTRAINTS.md, HANDOFF.md, the Claude settings
+  and the check tasks, nothing inside the repositories. The files that only act inside a
+  repository (`.gitignore`, `renovate.json`, `.grype.yaml`, `.env.example`, the commit hooks, the
+  CI workflow) are left out; `makeit init --update` removes the ones an older makeit wrote there,
+  if you never changed them. Dependencies come from each repository; worktrees (a child whose
+  `.git` is a file) are skipped.
 
 At the end, init prints what it wrote, what it kept and why, the lines to add by hand to files it
 does not edit, and notices such as "enable the git hooks once per clone: prek install".
