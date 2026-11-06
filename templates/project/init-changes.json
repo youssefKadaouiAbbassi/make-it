@@ -1,0 +1,24 @@
+{
+  "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
+  "sources": "sha256:e0cc670e6a82a5889951654d986910334f53cb09935d0339d885e860d81030e9",
+  "changes": [
+    {
+      "version": "0.3.7",
+      "id": "migrations-row",
+      "files": ["CONSTRAINTS.md"],
+      "prompt": "The Migrations row of the floor table names the project's own database's migration check: squawk only for Postgres; for another database, its own check, or no row when the project has no migrations. A row naming squawk on a project without Postgres is out of date. Keep the row as the user wrote it when it already fits the database."
+    },
+    {
+      "version": "0.3.7",
+      "id": "budgets-starting-points",
+      "files": ["CONSTRAINTS.md"],
+      "prompt": "Under the check-task budgets table, the line \"The budgets are starting points: replace each with the time measured on this project.\" is present while any budget is still a template value (10 s for check:fast, 90 s for check:task). When every budget is already a measured time, the line is not needed: leave the table as it is."
+    },
+    {
+      "version": "0.3.8",
+      "id": "makefile-target-per-tool",
+      "files": ["Makefile"],
+      "prompt": "When the check tasks live in a Makefile, each tool has its own target (one command per recipe) and each check task depends on those targets, so `make -k check:full` runs every check and reports every failure; a recipe that runs several tools stops at its first failing line. Split such a recipe into one target per tool with the same commands. Not a Makefile: nothing to do."
+    }
+  ]
+}

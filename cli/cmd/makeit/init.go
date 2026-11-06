@@ -61,7 +61,8 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 		shown = true
 		return u.Confirm("Apply this plan?", true)
 	}
-	rep, err := initrepo.Run(ctx, e, mode, confirm, initrepo.Options{Update: p.Bool["update"], Rulesets: p.Bool["rulesets"], Offline: p.Bool["offline"]})
+	rep, err := initrepo.Run(ctx, e, mode, confirm, initrepo.Options{Update: p.Bool["update"], Rulesets: p.Bool["rulesets"], Offline: p.Bool["offline"],
+		Applied: p.String["applied"], Keep: p.String["keep"]})
 	if ctx.Err() != nil {
 		fmt.Fprintf(stderr, "%s: init interrupted\n", prog)
 		return 1
@@ -76,15 +77,19 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	}
 	if asJSON {
 		out := struct {
-			Version string         `json:"version"`
-			Plan    []plan.Outcome `json:"plan"`
-			Kept    []setup.Kept   `json:"kept"`
-			Manual  []string       `json:"manual"`
-			Notices []string       `json:"notices"`
-			Docs    []string       `json:"docs"`
-			Summary string         `json:"summary"`
-			Error   string         `json:"error,omitempty"`
-		}{buildinfo.Version, rep.Plan.Outcomes, orEmpty(rep.Kept), orEmpty(rep.Manual), orEmpty(rep.Notices), orEmpty(rep.Docs), rep.Plan.Summary(), errText(err)}
+			Version    string            `json:"version"`
+			Plan       []plan.Outcome    `json:"plan"`
+			Kept       []setup.Kept      `json:"kept"`
+			Manual     []string          `json:"manual"`
+			Notices    []string          `json:"notices"`
+			Docs       []string          `json:"docs"`
+			Changes    []initrepo.Change `json:"changes"`
+			InitTarget string            `json:"initTarget,omitempty"`
+			Keep       []string          `json:"keep"`
+			Summary    string            `json:"summary"`
+			Error      string            `json:"error,omitempty"`
+		}{buildinfo.Version, rep.Plan.Outcomes, orEmpty(rep.Kept), orEmpty(rep.Manual), orEmpty(rep.Notices), orEmpty(rep.Docs),
+			orEmpty(rep.Changes), rep.Target, orEmpty(rep.Keep), rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
 	if !shown || mode == plan.Apply {

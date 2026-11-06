@@ -39,7 +39,14 @@ type Env struct {
 
 // Options are init's flags. Offline skips the docs sync and refuses Rulesets: both need the
 // network.
-type Options struct{ Update, Rulesets, Offline bool }
+type Options struct {
+	Update, Rulesets, Offline bool
+	// Applied is the init change version /makeit:init brought the project to (the report's
+	// Target), recorded with Keep (one line) added to the kept differences; only the record is
+	// written.
+	Applied string
+	Keep    string
+}
 
 // Report is what an init run did, or would do.
 type Report struct {
@@ -48,6 +55,11 @@ type Report struct {
 	Manual  []string
 	Notices []string
 	Docs    []string
+	// Changes are the init changes newer than the project's initVersion, Target the newest one
+	// (what --applied records once they are applied), Keep the differences the user kept.
+	Changes []Change
+	Target  string
+	Keep    []string
 }
 
 // noGitNotice says what init leaves out in a folder with files and no git.
@@ -70,6 +82,8 @@ type run struct {
 	docs    []string
 	// manual is the hash of the run's manual steps ("" when there are none).
 	manual string
+	// bornAt is the newest init change, set on a first init, whose record starts there.
+	bornAt string
 	// newer are files init wrote, unchanged since, whose template has moved on (without --update).
 	newer []string
 }
@@ -77,6 +91,15 @@ type run struct {
 // Run plans init and, as mode allows, applies it. confirm is asked once, with the plan, in
 // Prompt mode. A plan with nothing to do applies nothing.
 func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), o Options) (Report, error) {
+	if o.Keep != "" && o.Applied == "" {
+		return Report{}, errors.New("--keep needs --applied")
+	}
+	if o.Applied != "" {
+		if o.Update || o.Rulesets {
+			return Report{}, errors.New("--applied runs alone: drop --update and --rulesets")
+		}
+		return applied(ctx, e, mode, o.Applied, o.Keep)
+	}
 	if o.Offline && o.Rulesets {
 		return Report{}, errors.New("--rulesets needs the network; drop --offline")
 	}
@@ -101,17 +124,30 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	if err != nil {
 		return Report{}, err
 	}
-	prev, _, err := state.LoadRepo(filepath.Join(e.Dir, RecordName))
+	prev, info, err := state.LoadRepo(filepath.Join(e.Dir, RecordName))
 	if err != nil {
 		return Report{}, err
 	}
 	r := &run{Env: e, opts: o, p: p, prev: prev, noGit: noGit}
+	changes, newest, err := pendingChanges(e.Catalog, prev.InitVersion)
+	if err != nil {
+		return Report{}, err
+	}
+	if !info.Found && !hasOwnDocs(e.Dir) {
+		// A first init writes the current templates: the project starts with every change. Docs
+		// already there are kept as they are, and may be older.
+		changes, r.bornAt = []Change{}, newest
+	}
 	steps, seedRep, err := r.steps(gitInit)
 	if err != nil {
 		return Report{}, err
 	}
 	r.reset()
-	rep := Report{Plan: plan.Execute(ctx, steps, plan.Options{DryRun: true}), Manual: seedRep.Manual, Notices: seedRep.Notices}
+	if n := len(changes); n > 0 {
+		seedRep.Notices = append(seedRep.Notices, changesNotice(n))
+	}
+	rep := Report{Plan: plan.Execute(ctx, steps, plan.Options{DryRun: true}), Manual: seedRep.Manual, Notices: seedRep.Notices,
+		Changes: changes, Target: newest, Keep: prev.Keep}
 	rep.Kept = r.kept
 	rep.Notices = append(rep.Notices, r.newerNotice()...)
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {
@@ -457,6 +493,9 @@ func (r *run) recordStep() plan.Step {
 		next.Files = r.next
 		next.Catalog = state.RepoCatalog{Kind: r.CatalogKind, Resolved: r.CatalogResolved}
 		next.ManualSha256 = r.manual
+		if r.bornAt != "" {
+			next.InitVersion = r.bornAt
+		}
 		return &next
 	}
 	path := r.path(RecordName)

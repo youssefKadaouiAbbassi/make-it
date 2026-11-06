@@ -229,6 +229,8 @@ if [ -f "$sk" ]; then
   body=$(awk 'NR == 1 && /^---$/ { f = 1; next } f && /^---$/ { f = 0; b = 1; next } b' "$sk")
   expect "init skill: only the user starts it" "disable-model-invocation: true" "$front"
   expect "init skill: pre-approves exactly the init call" "allowed-tools: Bash(makeit init --yes --json)" "$front"
+  expect "init skill: pre-approves the record call" "Bash(makeit init --applied:*)" "$front"
+  expect "init skill: keep lines in single quotes" "--keep '<file>: <what differs>'" "$body"
   if grep -Eq '^description: [^>|].*' <<<"$front" && ! grep -Eq '^description: .*: ' <<<"$front"; then ok "init skill: one-line description, no ': '"; else bad "init skill: description"; fi
   if grep -Eq '^name:' <<<"$front"; then bad "init skill: no name: line (the directory names it)"; else ok "init skill: no name: line"; fi
   if grep -Fq '!`' "$sk"; then bad "init skill: no !\` injection"; else ok "init skill: no shell injection"; fi

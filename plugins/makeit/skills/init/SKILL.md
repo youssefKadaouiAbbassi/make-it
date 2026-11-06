@@ -1,7 +1,7 @@
 ---
 description: Set up this project the makeit way. Runs makeit init, then does the parts that need judgment, runs check:full, and asks before the first commit.
 disable-model-invocation: true
-allowed-tools: Bash(makeit init --yes --json)
+allowed-tools: Bash(makeit init --yes --json), Bash(makeit init --applied:*)
 ---
 
 # /makeit:init
@@ -12,7 +12,8 @@ that need judgment, in this order, and stop at the end of each step only when it
 
 ## The order
 
-1. Run makeit init (step 1 below). If it fails, stop there.
+1. Run makeit init (step 1 below). If it fails, stop there. When it lists `changes`, bring the
+   project up to the current way first (the section after step 1).
 2. Fill the project facts and the sections the docs lack.
 3. Wire the check tasks to the real tools.
 4. Apply the lines makeit reported for files it does not edit.
@@ -48,6 +49,33 @@ take minutes on a repository with many dependencies):
 
 Search the docs index (search_docs, or the docs-search skill) before you rely on a library's API
 in the steps below; makeit indexed the project's dependencies at their versions.
+
+## Bring an older setup up to the current way
+
+Only when the JSON's `changes` is not empty: an older makeit set this project up, and how init
+works has changed since. Each entry names its `files` and, in `prompt`, the end state to reach;
+`initTarget` is the version they bring the project to.
+
+1. Apply the entries in order. Keep every value the user filled in (names, commands, measured
+   numbers); change only what the entry describes. An entry whose end state is already there
+   needs nothing. When an entry would undo what the user clearly chose (a row they deleted, a
+   value they set on purpose), do not apply it: list it in the review below instead.
+2. The review: compare CLAUDE.md and CONSTRAINTS.md with `templates/project/` in the plugin set
+   (`~/.makeit/catalog`), and the check tasks and the run recipe with steps 3 and 6. List what
+   looks like a gap, not a choice: a template section the file lacks, a `<...>` left, a rule of
+   those steps the project breaks. Leave out every difference a `keep` line in the JSON names,
+   and every value the user filled in. Nothing to list: say so in one line.
+3. A list: ask in the reply, in the global CLAUDE.md's reading shape, one numbered line per
+   difference (the file, what differs, what you would change), then the choices: apply all,
+   apply some (the user names them), keep all. Apply what the user picks.
+4. Record it: `makeit init --applied <initTarget>` once, then
+   `makeit init --applied <initTarget> --keep '<file>: <what differs>'` once per difference the
+   user kept (that exact line is never raised again). Write the line in single quotes and plain
+   words, with no backtick, `$` or `'` in it: the shell runs what backticks and `$(...)` hold.
+   Each command on its own, like step 1. In a repository, `.makeit.json` goes in the step 8
+   commit.
+
+Then go on with step 2; the steps below still run, as on any init.
 
 ## 2. Project facts and missing sections
 

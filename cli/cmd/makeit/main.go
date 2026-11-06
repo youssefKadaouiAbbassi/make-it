@@ -41,6 +41,8 @@ var commands = []cli.Command{
 	{Name: "init", Args: "[dir]", Summary: "set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index", Flags: []cli.Flag{
 		{Name: "update", Help: "also update files init wrote earlier that nobody changed since"},
 		{Name: "rulesets", Help: "also send makeit's GitHub rulesets to the repository (needs gh and a GitHub remote)"},
+		{Name: "applied", Value: "version", Help: "record that /makeit:init applied the listed init changes up to version (the initTarget init --json reports); writes only .makeit.json"},
+		{Name: "keep", Value: "line", Help: "with --applied: a difference from the current way the user kept, never raised again"},
 	}},
 	{Name: "rollback", Summary: "undo the last update that changed something", Modifies: true},
 	// self install is what install.sh and install.ps1 run; update and rollback replaced the rest.

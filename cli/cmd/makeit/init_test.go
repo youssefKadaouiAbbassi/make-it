@@ -31,7 +31,7 @@ func TestInitJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("not one JSON object: %v\n%s", err, out)
 	}
-	for _, k := range []string{"version", "plan", "manual", "notices", "docs", "kept", "summary"} {
+	for _, k := range []string{"version", "plan", "manual", "notices", "docs", "kept", "summary", "changes", "keep"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("JSON lacks %q: %s", k, out)
 		}
@@ -133,4 +133,28 @@ func TestInitManualOnce(t *testing.T) {
 	write(t, rec, string(stale))
 	again("manual lines changed", true)
 	again("re-run after the change", false)
+}
+
+func TestInitApplied(t *testing.T) {
+	newDocsMachine(t)
+	dir := initRepo(t)
+	code, out, errOut := run2(t, "init", "--json", "--yes", dir)
+	var first struct{ InitTarget string }
+	if err := json.Unmarshal([]byte(out), &first); code != 0 || err != nil || first.InitTarget == "" {
+		t.Fatalf("exit %d %v initTarget %q\n%s\n%s", code, err, first.InitTarget, out, errOut)
+	}
+	if code, out, errOut := run2(t, "init", "--applied", first.InitTarget, "--keep", "CLAUDE.md: Gotchas", dir); code != 0 {
+		t.Fatalf("--applied: exit %d\n%s\n%s", code, out, errOut)
+	}
+	code, out, _ = run2(t, "init", "--json", "--yes", dir)
+	var got struct {
+		Changes []json.RawMessage
+		Keep    []string
+	}
+	if err := json.Unmarshal([]byte(out), &got); code != 0 || err != nil {
+		t.Fatalf("exit %d %v %s", code, err, out)
+	}
+	if got.Changes == nil || len(got.Changes) != 0 || len(got.Keep) != 1 || got.Keep[0] != "CLAUDE.md: Gotchas" {
+		t.Errorf("after --applied: changes %s keep %q", got.Changes, got.Keep)
+	}
 }

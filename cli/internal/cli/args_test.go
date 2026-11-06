@@ -58,3 +58,11 @@ func TestUsage(t *testing.T) {
 		t.Fatal(c)
 	}
 }
+
+// A value flag given twice is refused: the first value would be dropped without a word.
+func TestParseRepeatedValueFlag(t *testing.T) {
+	spec := Command{Name: "init", Flags: []Flag{{Name: "keep", Value: "line"}}}
+	if _, err := Parse(spec, []string{"--keep", "a", "--keep=b"}); err == nil || !strings.Contains(err.Error(), "--keep given twice") {
+		t.Errorf("err %v", err)
+	}
+}
