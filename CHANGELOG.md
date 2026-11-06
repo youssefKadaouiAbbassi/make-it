@@ -25,6 +25,19 @@ Fixes:
 - A download that a server answers with an error on its side (500, 502, 503, 504) is tried twice
   more, after 2 and 4 seconds, so one bad answer from GitHub no longer fails setup and skips every
   step after it.
+- `makeit rollback` keeps what it can undo: daily runs that changed nothing no longer push the
+  last undoable run out of the five kept, it stops at an unreadable newer record instead of
+  undoing an older run in its place, it never installs Claude Code, and its "undo" hint appears
+  only when it has something to undo.
+- A git plugin set pinned to an older tag no longer blocks every update when a makeit release adds
+  a global file: the global files now come from the plugin set in use.
+- `makeit uninstall` no longer crashes after a self rollback across a change in the tool list.
+- The npm tools only move forward, to a real version, read from the registry the global install
+  uses (a project's own `.npmrc` no longer stops them).
+- The daily run runs once when two Claude Code sessions start together, and a run that stops
+  early counts as the day's run instead of retrying at every start.
+- ntfy notifications post on macOS's bash 3.2 without a token, and the Claude Code repository
+  install removes its temporary key files.
 
 ## 0.3.5
 
