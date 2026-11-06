@@ -91,6 +91,10 @@ real tools, named in the global rules for its language (`~/.claude/rules/`): for
 type checker for check:fast; plus the related tests for check:task; everything CI runs for
 check:full. Use the package manager and runner the repository already has.
 
+In a Makefile, give each tool its own target (one command per recipe) and make each check task
+depend on them, so `make -k check:full` runs every check and reports every failure: a recipe
+stops at its first failing line.
+
 ## 4. Apply the manual lines
 
 Each `manual` entry is exact text for a file makeit does not edit (YAML, TOML, Makefile, justfile,
