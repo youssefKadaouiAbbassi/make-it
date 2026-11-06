@@ -235,8 +235,8 @@ const RepoComment = "written by makeit init; change it through makeit init --upd
 
 // Migration upgrades a decoded file by one schema version. Up must be idempotent: it acts only
 // when the old shape exists and the new one does not.
-// shortcut: Up edits the JSON document only; the first migration that moves a file must also
-// return a plan step, so the move shows in --dry-run and gets a pre-image.
+// Up gets the decoded document only, so a migration cannot move a file; one that must would need
+// a plan step of its own, so the move shows in --dry-run and gets a pre-image.
 type Migration struct {
 	ID   string
 	From int

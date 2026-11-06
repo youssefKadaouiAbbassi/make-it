@@ -212,9 +212,8 @@ func TestMigrationMustAdvance(t *testing.T) {
 	}
 }
 
-// Old migrations are deleted on schedule: this fails once a release reaches RemoveBy.
-// shortcut: go test sees Version "dev" and skips; the release workflow must run the tests with
-// -ldflags "-X makeit/internal/buildinfo.Version=$V" for this to fire.
+// Old migrations are deleted on schedule: this fails once a release reaches RemoveBy. A plain go
+// test sees Version "dev" and skips; release.yml runs it with the tag's version (ci/test.sh checks).
 func TestMigrationsRemovedOnSchedule(t *testing.T) {
 	if buildinfo.Version == "dev" {
 		t.Skip("dev build has no version to compare")

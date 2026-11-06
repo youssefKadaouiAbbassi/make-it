@@ -3,6 +3,17 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.10
+
+Fixes:
+
+- The reply check's fallback (used where `marked` is missing) no longer hides the rest of a reply
+  after a code fence indented four spaces at the margin, and flags choices numbered "1." on every
+  item when they sit under a plan numbered the same way. It now finds the first choice as the
+  `marked` path does.
+- The release workflow runs the test that fails when an old state migration is past its removal
+  version; it used to skip on every build.
+
 ## 0.3.9
 
 New:

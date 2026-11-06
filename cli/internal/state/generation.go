@@ -148,9 +148,9 @@ func (g *Generation) Save() error {
 }
 
 // Prune deletes the generations rollback has nothing to undo in, except the newest, then all but
-// the newest Keep of the rest. Call it only after a successful apply.
-// shortcut: generations referenced by an unresolved conflict are not pinned yet; add a keep set
-// when conflicts start pointing at generations.
+// the newest Keep of the rest. Call it only after a successful apply. Nothing else refers to a
+// generation (a merge conflict keeps the user's value in the file, not in a generation), so none
+// needs pinning.
 func Prune(stackDir string) error {
 	// Leftovers of an interrupted prune.
 	leftovers, _ := filepath.Glob(filepath.Join(GenerationsDir(stackDir), "*.del"))
