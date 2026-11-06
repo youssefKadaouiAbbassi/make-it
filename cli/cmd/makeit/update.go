@@ -47,6 +47,9 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 				return 0
 			}
 			defer lock.Release()
+			// Every attempt counts as the day's run, a failed one too (its reason is in update.log):
+			// otherwise it would retry at every Claude Code start.
+			defer func() { _ = markAutoRan(stack) }()
 		}
 		logw, err := openAutoLog(stack)
 		if err != nil {

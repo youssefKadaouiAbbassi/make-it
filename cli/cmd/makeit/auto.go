@@ -68,12 +68,15 @@ func openAutoLog(stack string) (*os.File, error) {
 	return os.OpenFile(path, flags, 0o600)
 }
 
-// finishAuto records the daily run: when it ran, and the note for the next session.
+// finishAuto leaves the note for the next session after a daily run that moved something.
 func finishAuto(stack string, changes []state.Change, undoable bool) error {
 	if note := autoNote(changes, undoable); note != "" {
-		if err := fsx.WriteAtomic(filepath.Join(stack, "pending-note"), []byte(note+"\n"), 0o600); err != nil {
-			return err
-		}
+		return fsx.WriteAtomic(filepath.Join(stack, "pending-note"), []byte(note+"\n"), 0o600)
 	}
+	return nil
+}
+
+// markAutoRan records when the daily run last ran, which autoDue reads.
+func markAutoRan(stack string) error {
 	return fsx.WriteAtomic(filepath.Join(stack, "last-auto"), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
 }
