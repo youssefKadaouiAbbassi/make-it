@@ -34,6 +34,9 @@ type Report struct {
 	Reload bool
 	// Generation is the run's generation, 0 when nothing was applied.
 	Generation int
+	// Undoable: the run changed something makeit rollback undoes (files, plugin releases, MCP
+	// versions, tools), so its closing lines may name rollback.
+	Undoable bool
 	// Pins are the plugin release moves the run recorded (the plugin really updated).
 	Pins []state.PinMove
 	// NeedsYou are the tools with no install route on this machine, each with its manual route.
@@ -188,6 +191,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	rep.Changes = reportChanges(en.changes, gen.Manifest.Pins, en.MCPChanges, catalogWritten)
 	rep.Notes = en.notes
 	gen.Manifest.Changes = rep.Changes
+	rep.Undoable = gen.Manifest.Undoable()
 	gen.Manifest.FinishedAt = time.Now().UTC()
 	gen.Manifest.Outcome = rep.Plan.Summary()
 	saveErr = errors.Join(saveErr, gen.Save())

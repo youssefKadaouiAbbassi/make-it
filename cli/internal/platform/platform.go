@@ -295,15 +295,6 @@ func goreleaserAsset(name, sums string, windowsArm64 bool) func(v, goos, goarch 
 	}
 }
 
-// Find returns the row with id; an unknown id is a programming error.
-func Find(id string) Prereq {
-	i := slices.IndexFunc(Prereqs, func(r Prereq) bool { return r.ID == id })
-	if i < 0 {
-		panic("platform: no prerequisite " + id)
-	}
-	return Prereqs[i]
-}
-
 // hasCABundle reports a CA bundle on disk, read from the files Go's crypto/x509 reads (and
 // SSL_CERT_FILE, SSL_CERT_DIR). It must not call x509.SystemCertPool: Go loads that pool once per
 // process, and this probe runs before setup installs ca-certificates, so it would cache an empty
@@ -445,7 +436,7 @@ const (
 // on the latest channel (setup.md 363-460). doctor shows it as is and setup runs it, with sudo
 // as a shell function so --yes can add -n. ok is false for a manager with no repository.
 func RepoScript(pm PM) (script string, ok bool) {
-	head := "set -e\nexport GNUPGHOME=\"$(mktemp -d)\"\nkey=\"$(mktemp)\"\n"
+	head := "set -e\nexport GNUPGHOME=\"$(mktemp -d)\"\nkey=\"$(mktemp)\"\ntrap 'rm -rf \"$GNUPGHOME\" \"$key\"' EXIT\n"
 	switch pm {
 	case APT:
 		return head + `command -v curl >/dev/null && command -v gpg >/dev/null || { sudo apt-get update && sudo apt-get install -y curl gnupg; }

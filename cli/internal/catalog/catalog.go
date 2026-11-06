@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -76,6 +77,34 @@ type Dir string
 // ReadFile reads a catalog-relative path.
 func (d Dir) ReadFile(p string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(string(d), filepath.FromSlash(p)))
+}
+
+// List returns the catalog paths under prefix in src, sorted: the embedded catalog's manifest or a
+// git catalog's tree, the two that setup and update read the global files from.
+func List(src Source, prefix string) ([]string, error) {
+	var out []string
+	switch c := src.(type) {
+	case embedded:
+		m, err := EmbeddedManifest()
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range m.Files {
+			if strings.HasPrefix(f.Path, prefix) {
+				out = append(out, f.Path)
+			}
+		}
+	case *Tree:
+		for p := range c.Files {
+			if strings.HasPrefix(p, prefix) {
+				out = append(out, p)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("catalog %T cannot list its files", src)
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 // EmbeddedManifest returns the manifest of the compiled-in catalog.

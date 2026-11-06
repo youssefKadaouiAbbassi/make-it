@@ -94,18 +94,23 @@ func (e Env) Rollback(ctx context.Context) (Result, error) {
 
 // newestKept is the highest version left in self/, or "".
 func (e Env) newestKept() string {
-	entries, _ := os.ReadDir(filepath.Join(e.Roots.Stack, "self"))
+	if versions, _ := keptVersions(filepath.Join(e.Roots.Stack, "self"), exeSuffix(e.Target)); len(versions) > 0 {
+		return versions[0]
+	}
+	return ""
+}
+
+// keptVersions are the versions of the makeit-<version><suffix> binaries in dir, newest first.
+func keptVersions(dir, suffix string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
 	var versions []string
 	for _, en := range entries {
-		if v, ok := strings.CutPrefix(strings.TrimSuffix(en.Name(), exeSuffix(e.Target)), "makeit-"); ok {
+		if v, ok := strings.CutPrefix(strings.TrimSuffix(en.Name(), suffix), "makeit-"); ok {
 			versions = append(versions, v)
 		}
 	}
 	slices.SortFunc(versions, func(a, b string) int { n, _ := claudecli.Compare(b, a); return n })
-	if len(versions) == 0 {
-		return ""
-	}
-	return versions[0]
+	return versions, err
 }
 
 // tmpPath is where a new binary waits in dir before it is renamed into place.

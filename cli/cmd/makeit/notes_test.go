@@ -122,3 +122,26 @@ func TestPlainListsChanges(t *testing.T) {
 		t.Errorf("plain %q", s)
 	}
 }
+
+// update's closing lines name rollback only when the run has something it undoes.
+func TestUpdateUndoHintOnlyWhenUndoable(t *testing.T) {
+	npmOnly := setup.Report{Generation: 5, Changes: []state.Change{{Kind: "npm", Item: "pyright", From: "1.1.413", To: "1.1.414"}}}
+	for _, c := range []struct {
+		name string
+		rep  setup.Report
+		self *selfMove
+		want bool
+	}{
+		{"npm only", npmOnly, nil, false},
+		{"undoable run", setup.Report{Generation: 6, Undoable: true}, nil, true},
+		{"makeit moved", npmOnly, &selfMove{From: "0.3.5", To: "0.3.6"}, true},
+	} {
+		var out bytes.Buffer
+		u := ui.NewFromReader(nil, &out, false)
+		u.Mode = ui.Live
+		finishLive(u, "update", c.rep, c.self, time.Second)
+		if got := strings.Contains(out.String(), "makeit rollback"); got != c.want {
+			t.Errorf("%s: undo hint %v, want %v:\n%s", c.name, got, c.want, out.String())
+		}
+	}
+}

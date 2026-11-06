@@ -32,19 +32,16 @@ func Update(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outc
 // nobody changed is replaced by a newer catalog version, or removed when the catalog dropped it.
 // A file the user changed, removed or had before makeit is kept and reported.
 func (e *env) updateGlobalSteps() []plan.Step {
-	m, err := catalog.EmbeddedManifest()
+	// The files come from the catalog in use: a git or directory catalog may hold fewer or more.
+	files, err := catalog.List(e.Catalog, "templates/global/")
 	if err != nil {
 		return []plan.Step{{ID: "global", Title: "Update the global files",
 			Already: func(context.Context) (bool, error) { return false, err }}}
 	}
 	var steps []plan.Step
 	inCatalog := map[string]bool{}
-	for _, f := range m.Files {
-		rel, ok := strings.CutPrefix(f.Path, "templates/global/")
-		if !ok {
-			continue
-		}
-		src := f.Path
+	for _, src := range files {
+		rel := strings.TrimPrefix(src, "templates/global/")
 		path := filepath.Join(e.Roots.Claude, filepath.FromSlash(rel))
 		key := e.Roots.Portable(path)
 		inCatalog[key] = true

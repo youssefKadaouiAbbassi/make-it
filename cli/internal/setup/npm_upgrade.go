@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"makeit/internal/execx"
+	"makeit/internal/latest"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
 	"makeit/internal/state"
@@ -60,7 +61,9 @@ func (e *env) npmUpgradeSteps() []plan.Step {
 				}
 				behind = nil
 				for _, p := range present {
-					res, err := e.Run(ctx, execx.Cmd{Argv: []string{"npm", "view", p, "version", "--fetch-retries=0"}, Timeout: 30 * time.Second})
+					// -g: the registry npm install -g reads, not one a project's .npmrc names (the daily
+					// run starts in whatever project is open).
+					res, err := e.Run(ctx, execx.Cmd{Argv: []string{"npm", "view", "-g", p, "version", "--fetch-retries=0"}, Timeout: 30 * time.Second})
 					// npm can print a warning line first: the version is the last line.
 					out := strings.Fields(res.Stdout)
 					v := ""
@@ -79,8 +82,12 @@ func (e *env) npmUpgradeSteps() []plan.Step {
 						e.keep(id, fmt.Sprintf("kept at %s: could not read the npm registry (%s)", have[p], why))
 						return true, nil
 					}
+					if !latest.Newer("0.0.0", v) {
+						e.keep(id, fmt.Sprintf("kept at %s: npm printed %q, not a stable version", have[p], v))
+						return true, nil
+					}
 					newest[p] = v
-					if v != have[p] {
+					if latest.Newer(have[p], v) { // forward only: a latest tag moved back is not followed
 						behind = append(behind, p)
 					}
 				}

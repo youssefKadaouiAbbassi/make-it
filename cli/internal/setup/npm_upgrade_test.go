@@ -33,7 +33,7 @@ func npmEnv(t *testing.T, id string, pkgs []string, installed, newest map[string
 			}
 		}
 		v := newest[p]
-		f.answers["npm view "+p+" version --fetch-retries=0"] = func(execx.Cmd) execx.Result {
+		f.answers["npm view -g "+p+" version --fetch-retries=0"] = func(execx.Cmd) execx.Result {
 			if v == "" {
 				return execx.Result{Code: 1, Stderr: "npm error network"}
 			}
@@ -169,7 +169,7 @@ func TestUninstallListsMarked(t *testing.T) {
 
 // npm moves are not undone (never pin): a run that only moved npm tools is no run to roll back.
 func TestNPMChangesAreNotUndoable(t *testing.T) {
-	if undoable(state.Manifest{Changes: []state.Change{{Kind: "npm", Item: "pyright", From: "1.1.400", To: "1.1.401"}}}) {
+	if (state.Manifest{Changes: []state.Change{{Kind: "npm", Item: "pyright", From: "1.1.400", To: "1.1.401"}}}).Undoable() {
 		t.Error("a run that only moved an npm tool counts as undoable")
 	}
 }
@@ -177,7 +177,7 @@ func TestNPMChangesAreNotUndoable(t *testing.T) {
 // npm can print a warning line before the version.
 func TestNPMUpgradeReadsTheLastLine(t *testing.T) {
 	e, f, _ := npmEnv(t, "marked", []string{"marked"}, map[string]string{"marked": "18.1.3"}, map[string]string{"marked": "19.0.0"})
-	f.answers["npm view marked version --fetch-retries=0"] = func(execx.Cmd) execx.Result {
+	f.answers["npm view -g marked version --fetch-retries=0"] = func(execx.Cmd) execx.Result {
 		return execx.Result{Stdout: "npm warn config production Use `--omit=dev` instead.\n19.0.0\n"}
 	}
 	s, _ := npmStep(t, e, "marked")
@@ -194,7 +194,7 @@ func TestNPMUpgradeReadsTheLastLine(t *testing.T) {
 
 func TestNPMUpgradeNoVersionPrinted(t *testing.T) {
 	e, f, _ := npmEnv(t, "marked", []string{"marked"}, map[string]string{"marked": "18.1.3"}, map[string]string{"marked": "19.0.0"})
-	f.answers["npm view marked version --fetch-retries=0"] = func(execx.Cmd) execx.Result { return execx.Result{} }
+	f.answers["npm view -g marked version --fetch-retries=0"] = func(execx.Cmd) execx.Result { return execx.Result{} }
 	s, _ := npmStep(t, e, "marked")
 	if done, _ := s.Already(context.Background()); !done {
 		t.Fatal("not done")
@@ -244,5 +244,26 @@ func TestNPMUpgradeWindowsLayout(t *testing.T) {
 	e.st.Prereqs = map[string]*state.Prereq{"marked": {InstalledBy: "makeit", Route: "npm", Argv: []string{"npm", "install", "-g", "--prefix", prefix, "marked"}}}
 	if _, ok := npmStep(t, e, "marked"); !ok {
 		t.Error("no upgrade step for a Windows install")
+	}
+}
+
+// A package whose "latest" tag moved back to an older release is not downgraded.
+func TestNPMUpgradeNeverMovesBack(t *testing.T) {
+	e, _, _ := npmEnv(t, "marked", []string{"marked"}, map[string]string{"marked": "19.0.0"}, map[string]string{"marked": "18.1.3"})
+	s, _ := npmStep(t, e, "marked")
+	if done, err := s.Already(context.Background()); !done || err != nil {
+		t.Errorf("already %v err %v, want done", done, err)
+	}
+}
+
+// Text that is no version is not installed.
+func TestNPMUpgradeNotAVersion(t *testing.T) {
+	e, _, _ := npmEnv(t, "marked", []string{"marked"}, map[string]string{"marked": "18.1.3"}, map[string]string{"marked": "latest"})
+	s, _ := npmStep(t, e, "marked")
+	if done, _ := s.Already(context.Background()); !done {
+		t.Error("would install a version npm did not print")
+	}
+	if r := keptReason(e, "marked"); !strings.Contains(r, "not a stable version") {
+		t.Errorf("kept %q", r)
 	}
 }

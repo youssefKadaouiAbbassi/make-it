@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"makeit/internal/catalog"
@@ -29,12 +30,27 @@ func lastUndoable(stack string) (*state.Generation, error) {
 	if err != nil {
 		return nil, err
 	}
+	var pick *state.Generation
 	for _, g := range gens {
-		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" && undoable(g.Manifest) {
-			return g, nil
+		if !g.Manifest.RolledBack && g.Manifest.Command != "rollback" && g.Manifest.Undoable() {
+			pick = g
+			break
 		}
 	}
-	return nil, ErrNothingToRollBack
+	// A newer run whose record cannot be read may be the one to undo: stop rather than undo an
+	// older run as if it were the last.
+	bad, err := state.Unreadable(stack)
+	if err != nil {
+		return nil, err
+	}
+	if n := len(bad); n > 0 && (pick == nil || bad[n-1] > pick.Manifest.Generation) {
+		dir := filepath.Join(state.GenerationsDir(stack), strconv.Itoa(bad[n-1]))
+		return nil, fmt.Errorf("the record of run %d cannot be read (%s), so rollback stops rather than undo an older run in its place: fix or remove that folder", bad[n-1], filepath.Join(dir, "manifest.json"))
+	}
+	if pick == nil {
+		return nil, ErrNothingToRollBack
+	}
+	return pick, nil
 }
 
 // Rollback undoes the last run that changed something: its files where nobody edited them since,
@@ -45,7 +61,7 @@ func Rollback(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Ou
 		return Report{}, err
 	}
 	rep, _, err := execute(ctx, e, "rollback", mode, confirm, argv, func(en *env) []phase {
-		return []phase{{steps: append([]plan.Step{en.claudeStep()}, en.rollbackSteps(g)...)}}
+		return []phase{{steps: en.rollbackPlan(g)}}
 	})
 	if err == nil && rep.Generation > 0 && !rep.Plan.Failed() {
 		g.Manifest.RolledBack = true
@@ -54,10 +70,11 @@ func Rollback(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Ou
 	return rep, err
 }
 
-// undoable reports whether a run left something rollback can put back: files, plugin releases or
-// MCP versions. A run that only saw Claude Code move has nothing (Claude Code only goes forward).
-func undoable(m state.Manifest) bool {
-	return len(m.Ops) > 0 || len(m.Pins) > 0 || slices.ContainsFunc(m.Changes, func(c state.Change) bool { return c.Kind == "mcp" || c.Kind == "tool" })
+// rollbackPlan is rollback's steps for g: find Claude Code (an undo never installs it), then g's
+// files and plugin releases.
+func (e *env) rollbackPlan(g *state.Generation) []plan.Step {
+	find := e.findClaudeStep("not usable here, so the plugin releases this run moved stay: run `makeit rollback` again once Claude Code is back")
+	return append([]plan.Step{find}, e.rollbackSteps(g)...)
 }
 
 // mcpChanges are the MCP servers a run moved.

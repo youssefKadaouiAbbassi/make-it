@@ -40,6 +40,13 @@ type Manifest struct {
 	RolledBack bool `json:"rolledBack,omitempty"`
 }
 
+// Undoable reports whether rollback has anything to undo in this run: files, plugin releases, MCP
+// server versions or tools. Claude Code's own moves, makeit's and the npm tools' are left as they
+// are (never pin), so a run with only those is not one rollback picks.
+func (m Manifest) Undoable() bool {
+	return len(m.Ops) > 0 || len(m.Pins) > 0 || slices.ContainsFunc(m.Changes, func(c Change) bool { return c.Kind == "mcp" || c.Kind == "tool" })
+}
+
 // Change is one thing a run moved from one version to another: kind is makeit, claude-code,
 // plugin, mcp or tool; From is "" when the earlier version is not known.
 type Change struct {
@@ -140,16 +147,37 @@ func (g *Generation) Save() error {
 	return save(filepath.Join(g.Dir, "manifest.json"), &g.Manifest, 0o600)
 }
 
-// Prune deletes all but the newest Keep generations. Call it only after a successful apply.
+// Prune deletes the generations rollback has nothing to undo in, except the newest, then all but
+// the newest Keep of the rest. Call it only after a successful apply.
 // shortcut: generations referenced by an unresolved conflict are not pinned yet; add a keep set
 // when conflicts start pointing at generations.
 func Prune(stackDir string) error {
+	// Leftovers of an interrupted prune.
+	leftovers, _ := filepath.Glob(filepath.Join(GenerationsDir(stackDir), "*.del"))
+	for _, d := range leftovers {
+		if err := os.RemoveAll(d); err != nil {
+			return err
+		}
+	}
+	gens, err := LoadGenerations(stackDir)
+	if err != nil {
+		return err
+	}
+	// Runs with nothing to undo and no backups go first, except the newest (the home screen and the
+	// daily note read it); then the newest Keep of the rest stay.
+	for i, g := range gens {
+		if i > 0 && !g.Manifest.Undoable() && !holdsBackups(g.Dir) {
+			if err := removeGeneration(g.Dir); err != nil {
+				return err
+			}
+		}
+	}
 	ns, err := generations(stackDir)
 	if err != nil {
 		return err
 	}
 	for len(ns) > Keep {
-		if err := os.RemoveAll(filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[0]))); err != nil {
+		if err := removeGeneration(filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[0]))); err != nil {
 			return err
 		}
 		ns = ns[1:]
@@ -157,8 +185,28 @@ func Prune(stackDir string) error {
 	return nil
 }
 
+// holdsBackups: uninstall's copy of state.json or plugin data saved before a removal, which no op
+// records and no other place keeps.
+func holdsBackups(dir string) bool {
+	for _, name := range []string{"state.json", "data"} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// removeGeneration renames the folder out of the numbered set first, so an interrupted removal
+// never leaves a half record that rollback would refuse to pass.
+func removeGeneration(dir string) error {
+	if err := os.Rename(dir, dir+".del"); err != nil {
+		return err
+	}
+	return os.RemoveAll(dir + ".del")
+}
+
 // LoadGenerations reads every generation's manifest, newest first. A folder without a readable
-// manifest is left out.
+// manifest is left out; Unreadable lists those.
 func LoadGenerations(stackDir string) ([]*Generation, error) {
 	ns, err := generations(stackDir)
 	if err != nil {
@@ -166,15 +214,33 @@ func LoadGenerations(stackDir string) ([]*Generation, error) {
 	}
 	var out []*Generation
 	for i := len(ns) - 1; i >= 0; i-- {
-		dir := filepath.Join(GenerationsDir(stackDir), strconv.Itoa(ns[i]))
-		var m Manifest
-		data, found, err := fsx.ReadOptional(filepath.Join(dir, "manifest.json"))
-		if err != nil || !found || json.Unmarshal(data, &m) != nil {
-			continue
+		if g, ok := readGeneration(stackDir, ns[i]); ok {
+			out = append(out, g)
 		}
-		out = append(out, &Generation{Dir: dir, Manifest: m})
 	}
 	return out, nil
+}
+
+// Unreadable are the generation numbers on disk whose manifest cannot be read, ascending.
+func Unreadable(stackDir string) ([]int, error) {
+	ns, err := generations(stackDir)
+	var bad []int
+	for _, n := range ns {
+		if _, ok := readGeneration(stackDir, n); !ok {
+			bad = append(bad, n)
+		}
+	}
+	return bad, err
+}
+
+func readGeneration(stackDir string, n int) (*Generation, bool) {
+	dir := filepath.Join(GenerationsDir(stackDir), strconv.Itoa(n))
+	var m Manifest
+	data, found, err := fsx.ReadOptional(filepath.Join(dir, "manifest.json"))
+	if err != nil || !found || json.Unmarshal(data, &m) != nil {
+		return nil, false
+	}
+	return &Generation{Dir: dir, Manifest: m}, true
 }
 
 // generations lists the generation numbers on disk, ascending.

@@ -186,3 +186,27 @@ func TestUpdateShowsClaudeSelfUpdate(t *testing.T) {
 		t.Errorf("the self-update was listed twice:\n%s", stdout)
 	}
 }
+
+// A daily run that stops before its steps (here an unreadable state.json; also a refused catalog)
+// still counts as the day's run: it does not retry at every Claude Code start (the 2026-11-05
+// audit). The reason is in update.log.
+func TestAutoFailedRunWaitsADay(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	if err := os.WriteFile(filepath.Join(m.stack, "state.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := run2(t, "update", "--auto"); code == 0 {
+		t.Fatal("the daily run did not fail on an unreadable state.json")
+	}
+	if _, err := os.Stat(filepath.Join(m.stack, "last-auto")); err != nil {
+		t.Errorf("no last-auto after a failed daily run: %v", err)
+	}
+	run2(t, "update", "--auto")
+	log, _ := os.ReadFile(filepath.Join(m.stack, "update.log"))
+	if n := strings.Count(string(log), "update --auto"); n != 1 {
+		t.Errorf("%d daily runs the same day, want 1:\n%s", n, log)
+	}
+}

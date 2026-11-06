@@ -112,7 +112,7 @@ func (e *env) backupData(names ...string) error {
 // uninstallSteps are uninstall's steps, in order.
 func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 	e.keepSettings = opts.KeepSettings
-	steps := []plan.Step{e.findClaudeStep()}
+	steps := []plan.Step{e.findClaudeStep("not usable here, so makeit's plugins and its marketplace stay: run `makeit uninstall` again once Claude Code is back")}
 	var deps []string
 	for id := range e.st.Plugins {
 		if e.owned(id) && id != e.req.Bundle {
@@ -164,11 +164,11 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 }
 
 // findClaudeStep finds a usable Claude Code; without one, nothing is uninstalled.
-func (e *env) findClaudeStep() plan.Step {
+func (e *env) findClaudeStep(missing string) plan.Step {
 	return plan.Step{ID: "claude", Title: "Find Claude Code",
 		Already: func(ctx context.Context) (bool, error) {
 			if _, _, ok := e.findClaude(ctx); !ok {
-				e.keep("claude", "not usable here, so makeit's plugins and its marketplace stay: run `makeit uninstall` again once Claude Code is back")
+				e.keep("claude", missing)
 			}
 			return true, nil
 		}}
@@ -683,8 +683,14 @@ func (e *env) toolSteps() []plan.Step {
 			e.keep(id, "installed by makeit through "+rec.Route+"; to remove: "+removeCommand(rec.Route, id))
 			continue
 		}
+		i := slices.IndexFunc(platform.Prereqs, func(r platform.Prereq) bool { return r.ID == id })
+		if i < 0 {
+			// A newer makeit's tool, after a self rollback: this binary does not know its file.
+			e.keep(id, "installed by another makeit version; this one does not know its file, so it stays")
+			continue
+		}
 		bin := id
-		if r := platform.Find(id).Release; r != nil {
+		if r := platform.Prereqs[i].Release; r != nil {
 			bin = r.Bin
 		}
 		if e.Platform.OS == "windows" {

@@ -56,6 +56,17 @@ func semver(v string) (n [3]int, ok bool) {
 	return n, true
 }
 
+// Newer reports whether v is a stable x.y.z release above have; a have that is no stable version
+// (a pre-release) counts as below any stable one.
+func Newer(have, v string) bool {
+	nv, ok := semver(v)
+	if !ok {
+		return false
+	}
+	nh, ok := semver(have)
+	return !ok || less(nh, nv)
+}
+
 func less(a, b [3]int) bool {
 	for i := range a {
 		if a[i] != b[i] {
@@ -74,7 +85,7 @@ func Pick(tags map[string]string, prefix, floor string, skip []string) (tag, sha
 			continue
 		}
 		v, vok := semver(strings.TrimPrefix(t, prefix))
-		if !vok || (fok && less(v, min)) || contains(skip, t) {
+		if !vok || (fok && less(v, min)) || slices.Contains(skip, t) {
 			continue
 		}
 		if !ok || less(best, v) {
@@ -82,15 +93,6 @@ func Pick(tags map[string]string, prefix, floor string, skip []string) (tag, sha
 		}
 	}
 	return tag, sha, ok
-}
-
-func contains(xs []string, x string) bool {
-	for _, s := range xs {
-		if s == x {
-			return true
-		}
-	}
-	return false
 }
 
 // parseLsRemote reads `git ls-remote --tags`: tag → commit, the peeled commit of an annotated tag.
@@ -294,7 +296,7 @@ func applyMarket(ctx context.Context, run execx.Runner, b []byte, current map[st
 		switch {
 		case h.err != nil:
 			notes = append(notes, fmt.Sprintf("%s kept at %.7s: could not read its branch %s (%v)", h.name, h.from.sha, h.from.ref, h.err))
-		case h.sha != h.from.sha && !contains(skips[h.id], h.sha):
+		case h.sha != h.from.sha && !slices.Contains(skips[h.id], h.sha):
 			h.src["sha"] = h.sha
 			rewritten = true
 			moves = append(moves, state.PinMove{ID: h.id, FromTag: h.from.ref, FromSHA: h.from.sha, ToTag: h.from.ref, ToSHA: h.sha})
@@ -444,7 +446,8 @@ func applyMCP(ctx context.Context, run execx.Runner, b, current []byte) ([]byte,
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", j.pkg, "version"}, Timeout: 30 * time.Second})
+			// -g: the global registry, not the one a project's .npmrc names (the daily run starts in a project).
+			res, err := run(ctx, execx.Cmd{Argv: []string{"npm", "view", "-g", j.pkg, "version"}, Timeout: 30 * time.Second})
 			if err == nil {
 				j.latest = strings.TrimSpace(res.Stdout)
 			}
