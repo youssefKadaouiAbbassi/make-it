@@ -41,9 +41,10 @@ type Env struct {
 // network.
 type Options struct {
 	Update, Rulesets, Offline bool
-	// Applied records that /makeit:init applied the listed init changes, with Keep (one line)
-	// added to the kept differences; it writes only the record.
-	Applied bool
+	// Applied is the init change version /makeit:init brought the project to (the report's
+	// Target), recorded with Keep (one line) added to the kept differences; only the record is
+	// written.
+	Applied string
 	Keep    string
 }
 
@@ -54,9 +55,10 @@ type Report struct {
 	Manual  []string
 	Notices []string
 	Docs    []string
-	// Changes are the init changes newer than the project's initVersion; Keep the differences the
-	// user kept.
+	// Changes are the init changes newer than the project's initVersion, Target the newest one
+	// (what --applied records once they are applied), Keep the differences the user kept.
 	Changes []Change
+	Target  string
 	Keep    []string
 }
 
@@ -89,11 +91,14 @@ type run struct {
 // Run plans init and, as mode allows, applies it. confirm is asked once, with the plan, in
 // Prompt mode. A plan with nothing to do applies nothing.
 func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), o Options) (Report, error) {
-	if o.Keep != "" && !o.Applied {
+	if o.Keep != "" && o.Applied == "" {
 		return Report{}, errors.New("--keep needs --applied")
 	}
-	if o.Applied {
-		return applied(ctx, e, mode, o.Keep)
+	if o.Applied != "" {
+		if o.Update || o.Rulesets {
+			return Report{}, errors.New("--applied runs alone: drop --update and --rulesets")
+		}
+		return applied(ctx, e, mode, o.Applied, o.Keep)
 	}
 	if o.Offline && o.Rulesets {
 		return Report{}, errors.New("--rulesets needs the network; drop --offline")
@@ -128,8 +133,9 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	if err != nil {
 		return Report{}, err
 	}
-	if !info.Found {
-		// A first init writes the current templates: the project starts with every change.
+	if !info.Found && !hasOwnDocs(e.Dir) {
+		// A first init writes the current templates: the project starts with every change. Docs
+		// already there are kept as they are, and may be older.
 		changes, r.bornAt = []Change{}, newest
 	}
 	steps, seedRep, err := r.steps(gitInit)
@@ -137,8 +143,11 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 		return Report{}, err
 	}
 	r.reset()
+	if n := len(changes); n > 0 {
+		seedRep.Notices = append(seedRep.Notices, changesNotice(n))
+	}
 	rep := Report{Plan: plan.Execute(ctx, steps, plan.Options{DryRun: true}), Manual: seedRep.Manual, Notices: seedRep.Notices,
-		Changes: changes, Keep: prev.Keep}
+		Changes: changes, Target: newest, Keep: prev.Keep}
 	rep.Kept = r.kept
 	rep.Notices = append(rep.Notices, r.newerNotice()...)
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {

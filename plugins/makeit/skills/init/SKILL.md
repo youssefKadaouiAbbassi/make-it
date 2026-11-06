@@ -53,7 +53,8 @@ in the steps below; makeit indexed the project's dependencies at their versions.
 ## Bring an older setup up to the current way
 
 Only when the JSON's `changes` is not empty: an older makeit set this project up, and how init
-works has changed since. Each entry names its `files` and, in `prompt`, the end state to reach.
+works has changed since. Each entry names its `files` and, in `prompt`, the end state to reach;
+`initTarget` is the version they bring the project to.
 
 1. Apply the entries in order. Keep every value the user filled in (names, commands, measured
    numbers); change only what the entry describes. An entry whose end state is already there
@@ -67,9 +68,12 @@ works has changed since. Each entry names its `files` and, in `prompt`, the end 
 3. A list: ask in the reply, in the global CLAUDE.md's reading shape, one numbered line per
    difference (the file, what differs, what you would change), then the choices: apply all,
    apply some (the user names them), keep all. Apply what the user picks.
-4. Record it: `makeit init --applied` once, then `makeit init --applied --keep "<file>: <what
-   differs>"` once per difference the user kept (that exact line is never raised again). Each
-   command on its own, like step 1. In a repository, `.makeit.json` goes in the step 8 commit.
+4. Record it: `makeit init --applied <initTarget>` once, then
+   `makeit init --applied <initTarget> --keep '<file>: <what differs>'` once per difference the
+   user kept (that exact line is never raised again). Write the line in single quotes and plain
+   words, with no backtick, `$` or `'` in it: the shell runs what backticks and `$(...)` hold.
+   Each command on its own, like step 1. In a repository, `.makeit.json` goes in the step 8
+   commit.
 
 Then go on with step 2; the steps below still run, as on any init.
 

@@ -65,7 +65,7 @@ Usage: makeit init [dir] [flags]
 set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index
 
 Flags:
-  --applied                          record that /makeit:init applied the listed init changes; writes only .makeit.json
+  --applied <version>                record that /makeit:init applied the listed init changes up to version (the initTarget init --json reports); writes only .makeit.json
   --keep <line>                      with --applied: a difference from the current way the user kept, never raised again
   --rulesets                         also send makeit's GitHub rulesets to the repository (needs gh and a GitHub remote)
   --update                           also update files init wrote earlier that nobody changed since

@@ -2,7 +2,9 @@ package initrepo
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -62,9 +64,32 @@ func TestChangesListValid(t *testing.T) {
 			t.Errorf("id %q listed twice", c.ID)
 		}
 		seen[c.ID] = true
+		if !latest.Newer("0.0.0", c.Version) {
+			t.Errorf("entry %q: version %q is not x.y.z", c.ID, c.Version)
+		}
 		if i > 0 && latest.Newer(c.Version, all[i-1].Version) {
 			t.Errorf("entry %q (%s) comes after %s: keep the list in version order", c.ID, c.Version, all[i-1].Version)
 		}
+	}
+}
+
+// The newest entry is never past the release being built: --applied would mark projects past
+// every later entry.
+func TestChangesNotPastTheRelease(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "plugins", "makeit", ".claude-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pl struct{ Version string }
+	if err := json.Unmarshal(b, &pl); err != nil {
+		t.Fatal(err)
+	}
+	_, all, err := LoadChanges(catalog.Embedded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := Newest(all); latest.Newer(pl.Version, n) {
+		t.Errorf("the newest init change is %s, past the release %s", n, pl.Version)
 	}
 }
 
@@ -75,18 +100,19 @@ func TestChangesSourcesCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := map[string][]byte{}
-	err = filepath.WalkDir(filepath.Join(repo, "templates", "project"), func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		rel, _ := filepath.Rel(repo, p)
-		b, err := os.ReadFile(p)
-		files[filepath.ToSlash(rel)] = b
-		return err
-	})
+	// The files git tracks or would track, as synccatalog ships them: an ignored scratch file never counts.
+	out, err := exec.Command("git", "-C", repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "templates/project").Output()
 	if err != nil {
 		t.Fatal(err)
+	}
+	files := map[string][]byte{}
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p == "" {
+			continue
+		}
+		if files[p], err = os.ReadFile(filepath.Join(repo, filepath.FromSlash(p))); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if files[SkillPath], err = os.ReadFile(filepath.Join(repo, filepath.FromSlash(SkillPath))); err != nil {
 		t.Fatal(err)
@@ -133,7 +159,7 @@ func TestRunReportsPendingChanges(t *testing.T) {
 	if len(rep.Changes) != len(all) {
 		t.Fatalf("a project with no initVersion gets %d changes, want all %d", len(rep.Changes), len(all))
 	}
-	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: true}); err != nil {
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: newestChange(t)}); err != nil {
 		t.Fatal(err)
 	}
 	rep, err = Run(context.Background(), e, plan.Apply, nil, Options{})
@@ -155,7 +181,7 @@ func TestRunApplied(t *testing.T) {
 	before := snapshot(t, dir)
 	prev := loadRepo(t, dir)
 	for range 2 {
-		rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: true, Keep: "CONSTRAINTS.md: Performance row"})
+		rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: newestChange(t), Keep: "CONSTRAINTS.md: Performance row"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -184,7 +210,7 @@ func TestRunAppliedNoRecord(t *testing.T) {
 	dir := nodeRepo(t)
 	e, _ := testEnv(t, dir)
 	before := snapshot(t, dir)
-	_, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: true})
+	_, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: newestChange(t)})
 	if err == nil || !strings.Contains(err.Error(), "run makeit init first") {
 		t.Fatalf("err %v", err)
 	}
@@ -210,4 +236,86 @@ func snapshot(t *testing.T, dir string) map[string]string {
 		t.Fatal(err)
 	}
 	return out
+}
+
+func newestChange(t *testing.T) string {
+	t.Helper()
+	_, all, err := LoadChanges(catalog.Embedded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Newest(all)
+}
+
+// A first init in a folder whose docs are already there keeps them as they are: they may be
+// older than the templates, so the project gets every change.
+func TestRunFirstInitWithOwnDocs(t *testing.T) {
+	dir := nodeRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "CONSTRAINTS.md"), []byte("# Constraints\n\n| Migrations | squawk |\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e, _ := testEnv(t, dir)
+	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, all, _ := LoadChanges(catalog.Embedded)
+	if len(rep.Changes) != len(all) || loadRepo(t, dir).InitVersion != "" {
+		t.Errorf("first init over own docs: %d changes (want %d), initVersion %q (want empty)", len(rep.Changes), len(all), loadRepo(t, dir).InitVersion)
+	}
+	if !slices.ContainsFunc(rep.Notices, func(n string) bool { return strings.Contains(n, "/makeit:init") && strings.Contains(n, "init changes") }) {
+		t.Errorf("no notice names the pending init changes: %q", rep.Notices)
+	}
+}
+
+// --applied records the version the skill was given, the one it applied, never a newer one the
+// plugin set gained meanwhile.
+func TestRunAppliedVersion(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	_, all, _ := LoadChanges(catalog.Embedded)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: all[0].Version}); err != nil {
+		t.Fatal(err)
+	}
+	if got := loadRepo(t, dir).InitVersion; got != all[0].Version {
+		t.Errorf("initVersion %q, want %q", got, all[0].Version)
+	}
+	for _, v := range []string{"v0.3.7", "9.9.9", "latest"} {
+		if _, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: v}); err == nil || !strings.Contains(err.Error(), "no init change at "+v) {
+			t.Errorf("--applied %s: err %v", v, err)
+		}
+	}
+	for _, o := range []Options{{Applied: all[0].Version, Update: true}, {Applied: all[0].Version, Rulesets: true}} {
+		if _, err := Run(context.Background(), e, plan.Apply, nil, o); err == nil || !strings.Contains(err.Error(), "--applied runs alone") {
+			t.Errorf("%+v: err %v", o, err)
+		}
+	}
+}
+
+// --applied never writes through a symlinked record.
+func TestRunAppliedSymlinkedRecord(t *testing.T) {
+	dir := nodeRepo(t)
+	e, _ := testEnv(t, dir)
+	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "record.json")
+	rec := filepath.Join(dir, RecordName)
+	if err := os.Rename(rec, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, rec); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, filepath.Dir(target))
+	_, err := Run(context.Background(), e, plan.Apply, nil, Options{Applied: newestChange(t)})
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("err %v", err)
+	}
+	if st, err := os.Lstat(rec); err != nil || st.Mode()&os.ModeSymlink == 0 || !reflect.DeepEqual(before, snapshot(t, filepath.Dir(target))) {
+		t.Error("--applied replaced the link or wrote its target")
+	}
 }

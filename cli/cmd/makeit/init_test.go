@@ -138,13 +138,15 @@ func TestInitManualOnce(t *testing.T) {
 func TestInitApplied(t *testing.T) {
 	newDocsMachine(t)
 	dir := initRepo(t)
-	if code, out, errOut := run2(t, "init", "--json", "--yes", dir); code != 0 {
-		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
+	code, out, errOut := run2(t, "init", "--json", "--yes", dir)
+	var first struct{ InitTarget string }
+	if err := json.Unmarshal([]byte(out), &first); code != 0 || err != nil || first.InitTarget == "" {
+		t.Fatalf("exit %d %v initTarget %q\n%s\n%s", code, err, first.InitTarget, out, errOut)
 	}
-	if code, out, errOut := run2(t, "init", "--applied", "--keep", "CLAUDE.md: Gotchas", dir); code != 0 {
+	if code, out, errOut := run2(t, "init", "--applied", first.InitTarget, "--keep", "CLAUDE.md: Gotchas", dir); code != 0 {
 		t.Fatalf("--applied: exit %d\n%s\n%s", code, out, errOut)
 	}
-	code, out, _ := run2(t, "init", "--json", "--yes", dir)
+	code, out, _ = run2(t, "init", "--json", "--yes", dir)
 	var got struct {
 		Changes []json.RawMessage
 		Keep    []string

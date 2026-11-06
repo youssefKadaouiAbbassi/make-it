@@ -163,5 +163,5 @@ A second run with nothing new reports every step as already done. These rules de
   and asks, one line each, whether to apply it or keep yours; a difference you keep is not raised
   again.
 
-After `makeit update`, run `/makeit:init` (or `makeit init --update`) in each project to take the
-new files and the new way.
+After `makeit update`, run `/makeit:init` in each project to take the new files and the new way;
+`makeit init --update` alone takes only the files makeit wrote and you never changed.

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"time"
@@ -102,10 +103,33 @@ func pendingChanges(src catalog.Source, initVersion string) ([]Change, string, e
 	return Pending(all, initVersion), Newest(all), nil
 }
 
-// applied is `makeit init --applied`: it records the newest init change as applied and adds keep
-// to the kept differences. It writes the record only, and needs one: the project was set up.
-func applied(ctx context.Context, e Env, mode plan.Mode, keep string) (Report, error) {
+// hasOwnDocs reports whether the docs /makeit:init fills in are already in dir, so a first init
+// keeps them as they are.
+func hasOwnDocs(dir string) bool {
+	for _, n := range []string{"CLAUDE.md", "CONSTRAINTS.md"} {
+		if _, err := os.Lstat(filepath.Join(dir, n)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// changesNotice says that init changes wait for /makeit:init.
+func changesNotice(n int) string {
+	if n == 1 {
+		return "1 of makeit's init changes is newer than this project's setup: /makeit:init applies it"
+	}
+	return fmt.Sprintf("%d of makeit's init changes are newer than this project's setup: /makeit:init applies them", n)
+}
+
+// applied is `makeit init --applied <version>`: it records version, the init change the skill
+// brought the project to, and adds keep to the kept differences. It writes the record only, and
+// needs one: the project was set up.
+func applied(ctx context.Context, e Env, mode plan.Mode, version, keep string) (Report, error) {
 	path := filepath.Join(e.Dir, RecordName)
+	if st, err := os.Lstat(path); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		return Report{}, fmt.Errorf("%s is a symlink: makeit does not write through it", path)
+	}
 	if mode != plan.DryRunOnly {
 		lock, err := fsx.Acquire(filepath.Join(e.Stack, "lock"), time.Now())
 		if err != nil {
@@ -124,10 +148,11 @@ func applied(ctx context.Context, e Env, mode plan.Mode, keep string) (Report, e
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Report{}, err
 	}
-	next := *prev
-	if v := Newest(all); v != "" {
-		next.InitVersion = v
+	if !slices.ContainsFunc(all, func(c Change) bool { return c.Version == version }) {
+		return Report{}, fmt.Errorf("no init change at %s: pass the initTarget makeit init --json reported", version)
 	}
+	next := *prev
+	next.InitVersion = version
 	if keep != "" && !slices.Contains(next.Keep, keep) {
 		next.Keep = append(slices.Clone(next.Keep), keep)
 	}
@@ -137,6 +162,6 @@ func applied(ctx context.Context, e Env, mode plan.Mode, keep string) (Report, e
 		},
 		Run: func(context.Context) (string, error) { return "", state.SaveRepo(path, &next) }}
 	rep := Report{Plan: plan.Execute(ctx, []plan.Step{step}, plan.Options{DryRun: mode == plan.DryRunOnly}),
-		Changes: Pending(all, next.InitVersion), Keep: next.Keep}
+		Changes: Pending(all, next.InitVersion), Target: Newest(all), Keep: next.Keep}
 	return rep, nil
 }

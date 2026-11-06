@@ -103,6 +103,9 @@ func Parse(cmd Command, args []string) (Parsed, error) {
 			i++
 			value = args[i]
 		}
+		if _, twice := p.String[f.Name]; twice {
+			return p, fmt.Errorf("--%s given twice", f.Name)
+		}
 		p.String[f.Name] = value
 	}
 	return p, nil
