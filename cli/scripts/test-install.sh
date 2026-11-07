@@ -24,7 +24,7 @@ v11=$(dirname "$(find "$rel/site" -name checksums.txt)"); v12=$(dirname "$(find 
 # and list, but for another release, served as 1.1.0.
 cp -r "$rel/site" "$rel/tampered"; printf x >>"$rel/tampered/${v11#"$rel/site/"}/makeit-1.1.0-linux-x64"
 cp -r "$rel/site" "$rel/signed12"; cp "$v12/checksums.txt" "$v12/checksums.txt.minisig" "$rel/signed12/${v11#"$rel/site/"}/"
-# unsigned: a release published before the owner uploaded checksums.txt.minisig.
+# unsigned: a release published before checksums.txt.minisig was uploaded.
 cp -r "$rel/site" "$rel/unsigned"; /bin/rm "$rel/unsigned/${v11#"$rel/site/"}/checksums.txt.minisig"
 # What release.yml does to the attached copy: fill in the version, repository and key.
 fill() { sed -e "s|@VERSION@|1.1.0|" -e "s|@REPO@|test/makeit|" -e "s|@PUBKEY@|$1|" "$root/install.sh"; }

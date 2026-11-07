@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Measures, in a throwaway ubuntu container with real Claude Code, the plugin behaviours that
-# makeit update and uninstall key on (cli/UPDATE-UNINSTALL.md records the results). A local directory marketplace "m" holds a bundle
-# that depends on deja-vu (git-subdir, pinned) and on a local plugin. No credentials, tokens or
-# host directories enter the container; --rm removes it.
+# makeit update and uninstall rely on (results in cli/UPDATE-UNINSTALL.md). A local directory
+# marketplace "m" holds a bundle that depends on deja-vu (git-subdir, pinned) and on a local
+# plugin. No credentials, tokens or host directories enter the container; --rm removes it.
 #   bash cli/scripts/measure-plugin-cli.sh
 set -euo pipefail
 # deja-vu v0.23.0 (annotated tag, peeled) and v0.23.1: both carry version 0.23.0 in plugin.json.

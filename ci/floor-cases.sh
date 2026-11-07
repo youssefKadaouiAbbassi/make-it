@@ -3,10 +3,10 @@
 #   docker run --rm -u node -v "$PWD:/w" -w /w claude-eval:latest bash floor-cases.sh
 # Fresh repo with the project CONSTRAINTS.md template, a source file, a test file, a tsconfig,
 # a package.json with scripts and a workflow on main; one edit per case on a branch.
-# Loosening moves and watched-file changes (the guard at ci/floor-guard.mjs included) exit 1; no-op,
-# tightening, dependency bumps, a seeded CONSTRAINTS.md and a watched change with a reason in the
-# PR description (PR_BODY) exit 0. origin/guarded is main plus ci/floor-guard.mjs, for edits to the guard;
-# origin/skipped is main with the test skipped.
+# Loosening moves and watched-file changes (the guard itself included) exit 1; no-op, tightening,
+# dependency bumps, a seeded CONSTRAINTS.md and a watched change with a reason in the PR
+# description (PR_BODY) exit 0. origin/guarded is main plus ci/floor-guard.mjs, for edits to the
+# guard; origin/skipped is main with the test skipped.
 set -uo pipefail
 # Its own global config: the identity below must never reach the user's ~/.gitconfig.
 GIT_CONFIG_GLOBAL=$(mktemp); export GIT_CONFIG_GLOBAL
