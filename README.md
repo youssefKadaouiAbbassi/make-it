@@ -7,9 +7,11 @@
 
 <p align="center">A tested Claude Code setup for serious coding.</p>
 
-The core plugins in makeit were each tested against Claude Code without them and against their
-alternatives; the ones that lost were dropped. One command installs it, on every machine and every
-project. [What was tested](docs/included.md#the-plugin-set).
+makeit sets up Claude Code for real software work, the same way on every machine and every
+project, and keeps it current. It installs a plugin set where every core plugin was tested against
+Claude Code without it and against its alternatives (the losers were dropped), then sets each
+project up so Claude knows its rules, runs its checks, and remembers where the last session
+stopped. [What was tested](docs/included.md#the-plugin-set).
 
 <p align="center">
   <a href="https://github.com/youssefKadaouiAbbassi/make-it/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/youssefKadaouiAbbassi/make-it?color=555"></a>
@@ -18,46 +20,28 @@ project. [What was tested](docs/included.md#the-plugin-set).
   <img alt="status: beta" src="https://img.shields.io/badge/status-beta-6e7681">
 </p>
 
-```console
-$ makeit setup
-
->_ makeit  setup
-
-  ● Machine        4 changes
-  ● Claude Code    install Claude Code
-  ● Plugins        5 changes
-  ● Settings       merge makeit's settings into /home/u/.claude/settings.json
-  ● Files          7 changes
-
-  Apply this plan? Yes
-
-  ✓ Machine        4 changed
-  ✓ Claude Code    1 changed
-  ✓ Plugins        4 changed
-  ✓ Settings       1 changed
-  ✓ Files          7 changed
-
-  ✓ Ready in 124s · 17 changed · 1 already
-    Open Claude Code to start.  undo: makeit rollback
-```
-
-<p align="center"><sub>makeit setup on a fresh Ubuntu 24.04: the plan, one question, the result. Lines cut from the real output; nothing retyped.</sub></p>
-
 > makeit is in beta (0.x): commands and files may still change between versions.
 
-## Highlights
+## What it does
 
-- A tested set of plugins, settings and global rules for Claude Code, installed in one step.
-- Sets up any project for Claude: CLAUDE.md, check commands, git hooks and CI, with `/makeit:init`
-  inside Claude Code.
-- Every change is shown as a plan first; `--dry-run` writes nothing.
-- Never overwrites your edits: a file you changed is kept and reported.
-- Stays current on its own: once a day makeit and its plugins move to their newest releases, and
-  `makeit rollback` undoes the last update. Releases are signed.
-- `makeit uninstall` removes what makeit added and you did not change.
-- Builds for Linux, macOS and Windows (tested on Linux).
+makeit works at three levels:
 
-## Installation
+- **Your machine.** `makeit setup` installs Claude Code, the plugin set, the settings and the
+  global rules every session follows: verify before saying "done", test edges and errors, keep
+  changes small, ask before anything irreversible.
+- **Each project.** `/makeit:init` in Claude Code writes the files Claude reads at session start
+  (`CLAUDE.md`, `CONSTRAINTS.md`, `HANDOFF.md`), wires `check:fast`, `check:task` and
+  `check:full` to your real linter and tests, adds commit hooks and a CI workflow, and indexes the
+  docs of your dependencies at the versions you use.
+- **Every session.** Claude reads the handoff the last session left, searches your dependencies'
+  docs instead of guessing, runs the checks before calling work done, and asks you in one
+  keystroke when it needs a decision. Once a day makeit moves everything to its newest release;
+  `makeit rollback` undoes it.
+
+Every change makeit makes is shown as a plan first, a file you edited is never overwritten, and
+`makeit uninstall` removes what makeit added and you did not change.
+
+## Install
 
 macOS and Linux:
 
@@ -71,68 +55,38 @@ Windows (PowerShell):
 irm https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.ps1 | iex
 ```
 
-The installer checks the release's checksums, and its signature too when
-[minisign](https://jedisct1.github.io/minisign/) is installed (see [Security](#security)), then runs
-`makeit setup`, which shows its plan and asks once. `| sh -s -- --yes` sets up without asking;
-`| sh -s -- --no-setup` installs makeit only.
-
-## Set up a project
-
-Inside Claude Code, in your project:
-
-```
-/makeit:init
-```
-
-makeit writes the project files, then Claude fills in the project's facts, wires the check tasks to
-your real linter and tests, runs them, and asks before the first commit. The same files without
-Claude: `makeit init`. A dry run on a new Node project:
+The installer checks the release's checksums (and its signature when
+[minisign](https://jedisct1.github.io/minisign/) is installed), then runs `makeit setup`, which
+shows its plan and asks once:
 
 ```console
-$ makeit init --dry-run
-  will: Write CLAUDE.md
-  will: Write CONSTRAINTS.md
-  will: Write HANDOFF.md
-  will: Add makeit's entries to package.json
-  will: Add makeit's entries to .gitignore
-  will: Add makeit's entries to renovate.json
-  will: Write .pre-commit-config.yaml
-  will: Write .env.example
-  will: Write .grype.yaml
-  will: Write .github/workflows/gate.yml
-  will: Write ci/floor-guard.mjs
-  will: Record what init wrote in .makeit.json
-12 would-change
+$ makeit setup
+
+  ● Machine        4 changes
+  ● Claude Code    install Claude Code
+  ● Plugins        5 changes
+  ● Settings       merge makeit's settings into /home/u/.claude/settings.json
+  ● Files          7 changes
+
+  Apply this plan? Yes
+
+  ✓ Ready in 124s · 17 changed · 1 already
+    Open Claude Code to start.  undo: makeit rollback
 ```
 
-See [Projects](docs/projects.md) for what each file is and how re-runs behave.
+## Start working
 
-## Keep it current
+1. Open Claude Code in a project and type `/makeit:init`. Claude sets the project up, runs its
+   checks, and asks before the first commit.
+2. Give Claude work in plain words. For something new it asks what you want, proposes a design and
+   a plan, then builds it test-first; for a bug it finds the cause first; either way it shows the
+   checks passing before it says "done".
+3. Answer with one keystroke: a dialog for decisions, a digit for the numbered suggestions at the
+   end of a reply.
+4. Stop whenever you like. Claude leaves a `HANDOFF.md`, and tomorrow's session starts from it.
 
-You do nothing: once a day, when Claude Code starts, makeit updates itself to the newest signed
-release and each plugin to its newest release. The next session says what changed in one line.
-`makeit update` does the same now, `makeit rollback` undoes the last update, and
-`"autoUpdate": false` in `~/.makeit/config.json` turns the daily run off.
-On makeit 0.1.x, which has no daily run, run `makeit self update` once to get here.
-
-## Check your machine
-
-`makeit doctor` changes nothing; it checks this machine, lists each problem with a fix, and, at a
-terminal, offers to run the fix for anything `makeit setup` or `makeit update` can reach. setup
-installs almost every tool makeit uses itself; Chrome, where neither your package manager nor
-Google ships one for it, is the one doctor still leaves to you:
-
-```console
-$ makeit doctor
-
->_ makeit  doctor
-
-  ✓ 11 checks passed
-  ! chrome is missing: chrome-devtools-mcp drives an installed Chrome (also used by sitespeed.io)
-    fix Google Chrome or Chrome for Testing: https://www.google.com/chrome/
-
-  ✓ Healthy · 1 warning · every check: makeit doctor --verbose
-```
+[Working with makeit every day](docs/daily.md) walks through a full day: sessions, reviews,
+lookups, notifications, and what to do when something goes wrong.
 
 ## Commands
 
@@ -140,8 +94,8 @@ $ makeit doctor
 |---|---|
 | `makeit setup` | installs the missing prerequisites, Claude Code, the plugin set, settings and global files |
 | `makeit init [dir]` | writes a project's CLAUDE.md, CONSTRAINTS.md, check tasks, hook config and CI caller |
-| `makeit doctor` | nothing by itself; lists each problem and, at a terminal, offers to fix them |
-| `makeit update` | moves makeit, Claude Code, the plugins, the MCP servers and the release tools to their newest versions, lists each move with its old and new version, then the settings and global files (also runs daily on its own) |
+| `makeit doctor` | nothing; checks the machine and offers to run the fixes it can |
+| `makeit update` | moves makeit, Claude Code, the plugins and their tools to their newest releases (also runs daily on its own) |
 | `makeit rollback` | undoes the last update: files, plugin versions and makeit itself |
 | `makeit uninstall` | removes what makeit added and you did not change since |
 | `makeit` | shows this machine's status and what to do next |
@@ -179,6 +133,7 @@ see [SECURITY.md](SECURITY.md).
 ## Documentation
 
 [Getting started](docs/getting-started.md) ·
+[Every day](docs/daily.md) ·
 [Commands](docs/commands.md) ·
 [What's included](docs/included.md) ·
 [Projects and /makeit:init](docs/projects.md) ·
