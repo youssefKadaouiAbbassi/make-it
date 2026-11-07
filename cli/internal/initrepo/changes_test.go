@@ -136,7 +136,7 @@ func TestRunFreshProjectIsCurrent(t *testing.T) {
 	}
 }
 
-// Review Focus 4: a record an older makeit wrote has no initVersion and gets every change.
+// A record an older makeit wrote has no initVersion and gets every change.
 func TestRunReportsPendingChanges(t *testing.T) {
 	dir := nodeRepo(t)
 	e, _ := testEnv(t, dir)
@@ -171,7 +171,7 @@ func TestRunReportsPendingChanges(t *testing.T) {
 	}
 }
 
-// Review Focus 2: --applied writes the record only, and a keep line already there is not added again.
+// --applied writes the record only, and a keep line already there is not added again.
 func TestRunApplied(t *testing.T) {
 	dir := nodeRepo(t)
 	e, _ := testEnv(t, dir)
@@ -205,7 +205,7 @@ func TestRunApplied(t *testing.T) {
 	}
 }
 
-// Review Focus 1: no record, nothing written.
+// No record, nothing written.
 func TestRunAppliedNoRecord(t *testing.T) {
 	dir := nodeRepo(t)
 	e, _ := testEnv(t, dir)

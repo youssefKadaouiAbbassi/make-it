@@ -24,9 +24,8 @@ func (o overlay) ReadFile(p string) ([]byte, error) {
 	return catalog.Embedded.ReadFile(p)
 }
 
-// Review Focus 3: --update rewrites a file init wrote and nobody changed; an edited file is kept,
-// a deleted one is not written again, and a file that was the user's from the start is never
-// touched.
+// --update rewrites a file init wrote and nobody changed; an edited file is kept, a deleted one is
+// not written again, and a file that was the user's from the start is never touched.
 func TestUpdateEditedAndDeleted(t *testing.T) {
 	dir := nodeRepo(t)
 	if err := os.WriteFile(filepath.Join(dir, "CONSTRAINTS.md"), []byte("theirs\n"), 0o644); err != nil {

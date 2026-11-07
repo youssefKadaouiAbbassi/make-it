@@ -54,8 +54,8 @@ func (m *docsMachine) take() []string {
 	return c
 }
 
-// Review Focus 4: a trigger during a running sync exits at once, an unchanged manifest costs
-// nothing, and an edit made while the sync ran is caught by the next trigger.
+// A trigger during a running sync exits at once, an unchanged manifest costs nothing, and an edit
+// made while the sync ran is caught by the next trigger.
 func TestSyncIfChangedLockAndMidSyncEdit(t *testing.T) {
 	m := newDocsMachine(t)
 	lock, err := fsx.Acquire(filepath.Join(m.stack, "docs", "lock"), time.Now())

@@ -208,7 +208,7 @@ func TestUpdateOutcomeParsed(t *testing.T) {
 
 // From the user's home (or a project), Claude Code reads that directory's .claude/settings.json as
 // project settings too, so a user-scope remove is not the last scope and the marketplace stays
-// registered (measured). Every command runs in a private, empty directory made for it: outside any
+// registered. Every command runs in a private, empty directory made for it: outside any
 // project, and not /tmp itself, where another local user could plant .claude/settings.json.
 func TestCommandsRunOutsideAnyProject(t *testing.T) {
 	var dirs []string

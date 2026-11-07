@@ -8,7 +8,7 @@ import (
 )
 
 // Daily runs that only noticed Claude Code moving (nothing to undo) must not push the one run
-// rollback can undo out of the history (the 2026-11-05 audit).
+// rollback can undo out of the history.
 func TestPruneKeepsTheUndoableRun(t *testing.T) {
 	stack := t.TempDir()
 	g, err := NewGeneration(stack, 0, "update", nil)
@@ -89,7 +89,7 @@ func TestManifestUndoable(t *testing.T) {
 }
 
 // A run whose folder holds backups but no ops (uninstall's state.json copy, plugin data saved
-// before a removal) is kept: those copies exist nowhere else (the review of the audit fixes).
+// before a removal) is kept: those copies exist nowhere else.
 func TestPruneKeepsBackups(t *testing.T) {
 	stack := t.TempDir()
 	g, err := NewGeneration(stack, 0, "uninstall", nil)

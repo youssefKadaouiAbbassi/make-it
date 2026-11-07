@@ -1,5 +1,5 @@
 // Command applysettings runs the settings merge on files, for installing the stack by hand
-// before the setup command exists: it writes the candidate settings.json and the merge state, and
+// without the setup command: it writes the candidate settings.json and the merge state, and
 // prints every change with secrets redacted. It never writes the live settings file itself.
 //
 //	go run ./tools/applysettings -theirs settings.json -baseline ../settings.baseline.json \

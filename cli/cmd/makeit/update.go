@@ -145,7 +145,7 @@ func selfStep(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 	}
 	rec, err := e.Gate()
 	if err != nil {
-		// Not this binary's to update: today's notice, silent in a development build.
+		// Not this binary's to update: a release notice only, silent in a development build.
 		notice := release.Notice(ctx, e.Client, e.Base, e.Repo, e.Version)
 		if errors.Is(err, selfupdate.ErrOtherPath) {
 			notice = strings.TrimPrefix(notice+"\n"+err.Error(), "\n")

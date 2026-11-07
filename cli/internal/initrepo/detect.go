@@ -233,8 +233,7 @@ func Detect(dir string) (Project, error) {
 	return p, nil
 }
 
-// pnpmPin and uvPin bootstrap the package managers the runner image lacks (npm view pnpm
-// version, PyPI uv, 2026-10-31).
+// pnpmPin and uvPin bootstrap the package managers the runner image lacks.
 const (
 	pnpmPin = "12.16.1"
 	uvPin   = "0.13.6"

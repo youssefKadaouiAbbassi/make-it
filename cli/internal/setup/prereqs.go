@@ -38,7 +38,7 @@ func (e *env) prereqSteps() []plan.Step {
 	nodePlanned := !e.Present("node")
 	avail := func(bin string) bool { return e.Present(bin) || (bin == "npm" && nodePlanned) }
 	// Package routes need root, except brew and winget. Without it a required row still tries
-	// (and fails, as today); any other row takes a route that needs no root, or is left to the user.
+	// (and fails); any other row takes a route that needs no root, or is left to the user.
 	canPackages := e.Root || e.Present("sudo") || e.Platform.PM == platform.Brew || e.Platform.PM == platform.WinGet
 	// A tool already on disk in a folder makeit puts on PATH is present even before a new terminal
 	// sees it: never installed twice, never taken for one the user removed.

@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// The script's temp GnuPG home and key file go away however it ends (the 2026-11-05 audit): here
-// the download fails, the first step that touches them.
+// The script's temp GnuPG home and key file go away however it ends: here the download fails, the
+// first step that touches them.
 func TestRepoScriptRemovesItsTempFiles(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("no sh")

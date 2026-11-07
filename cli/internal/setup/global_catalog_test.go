@@ -46,7 +46,7 @@ func stepIDsOf(steps []plan.Step) []string {
 }
 
 // A git catalog pinned to a tag from before makeit added a global file lacks it: update still plans
-// and applies, without that file (the 2026-11-05 audit).
+// and applies, without that file.
 func TestUpdateGlobalWithAnOlderCatalog(t *testing.T) {
 	e, _ := newEnv(t)
 	e.Catalog = catalogWithout(t, "templates/global/rules/rust.md", nil)

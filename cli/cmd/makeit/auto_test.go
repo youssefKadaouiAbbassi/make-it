@@ -67,7 +67,7 @@ func TestAutoNote(t *testing.T) {
 	}
 }
 
-// A daily run that only moved npm tools has nothing rollback undoes: no undo hint (the 0.3.6 review).
+// A daily run that only moved npm tools has nothing rollback undoes: no undo hint.
 func TestAutoNoteNoUndoWhenNothingToUndo(t *testing.T) {
 	got := autoNote([]state.Change{{Kind: "npm", Item: "pyright", From: "1.1.413", To: "1.1.414"}}, false)
 	if want := "makeit updated: pyright 1.1.413 → 1.1.414"; got != want {
@@ -90,7 +90,7 @@ func due(stack string, now time.Time) (bool, string) {
 }
 
 // The check runs under the lock the run then keeps: a second start while the first runs is not
-// due, so two sessions starting at once never run the daily update twice (the 2026-11-05 audit).
+// due, so two sessions starting at once never run the daily update twice.
 func TestAutoDueHoldsTheLock(t *testing.T) {
 	stack := t.TempDir()
 	first, _ := autoDue(stack, now)

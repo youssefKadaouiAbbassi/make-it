@@ -27,7 +27,7 @@ func TestReleaseURL(t *testing.T) {
 	}
 }
 
-// The names the projects published on 2026-11-03, for any version.
+// The asset names each project publishes, for any version.
 func TestReleaseAssetNames(t *testing.T) {
 	for _, tc := range []struct{ id, goos, goarch, asset, sums string }{
 		{"prek", "linux", "amd64", "prek-x86_64-unknown-linux-musl.tar.gz", "prek-x86_64-unknown-linux-musl.tar.gz.sha256"},

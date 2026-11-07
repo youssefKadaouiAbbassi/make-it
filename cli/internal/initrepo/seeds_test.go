@@ -352,8 +352,8 @@ func TestSeedsSubfolder(t *testing.T) {
 	}
 }
 
-// The delegate's ruling: without Docker, or with its daemon down, check:api fails with one line
-// naming the cause, not with a raw docker error.
+// Without Docker, or with its daemon down, check:api fails with one line naming the cause, not with
+// a raw docker error.
 func TestCheckAPINeedsDocker(t *testing.T) {
 	script := checkAPI("openapi.yaml", "main")
 	bin := t.TempDir()

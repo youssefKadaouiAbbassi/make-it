@@ -625,10 +625,8 @@ func (r *run) workspaceDrops() ([]plan.Step, []string) {
 	return steps, notes
 }
 
-// needsGitInit is true for a missing or empty directory outside any git work tree; a non-empty
-// one outside git is refused.
-// needsGitInit reports whether init starts a repository (an empty or missing folder) or works
-// without git (a folder with files and no repository: the owner's choice, 2026-11-04).
+// needsGitInit reports whether init starts a repository (an empty or missing folder outside any
+// git work tree) or works without git (a folder with files and no repository).
 func needsGitInit(dir string) (gitInit, noGit bool, err error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {

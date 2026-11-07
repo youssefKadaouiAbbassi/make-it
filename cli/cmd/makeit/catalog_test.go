@@ -161,7 +161,7 @@ func TestCatalogSwitchKeepsMarketplace(t *testing.T) {
 	}
 }
 
-// Review Focus 2: the same files from a git source still record the switch.
+// The same files from a git source still record the switch.
 func TestCatalogSwitchIdenticalRecords(t *testing.T) {
 	m := newCatMachine(t, nil)
 	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
@@ -271,7 +271,7 @@ func TestDeletedCatalogKeepsGitSource(t *testing.T) {
 	}
 }
 
-// Review Focus 4: a dry run with --catalog writes nothing and plans with the new catalog.
+// A dry run with --catalog writes nothing and plans with the new catalog.
 func TestCatalogDryRunWritesNothing(t *testing.T) {
 	m := newCatMachine(t, map[string]string{"templates/extra.md": "extra\n"})
 	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
