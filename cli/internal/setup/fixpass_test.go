@@ -17,8 +17,8 @@ import (
 	"makeit/internal/state"
 )
 
-// Distro suite, 2026-11-04: the newest releases were looked up before setup had installed git, so a
-// fresh machine got the shipped set and the second setup moved it. The lookup waits for git.
+// The newest-release lookup waits for git: run before setup installs git, a fresh machine would
+// get the shipped set and the second setup would move it.
 func TestResolveWaitsForGit(t *testing.T) {
 	e, _ := newEnv(t, "apt-get")
 	calls := 0
@@ -42,7 +42,7 @@ func TestResolveWaitsForGit(t *testing.T) {
 	}
 }
 
-// Review C1: a newest tag with no asset (or a failed checksum) keeps the tool and does not stop the run.
+// A newest tag with no asset (or a failed checksum) keeps the tool and does not stop the run.
 func TestToolUpgradeFetchFailureKeeps(t *testing.T) {
 	e, f, path := installedPrek(t, "0.5.9", []byte("prek 0.5.9\n"))
 	prekReleases(t, e, f, "b\trefs/tags/v0.6.0\n", nil) // tagged, nothing uploaded yet
@@ -61,7 +61,7 @@ func TestToolUpgradeFetchFailureKeeps(t *testing.T) {
 	}
 }
 
-// Review I2: offline, a missing release tool is left to the user, not planned to fail.
+// Offline, a missing release tool is left to the user, not planned to fail.
 func TestOfflineReleaseRouteNeedsYou(t *testing.T) {
 	e, _ := newEnv(t, "apt-get", "git", "node", "jq")
 	e.Offline = true
@@ -73,7 +73,7 @@ func TestOfflineReleaseRouteNeedsYou(t *testing.T) {
 	}
 }
 
-// Review I3: rollback passes over a run that left nothing to undo.
+// Rollback passes over a run that left nothing to undo.
 func TestRollbackSkipsEmptyGeneration(t *testing.T) {
 	stack := t.TempDir()
 	g1, err := state.NewGeneration(stack, 0, "update", nil)
@@ -98,7 +98,7 @@ func TestRollbackSkipsEmptyGeneration(t *testing.T) {
 	}
 }
 
-// Review I4: with no one to type a password (--yes, a pipe, the daily run), a sudo route is a note.
+// With no one to type a password (--yes, a pipe, the daily run), a sudo route is a note.
 func TestClaudeUpgradeNoPromptSkipsSudo(t *testing.T) {
 	e, f := upgradeEnv(t, "apt", "2.1.317", "2.1.320", "2.1.320")
 	e.Yes, e.Interactive = true, false
@@ -113,7 +113,7 @@ func TestClaudeUpgradeNoPromptSkipsSudo(t *testing.T) {
 	}
 }
 
-// Review I4: an upgrade that fails is a note, not a stopped update.
+// An upgrade that fails is a note, not a stopped update.
 func TestClaudeUpgradeFailureKeeps(t *testing.T) {
 	e, f := upgradeEnv(t, "native", "2.1.317", "2.1.320", "2.1.320")
 	f.answers["sh -c "+e.shell("claude update")] = func(execx.Cmd) execx.Result { return execx.Result{Code: 1, Stderr: "network down"} }
@@ -126,7 +126,7 @@ func TestClaudeUpgradeFailureKeeps(t *testing.T) {
 	}
 }
 
-// Review I5: npm under a system prefix needs root like a package manager.
+// npm under a system prefix needs root like a package manager.
 func TestClaudeUpgradeNpmSystemPrefix(t *testing.T) {
 	e, _ := upgradeEnv(t, "npm", "2.1.317", "2.1.320", "2.1.320")
 	found := []claudecli.Install{{Path: "/usr/local/bin/claude", Source: "npm", OnPath: true}}
@@ -137,7 +137,7 @@ func TestClaudeUpgradeNpmSystemPrefix(t *testing.T) {
 	}
 }
 
-// Review I6: a Claude Code that updated itself is recorded by its own step, even on a quiet run.
+// A Claude Code that updated itself is recorded by its own step, even on a quiet run.
 func TestClaudeSeenStep(t *testing.T) {
 	e, _ := upgradeEnv(t, "native", "2.1.318", "2.1.318", "2.1.318")
 	e.st.ClaudeCode.VersionSeen = "2.1.317"
@@ -157,7 +157,7 @@ func TestClaudeSeenStep(t *testing.T) {
 	}
 }
 
-// Review I7: an undone tool release is passed over by the daily run only, as for plugins.
+// An undone tool release is passed over by the daily run only, as for plugins.
 func TestToolSkipsOnlyInDailyRun(t *testing.T) {
 	e, f, _ := installedPrek(t, "0.5.9", []byte("prek 0.5.9\n"))
 	prekReleases(t, e, f, "a\trefs/tags/v0.5.9\nb\trefs/tags/v0.6.0\n", nil)
@@ -174,7 +174,7 @@ func TestToolSkipsOnlyInDailyRun(t *testing.T) {
 	}
 }
 
-// Review M8: one item moved twice in a run is one change, first version to last.
+// One item moved twice in a run is one change, first version to last.
 func TestReportChangesMergesSameItem(t *testing.T) {
 	got := reportChanges([]state.Change{
 		{Kind: "claude-code", Item: "Claude Code", From: "2.1.310", To: "2.1.315"},
@@ -185,7 +185,7 @@ func TestReportChangesMergesSameItem(t *testing.T) {
 	}
 }
 
-// Review M10: the plan shows the command the upgrade runs, sudo included.
+// The plan shows the command the upgrade runs, sudo included.
 func TestClaudeUpgradeShowsCommand(t *testing.T) {
 	e, _ := upgradeEnv(t, "native", "2.1.317", "2.1.320", "2.1.320")
 	if s := e.claudeUpgradeStep(); !strings.Contains(strings.Join(s.Command, " "), "claude update") {

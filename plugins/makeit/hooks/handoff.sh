@@ -3,9 +3,8 @@
 #   SessionStart (startup|resume|clear|compact): print HANDOFF.md into context.
 #   PreCompact: tell the agent to rewrite HANDOFF.md before the context is summarised.
 #   Stop: if files changed in this session after HANDOFF.md was last written, say so once as Stop
-#         additionalContext, so the agent rewrites it before ending the turn; stop_hook_active guards
-#         against a loop. "This session" = modified after the session's start marker, which
-#         SessionStart writes; edits from other sessions or copies do not count.
+#         additionalContext so the agent rewrites it; stop_hook_active guards against a loop.
+#         "This session" means modified after the start marker SessionStart writes.
 # Exits 0 on every path it does not understand. Needs jq and git; without them it does nothing.
 set -u
 input=$(cat)

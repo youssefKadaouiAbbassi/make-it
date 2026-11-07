@@ -91,8 +91,8 @@ func TestGate(t *testing.T) {
 	}
 }
 
-// Review Focus 3: ~/.local/bin is a symlink, so the receipt's path and the resolved executable
-// differ until both are resolved.
+// ~/.local/bin is a symlink, so the receipt's path and the resolved executable differ until both
+// are resolved.
 func TestGateSymlinkedBinDir(t *testing.T) {
 	e := machine(t)
 	link := filepath.Dir(e.Exe)

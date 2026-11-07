@@ -41,7 +41,7 @@ func TestKeyFromSeedDeterministic(t *testing.T) {
 	}
 }
 
-// The release key (minisign.pub at the repository root, the owner's) parses, and a build that
+// The release key (minisign.pub at the repository root) parses, and a build that
 // carries it refuses a throwaway key's signature; a build with that throwaway key accepts it. No key
 // accepts the other's signatures.
 func TestReleaseKeyAcceptsOnlyItsOwn(t *testing.T) {

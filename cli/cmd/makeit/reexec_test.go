@@ -95,7 +95,7 @@ func TestUpdateReexecJSONParentSilent(t *testing.T) {
 	}
 }
 
-// Review Focus 5: without --yes, --json neither prompts, downloads nor swaps.
+// Without --yes, --json neither prompts, downloads nor swaps.
 func TestUpdateJSONNoYesNoSwap(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, srv := scriptMachine(t, k, k)
@@ -244,8 +244,8 @@ func TestWaitExit(t *testing.T) {
 	})
 }
 
-// The reviewer's probe: an interrupt while the new binary is checked ends update there, with no
-// swap, no child and no stack run.
+// An interrupt while the new binary is checked ends update there, with no swap, no child and no
+// stack run.
 func TestUpdateInterruptedNoChild(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, _ := scriptMachine(t, k, k)
@@ -264,8 +264,8 @@ func TestUpdateInterruptedNoChild(t *testing.T) {
 	}
 }
 
-// Review Focus 5 without help from the stack: with the stack up to date and a newer makeit, update
-// without --yes still exits 2 and says how to apply.
+// Without help from the stack: with the stack up to date and a newer makeit, update without --yes
+// still exits 2 and says how to apply.
 func TestUpdateConsentWhenOnlyMakeitIsBehind(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, srv := scriptMachine(t, k, k)

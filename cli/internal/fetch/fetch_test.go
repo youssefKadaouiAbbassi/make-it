@@ -142,8 +142,7 @@ func flaky(t *testing.T, codes ...int) (*httptest.Server, *int) {
 	return s, &n
 }
 
-// A server error on GitHub's side (the 2026-11-05 distro run got a 504 for prek) is retried, so
-// one bad answer does not fail setup and skip every step after it.
+// A server error on GitHub's side (a 502 or 504) is retried, so one bad answer does not fail setup and skip every step after it.
 func TestGetRetriesServerErrors(t *testing.T) {
 	s, n := flaky(t, http.StatusGatewayTimeout, http.StatusBadGateway)
 	retryWait = time.Millisecond

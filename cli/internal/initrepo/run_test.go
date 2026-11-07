@@ -584,7 +584,7 @@ func oldNoGitSetup(t *testing.T) (string, Env) {
 }
 
 // The cleanup is --update's (the docs say so): a plain run, as /makeit:init's first step is,
-// leaves the old files on disk and in the record for a later --update (the 0.3.7 review).
+// leaves the old files on disk and in the record for a later --update.
 func TestInitWorkspaceRemovesOnlyOnUpdate(t *testing.T) {
 	dir, e := oldNoGitSetup(t)
 	if _, err := Run(context.Background(), e, plan.Apply, nil, Options{}); err != nil {
@@ -604,8 +604,8 @@ func TestInitWorkspaceRemovesOnlyOnUpdate(t *testing.T) {
 	}
 }
 
-// A removal never follows a symlink: a linked folder or file stays, with its target (the 0.3.7
-// review: ci/ linked elsewhere lost its floor-guard.mjs).
+// A removal never follows a symlink: a linked folder or file stays, with its target (a ci/ linked
+// elsewhere keeps its floor-guard.mjs).
 func TestInitWorkspaceDropFollowsNoLink(t *testing.T) {
 	dir, e := oldNoGitSetup(t)
 	elsewhere := t.TempDir()
@@ -668,7 +668,7 @@ func TestInitWorkspaceDropLeavesNoEmptyFolder(t *testing.T) {
 	}
 }
 
-// A workspace has no CI workflow, so the lines about it do not show (the 0.3.7 review): the npm ci
+// A workspace has no CI workflow, so the lines about it do not show: the npm ci
 // lockfile line for a root package.json, the CI caller notice.
 func TestInitWorkspaceNoCILines(t *testing.T) {
 	dir := workspaceTree(t)

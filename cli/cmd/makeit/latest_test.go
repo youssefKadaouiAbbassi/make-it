@@ -188,8 +188,8 @@ func TestUpdateShowsClaudeSelfUpdate(t *testing.T) {
 }
 
 // A daily run that stops before its steps (here an unreadable state.json; also a refused catalog)
-// still counts as the day's run: it does not retry at every Claude Code start (the 2026-11-05
-// audit). The reason is in update.log.
+// still counts as the day's run: it does not retry at every Claude Code start. The reason is in
+// update.log.
 func TestAutoFailedRunWaitsADay(t *testing.T) {
 	m := newCatMachine(t, nil)
 	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {

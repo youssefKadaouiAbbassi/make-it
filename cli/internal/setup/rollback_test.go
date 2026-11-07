@@ -201,7 +201,7 @@ func TestRollbackRestoresThroughSymlink(t *testing.T) {
 	}
 }
 
-// Review M9: rollback puts the MCP servers back to the versions they ran before.
+// Rollback puts the MCP servers back to the versions they ran before.
 func TestRollbackRestoresMCPVersions(t *testing.T) {
 	e, f := stackEnv(t, `[{"name":"makeit","source":"directory"}]`, "[]")
 	dir := filepath.Join(e.Roots.Stack, "catalog")

@@ -470,7 +470,7 @@ func TestBundleDepsInstallsMissing(t *testing.T) {
 }
 
 // An install cut short leaves the bundle listed without some of its dependencies; setup must
-// install them rather than call the bundle done (seen on a real machine, 2026-11-01).
+// install them rather than call the bundle done.
 func TestSetupInstallsMissingBundleDeps(t *testing.T) {
 	e, _ := pluginEnv(t, `["superpowers","newdep"]`, `[`+bundleEntry+`,`+spEntry+`,{"name":"newdep","source":"./plugins/newdep"}]`,
 		`[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
@@ -536,8 +536,7 @@ func TestPluginFailureKeepsGoing(t *testing.T) {
 	}
 }
 
-// The delegate's guard: the moved-pin reinstall copies the plugin's data into the generation
-// before the uninstall.
+// The moved-pin reinstall copies the plugin's data into the generation before the uninstall.
 func TestStalePinBacksUpData(t *testing.T) {
 	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`, `[`+bundleRow+`,{"id":"superpowers@makeit","version":"7.0.1","enabled":true}]`)
 	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("aaa")}
@@ -571,7 +570,7 @@ func adoptedMachine(t *testing.T) *fakeMachine {
 	return m
 }
 
-// Final review I1: what the user removed stays removed, adopted or not.
+// What the user removed stays removed, adopted or not.
 func TestUpdateLeavesRemovedAdoptedBundle(t *testing.T) {
 	m := adoptedMachine(t)
 	m.plugins = nil
@@ -608,8 +607,8 @@ func TestUpdateLeavesRemovedAdoptedMarketplace(t *testing.T) {
 	}
 }
 
-// Final review I2: a new binary moves a pin. The plan shown for consent lists the plugin update
-// the apply then runs, so its pins come from the binary's catalog, not the old copy on disk.
+// A new binary moves a pin. The plan shown for consent lists the plugin update the apply then runs,
+// so its pins come from the binary's catalog, not the old copy on disk.
 func TestUpdatePlanShowsPinMove(t *testing.T) {
 	m := installed(t)
 	const newPin, oldPin = "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b", "1111111111111111111111111111111111111111"
@@ -649,8 +648,6 @@ func TestUpdatePlanShowsPinMove(t *testing.T) {
 	}
 }
 
-// Final review I3: right after setup, with nothing new, update has nothing to do: no consent, no
-// generation, no restart.
 // converged is a machine right after setup whose plugin list reports every plugin installed, so
 // a plain update has nothing to do.
 func converged(t *testing.T) *fakeMachine {
@@ -678,6 +675,8 @@ func converged(t *testing.T) *fakeMachine {
 	return m
 }
 
+// Right after setup, with nothing new, update has nothing to do: no consent, no generation, no
+// restart.
 func TestUpdateAfterSetupIsNoop(t *testing.T) {
 	m := converged(t)
 	rep, err := Update(context.Background(), m.env, plan.NeedConsent, nil, nil)
@@ -713,8 +712,8 @@ func TestAdoptedUpdateRecordsPin(t *testing.T) {
 	}
 }
 
-// Final review I4: an owned file the user linked into dotfiles (stow, per file) is theirs; update
-// does not rewrite the link's target.
+// An owned file the user linked into dotfiles (stow, per file) is theirs; update does not rewrite
+// the link's target.
 func TestUpdateKeepsLinkedFile(t *testing.T) {
 	e := updateEnv(t)
 	target := filepath.Join(t.TempDir(), "dotfiles", "go.md")
@@ -735,7 +734,7 @@ func TestUpdateKeepsLinkedFile(t *testing.T) {
 	}
 }
 
-// The delegate's ruling: the restart hint only when a plugin version or pin actually moved.
+// The restart hint only when a plugin version or pin actually moved.
 func TestReloadOnlyWhenSomethingMoved(t *testing.T) {
 	for outcome, want := range map[string]bool{upToDate: false, updated: true} {
 		e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
@@ -758,8 +757,8 @@ func TestReloadOnlyWhenSomethingMoved(t *testing.T) {
 	}
 }
 
-// Review Focus 2 on a machine with nothing else to do: the same files from a git source still
-// record the switch, so the next plain update follows it.
+// On a machine with nothing else to do: the same files from a git source still record the switch,
+// so the next plain update follows it.
 func TestIdenticalSwitchOnConvergedMachine(t *testing.T) {
 	m := converged(t)
 	tr, err := catalog.EmbeddedTree()
@@ -781,9 +780,8 @@ func TestIdenticalSwitchOnConvergedMachine(t *testing.T) {
 	}
 }
 
-// A pin move of a plugin the owner installed (adopted) is recorded like any other, so the daily
-// note names it and rollback can put it back. Found on the owner's machine (2026-11-04): the
-// daily run moved superpowers to 7.0.2 and said nothing.
+// A pin move of a plugin the user installed (adopted) is recorded like any other, so the daily
+// note names it and rollback can put it back.
 func TestUpdateRecordsAdoptedPinMove(t *testing.T) {
 	m := adoptedMachine(t)
 	inner := m.env.Run

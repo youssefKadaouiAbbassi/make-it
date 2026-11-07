@@ -1,5 +1,5 @@
-// Package claudecli drives the `claude` CLI for plugin and marketplace work. It encodes the
-// behaviour measured on Claude Code 2.1.290-2.1.311 (Claude Code docs fetched 2026-10-27):
+// Package claudecli drives the `claude` CLI for plugin and marketplace work. It relies on this
+// behaviour of Claude Code 2.1.290-2.1.311:
 //
 //   - `plugin list --json` and `marketplace list --json` print a multi-line JSON array, so the
 //     whole stdout is parsed; action verbs print their result object on the last stdout line.
@@ -228,7 +228,7 @@ type Result struct {
 	FailureCode        string `json:"failureCode"`
 	AlreadyInGoalState bool   `json:"alreadyInGoalState"`
 	// UpdateOutcome is plugin update's "updated" or "up_to_date". up_to_date also covers a pin that
-	// moved while the plugin's version did not (measured).
+	// moved while the plugin's version did not.
 	UpdateOutcome string        `json:"updateOutcome"`
 	ShownCommand  *ShownCommand `json:"shownCommand"`
 	// Output is everything stdout printed before the result line, such as a displayed command.

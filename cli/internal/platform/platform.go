@@ -298,7 +298,7 @@ func goreleaserAsset(name, sums string, windowsArm64 bool) func(v, goos, goarch 
 // hasCABundle reports a CA bundle on disk, read from the files Go's crypto/x509 reads (and
 // SSL_CERT_FILE, SSL_CERT_DIR). It must not call x509.SystemCertPool: Go loads that pool once per
 // process, and this probe runs before setup installs ca-certificates, so it would cache an empty
-// pool for every download the same run makes afterward (seen on ubuntu:24.04, 2026-11-03).
+// pool for every download the same run makes afterward.
 func hasCABundle() bool { return caBundleIn(fetch.BundlePaths(os.Getenv)) }
 
 // caBundleIn reports whether one of paths holds a certificate.

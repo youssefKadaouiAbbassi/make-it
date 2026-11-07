@@ -118,9 +118,8 @@ func TestFetchTag(t *testing.T) {
 	}
 }
 
-// The delegate's test: a server that does not allow fetching a commit by its id. Protocol v2 lets
-// a client want any object, so only a server that speaks v0 or v1 refuses; forcing v0 here gives
-// that exchange.
+// A server that does not allow fetching a commit by its id. Protocol v2 lets a client want any
+// object, so only a server that speaks v0 or v1 refuses; forcing v0 here gives that exchange.
 func TestFetchCommitRefused(t *testing.T) {
 	global := filepath.Join(t.TempDir(), "gitconfig")
 	if err := os.WriteFile(global, []byte("[protocol]\n\tversion = 0\n"), 0o644); err != nil {

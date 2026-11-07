@@ -29,8 +29,7 @@ type SeedReport struct {
 	Notices []string
 }
 
-// Pins of the tools the seeded files run; the sources are in the init ledger
-// (docs/superpowers/plans/2026-10-31-init-ledger.md).
+// Pins of the tools the seeded files run.
 const (
 	redoclyPin    = "@redocly/cli@2.72.1"
 	redoclyImage  = "redocly/cli:2.72.1@sha256:d39a229ebd8250fea62f44c377ddb04797e8a155140eda49db17f1caaa9334ff"

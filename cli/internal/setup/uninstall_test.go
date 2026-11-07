@@ -387,7 +387,7 @@ func TestUninstallPurge(t *testing.T) {
 	}
 }
 
-// Final review C1: --purge must not delete what the same run kept.
+// --purge must not delete what the same run kept.
 func TestPurgeKeepsWhatTheRunKept(t *testing.T) {
 	m := installed(t)
 	m.plugins = append(m.plugins, "makeit-ui@makeit")
@@ -414,7 +414,7 @@ func TestPurgeKeepsDataOfKeptPlugin(t *testing.T) {
 	}
 }
 
-// Final review I5: purge deletes makeit's own files, not the directory MAKEIT_DIR names.
+// Purge deletes makeit's own files, not the directory MAKEIT_DIR names.
 func TestPurgeDeletesOnlyMakeitsOwn(t *testing.T) {
 	m := installed(t)
 	notes := filepath.Join(m.env.Roots.Stack, "notes.txt")
@@ -428,7 +428,7 @@ func TestPurgeDeletesOnlyMakeitsOwn(t *testing.T) {
 	}
 }
 
-// Final review C2: a settings step that fails at apply time keeps the records, so a rerun finishes.
+// A settings step that fails at apply time keeps the records, so a rerun finishes.
 func TestSettingsFailureKeepsState(t *testing.T) {
 	m := installed(t)
 	inner := m.env.Run
@@ -453,7 +453,7 @@ func TestSettingsFailureKeepsState(t *testing.T) {
 	}
 }
 
-// Final review C2: a catalog that could not be removed keeps state.json, so a rerun retries.
+// A catalog that could not be removed keeps state.json, so a rerun retries.
 func TestCatalogFailureKeepsState(t *testing.T) {
 	m := installed(t)
 	locked := filepath.Join(m.env.Roots.Stack, "catalog", "plugins")
@@ -490,7 +490,7 @@ func TestUninstallAdoptedSettingsLeaveNoRecord(t *testing.T) {
 	}
 }
 
-// The ruling: --keep-settings leaves the values, so their records do not keep state.json.
+// --keep-settings leaves the values, so their records do not keep state.json.
 func TestKeepSettingsRemovesState(t *testing.T) {
 	m := installed(t)
 	uninstall(t, m, UninstallOptions{KeepSettings: true})
@@ -502,8 +502,8 @@ func TestKeepSettingsRemovesState(t *testing.T) {
 	}
 }
 
-// Final review I4: stow's tree folding links the whole rules/ directory into the user's dotfiles;
-// what is under a link is the user's.
+// Stow's tree folding links the whole rules/ directory into the user's dotfiles; what is under a
+// link is the user's.
 func TestUninstallKeepsLinkedDirectory(t *testing.T) {
 	m := installed(t)
 	rules := filepath.Join(m.env.Roots.Claude, "rules")
@@ -542,9 +542,9 @@ func TestUninstallChangedFileHoldsNoRecord(t *testing.T) {
 	}
 }
 
-// The delegate's ruling: without a usable Claude Code, uninstall removes what it can (makeit's
-// files, settings values and catalog), keeps state.json with the plugins and marketplace left,
-// says how to finish, and never touches plugin folders.
+// Without a usable Claude Code, uninstall removes what it can (makeit's files, settings values and
+// catalog), keeps state.json with the plugins and marketplace left, says how to finish, and never
+// touches plugin folders.
 func TestUninstallWithoutClaude(t *testing.T) {
 	m := installed(t)
 	data := dataDir(t, m, "superpowers@makeit")
@@ -591,7 +591,7 @@ func TestUninstallWithoutClaude(t *testing.T) {
 	}
 }
 
-// The delegate's ruling: --keep-settings hands the values to the user, and the output says so.
+// --keep-settings hands the values to the user, and the output says so.
 func TestKeepSettingsSaysTheyAreYours(t *testing.T) {
 	m := installed(t)
 	m.needed = map[string]bool{"superpowers@makeit": true} // something stays, so state.json stays

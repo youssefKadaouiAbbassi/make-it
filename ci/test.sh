@@ -43,7 +43,7 @@ if [ -z "$leaks" ]; then echo "ok no personal strings in public files"; else ech
 if cmp -s .github/workflows/gate.yml ../.github/workflows/gate.yml; then echo "ok root gate.yml matches ci/"; else echo "FAIL ../.github/workflows/gate.yml differs from ci/.github/workflows/gate.yml"; fail=1; fi
 
 # makeit's release: a normal release (GitHub's /releases/latest, which self update reads, skips
-# pre-releases), and only for the owner's pushed tag (--verify-tag: never create one).
+# pre-releases), and only for a pushed tag (--verify-tag: never create one).
 rel=../.github/workflows/release.yml
 if grep -q -- '--prerelease' "$rel" || ! grep -q -- 'gh release create "$TAG" --draft --verify-tag' "$rel"; then
   echo "FAIL release.yml must draft a normal release for an existing tag (--draft --verify-tag, no --prerelease)"; fail=1

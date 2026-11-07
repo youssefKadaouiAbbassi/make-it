@@ -27,7 +27,7 @@ expect "ntfy Stop posts done" "-d done https://ntfy.example/t0pic" "$(cat "$tmp/
 expect "ntfy title is repo name" "Title: claude - proj" "$(cat "$tmp/curl.log")"
 : >"$tmp/curl.log"
 # macOS ships bash 3.2, where an empty array under set -u is an error: with no token, ntfy must
-# still post (the 2026-11-05 audit). Run there when docker can.
+# still post. Run there when docker can.
 if command -v docker >/dev/null && docker image inspect bash:3.2 >/dev/null 2>&1 || docker pull -q bash:3.2 >/dev/null 2>&1; then
   : >"$tmp/curl.log"
   # 77: the image could not get jq (no network), so this is a skip, not a failure.
@@ -159,7 +159,7 @@ case "$ctx" in *ignored*) bad "docs skips node_modules" ;; *) ok "docs skips nod
 command -v python3 >/dev/null 2>&1 && expect "docs lists pyproject deps" 'pydantic ==2.12.0' "$ctx"
 expect "docs says they are indexed and to search" 'These are indexed by makeit; search them (search_docs or the docs-search skill) before you rely on their API.' "$ctx"
 # A folder of repositories: the list is each repository's, as makeit's index (never a worktree's
-# or a plain folder's; the 0.3.7 review).
+# or a plain folder's).
 ws="$tmp/docsws"; mkdir -p "$ws/a/.git" "$ws/a-wt" "$ws/notes"
 printf '{"dependencies":{"left-pad":"1.0.0"}}\n' >"$ws/a/package.json"
 printf 'gitdir: %s/a/.git/worktrees/a-wt\n' "$ws" >"$ws/a-wt/.git"
