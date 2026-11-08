@@ -11,7 +11,7 @@ import (
 )
 
 // The newest run's record cannot be read: rollback stops and says so, instead of undoing the run
-// before it as if it were the last (the 2026-11-05 audit).
+// before it as if it were the last.
 func TestRollbackStopsAtAnUnreadableNewerRecord(t *testing.T) {
 	e, _ := newEnv(t)
 	g := genWithWrite(t, e, filepath.Join(e.Roots.Claude, "settings.json"))

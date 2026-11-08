@@ -1,11 +1,10 @@
-// lists.mjs: options.sh's check of a reply's ending, asked of marked, the parser Claude Code
-// renders with: it numbers an ordered list as its start plus each item's place. Reads the reply on
+// lists.mjs: options.sh's check of a reply's ending, parsed with marked, the parser Claude Code
+// renders with (it numbers an ordered list as its start plus each item's place). Reads the reply on
 // stdin and prints one word: "joined" when it ends on numbered options that show another number
-// than the one written on them, "options" when it ends on options that show as written, "none"
-// when it does not end on them (the awk then reads the ending as before), "hidden" when every
-// marked line is inside code or HTML, where no choices show at all. With no ordered list holding a
-// marked item but a marked line in ordinary text (options written with bold numbers, "**1.**
-// Release", are no list in Markdown) it prints nothing: the awk judges them. Exits 3 with no output when no marked is found; options.sh then runs its awk passes.
+// than the one written on them, "options" when they show as written, "none" when it does not end on
+// them, "hidden" when every marked line is inside code or HTML. It prints nothing when a marked line
+// sits in ordinary text outside any ordered list (bold numbers, "**1.** Release", are no list in
+// Markdown): the awk judges those. Exits 3 with no output when marked is not found.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';

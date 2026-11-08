@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# skills.sh: UserPromptSubmit. Superpowers injects its skill rules once, at session start; in a
-# repo with context, on features and continuations, Opus 5.5 goes straight to tools and skips them
-# (measured 2026-10-27, private eval harness). This puts a one-line reminder next to every
-# prompt: check the skills, with the usual skill per kind of work as examples. It does not
-# re-invoke using-superpowers, whose text is already in context from session start.
+# skills.sh: UserPromptSubmit. Superpowers injects its skill rules once, at session start, and on
+# later prompts (features, continuations) the model tends to go straight to tools and skip them.
+# This puts a one-line reminder next to every prompt: check the skills, with the usual skill per
+# kind of work as examples. It does not re-invoke using-superpowers, whose text is already in
+# context.
 # Exits 0 on every path it does not understand. Needs jq; without it it does nothing.
 set -u
 input=$(cat)

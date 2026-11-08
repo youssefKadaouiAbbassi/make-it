@@ -94,7 +94,7 @@ func TestSyncPlan(t *testing.T) {
 	}
 }
 
-// Review Focus 1: one library that hangs or cannot be resolved never stops the others.
+// One library that hangs or cannot be resolved never stops the others.
 func TestSyncTimeoutAndUnreachable(t *testing.T) {
 	s := &server{listJSON: `[]`, block: map[string]bool{"slow": true}}
 	libs := []Lib{{"slow", "1.0.0", "cargo"}, {"nowhere", "1.0.0", "maven"}, {"serde", "1.0.200", "cargo"}}
@@ -159,8 +159,8 @@ func TestReportFailed(t *testing.T) {
 	}
 }
 
-// An index whose list runs past 64 KiB (205 libraries did on this machine) still lists whole: a cut-off list
-// skipped every library on every sync (the Uni-CE init of 2026-11-06, 2,176 of 2,176).
+// An index whose list runs past 64 KiB (a few hundred libraries) still lists whole: a cut-off list
+// would skip every library on every sync.
 func TestSyncBigIndex(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("[")

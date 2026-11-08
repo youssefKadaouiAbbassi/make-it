@@ -11,7 +11,7 @@ import (
 )
 
 // An undo never installs software: with Claude Code removed, rollback's plan finds it or says it
-// is not there, and runs no install (the 2026-11-05 audit).
+// is not there, and runs no install.
 func TestRollbackDoesNotInstallClaude(t *testing.T) {
 	var none []claudecli.Install
 	e, f := claudeEnv(t, &none, "apt-get", "sudo", "curl", "bash")

@@ -233,7 +233,7 @@ func TestVersionReceiptOtherPath(t *testing.T) {
 	}
 }
 
-// The delegate's rule: test keys never get into a default build.
+// Test keys never get into a default build.
 func TestDefaultBuildHasNoKeys(t *testing.T) {
 	if buildinfo.KeyCurrent != "" || buildinfo.KeyNext != "" {
 		t.Errorf("a default build carries release keys %q and %q", buildinfo.KeyCurrent, buildinfo.KeyNext)

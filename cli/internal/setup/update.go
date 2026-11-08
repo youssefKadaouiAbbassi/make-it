@@ -238,7 +238,7 @@ func (e *env) pluginSteps() []plan.Step {
 }
 
 // refreshStep refreshes the makeit marketplace, so the steps after it see its current pins and
-// dependency lists (measured: a reinstall without a refresh sees the old list). It also hints how
+// dependency lists (a reinstall without a refresh sees the old list). It also hints how
 // each adopted stack plugin that makeit does not update gets its updates.
 func (e *env) refreshStep() plan.Step {
 	own := e.req.Marketplace
@@ -277,7 +277,7 @@ func (e *env) refreshStep() plan.Step {
 }
 
 // bundleDepsStep installs the dependencies the bundle declares and lacks by installing the bundle
-// again, which keeps them auto-installed (measured: plugin update alone does not install them).
+// again, which keeps them auto-installed (plugin update alone does not install them).
 func (e *env) bundleDepsStep(declared []string, derr error) plan.Step {
 	return plan.Step{ID: "bundle.deps", Title: "Install the dependencies " + e.req.Bundle + " gained",
 		Command: []string{"claude", "plugin", "install", e.req.Bundle, "--scope", "user", "--json"},
@@ -308,7 +308,7 @@ func (e *env) bundleDepsStep(declared []string, derr error) plan.Step {
 }
 
 // ownedStep updates a plugin makeit installed. When its pin moved and its version did not, plugin
-// update reports up_to_date (measured), so makeit uninstalls it and installs the bundle again,
+// update reports up_to_date, so makeit uninstalls it and installs the bundle again,
 // which brings it back at the new pin as an auto-installed dependency; a plugin with saved
 // options is kept, because the uninstall would delete them.
 func (e *env) ownedStep(id string) plan.Step {
@@ -379,7 +379,7 @@ func (e *env) ownedStep(id string) plan.Step {
 }
 
 // adoptedStep updates the versions of the plugins from the makeit marketplace that makeit did not
-// install (the owner's decision): `claude plugin update` only, never a reinstall, uninstall,
+// install: `claude plugin update` only, never a reinstall, uninstall,
 // disable or configure.
 func (e *env) adoptedStep() plan.Step {
 	return plan.Step{ID: "plugins.adopted", Title: "Update the versions of your plugins from the " + e.req.Marketplace + " marketplace",

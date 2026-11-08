@@ -106,9 +106,6 @@ You do not need to run it: once a day, when Claude Code starts, makeit runs `mak
 in the background. It writes to `~/.makeit/update.log`, and the next session shows one line naming
 what moved. Run `makeit update` yourself to update now.
 
-Coming from makeit 0.1.x, which has no daily run: run `makeit self update` once (0.1's name for
-it), then `makeit update`. From then on the daily run keeps you current.
-
 `update` first replaces makeit with the newest signed release, when makeit was installed by the
 install script. Then it moves each plugin to its newest release and brings the settings and the
 global files to what that makeit carries. Anything you changed is kept and listed.
@@ -119,13 +116,13 @@ To undo the last update:
 $ makeit rollback
 ```
 
-In each project, after an update:
-
-```console
-$ makeit init --update
-```
-
-This rewrites the files init wrote earlier that nobody changed since.
+In each project, after an update, type `/makeit:init` in Claude Code again: it brings the project
+up to the way the new makeit sets projects up, and keeps what you filled in.
 
 Every command takes `--dry-run`, `--yes` and `--json`. `makeit help <command>` lists a command's
 flags.
+
+## Next
+
+[Working with makeit every day](daily.md): what happens when you open a session, how Claude works
+on a task, how to answer it, and what to do when something goes wrong.

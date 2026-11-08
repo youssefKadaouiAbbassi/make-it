@@ -121,8 +121,8 @@ func unchanged(t *testing.T, e Env, receipt string) {
 	}
 }
 
-// The delegate's case: a release binary built without keys passes the signature and the hash, is
-// refused at the check, and nothing is swapped.
+// A release binary built without keys passes the signature and the hash, is refused at the check,
+// and nothing is swapped.
 func TestUpdateKeylessNothingSwapped(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, _ := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
@@ -162,7 +162,7 @@ func TestUpdateFailuresChangeNothing(t *testing.T) {
 	}
 }
 
-// Review Focus 1: a crash after the swap left the receipt behind; the running version decides.
+// A crash after the swap left the receipt behind; the running version decides.
 func TestUpdateReceiptBehind(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, _ := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
@@ -184,7 +184,7 @@ func TestUpdateReceiptBehind(t *testing.T) {
 	}
 }
 
-// Review Focus 2: another makeit holds the lock.
+// Another makeit holds the lock.
 func TestUpdateLockHeld(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, s := installed(t, k, releaseFiles(k, "1.2.0", "", []byte("new 1.2.0")))
@@ -291,8 +291,8 @@ func TestSkipCleared(t *testing.T) {
 	}
 }
 
-// The delegate's rule is that `--to V` clears the skip of V: a --to below the skip leaves it, so
-// the release the user rolled back from does not come back with the next update.
+// `--to V` clears the skip of V only: a --to below the skip leaves it, so the release the user
+// rolled back from does not come back with the next update.
 func TestSkipKeptBelow(t *testing.T) {
 	k := minisigntest.NewKey()
 	e, _ := installed(t, k, releaseFiles(k, "1.1.5", "", []byte("new 1.1.5")))

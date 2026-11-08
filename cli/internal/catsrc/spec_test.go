@@ -69,7 +69,7 @@ func TestParse(t *testing.T) {
 
 var errAny = errors.New("any error")
 
-// The Task 2 ruling: a relative directory shaped like owner/repo is a directory, never GitHub.
+// A relative directory shaped like owner/repo is a directory, never GitHub.
 func TestParseDirectoryBeforeGitHub(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll("catalogs/mine", 0o755); err != nil {

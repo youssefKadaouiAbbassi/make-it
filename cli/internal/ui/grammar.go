@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Mode is how a run draws: Plain is today's lines (pipes, CI, --json, --plain); Live is the
-// grammar of the 0.2.0 design (header, rows with a glyph, a result line, the next step).
+// Mode is how a run draws: Plain is line by line (pipes, CI, --json, --plain); Live draws in place
+// (header, rows with a glyph, a result line, the next step).
 type Mode int
 
 const (
@@ -154,7 +154,8 @@ func (u *UI) RowText(g Glyph, label, detail, note string) string {
 	return strings.TrimRight(s, " ")
 }
 
-// Row prints one status row: live, the glyph and the label column; plain, today's words.
+// Row prints one status row: live, the glyph and the label column; plain, the matching Ok, Info,
+// Warn or Fail line.
 func (u *UI) Row(g Glyph, label, detail, note string) {
 	if u.Mode == Live {
 		if !u.Quiet || g == GWarn || g == GFail {

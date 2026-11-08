@@ -176,7 +176,7 @@ func (e *env) findClaudeStep(missing string) plan.Step {
 
 // unPluginStep uninstalls a plugin makeit installed, keeping its data. A dependency goes only
 // when Claude Code lists it as no longer needed: uninstalling one that another plugin needs is
-// not refused (measured), so makeit checks first.
+// not refused, so makeit checks first.
 func (e *env) unPluginStep(id string, dep bool) plan.Step {
 	return plan.Step{ID: "plugin." + id, Title: "Uninstall " + id + " (its data stays)",
 		Command: []string{"claude", "plugin", "uninstall", id, "--scope", "user", "--keep-data", "--json"},
@@ -260,7 +260,7 @@ func (e *env) fromMarketplace(in pluginrule.Inputs, name string, users bool) []s
 }
 
 // unMarketplaceStep removes the marketplace makeit added, once no plugin from it is installed:
-// removing it uninstalls them and deletes their data (measured). Its plugins' data directories
+// removing it uninstalls them and deletes their data. Its plugins' data directories
 // are copied into the generation first (DESIGN 4.5).
 func (e *env) unMarketplaceStep() plan.Step {
 	own := e.req.Marketplace
@@ -360,7 +360,7 @@ func (e *env) settingsLeft() bool {
 // unSettingsStep takes makeit's values out of settings.json with the merge records: a value still
 // equal to what makeit wrote returns to what was there before, and a value the user changed stays.
 // The declaration of claude-plugins-official stays. With Claude Code, the result is validated before
-// and after the write and put back on failure; without it (the delegate's ruling), it is written
+// and after the write and put back on failure; without it, it is written
 // unvalidated, its pre-image kept. A settings.json makeit created that would be left empty is removed.
 func (e *env) unSettingsStep() plan.Step {
 	path := filepath.Join(e.Roots.Claude, "settings.json")

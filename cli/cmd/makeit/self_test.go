@@ -102,9 +102,7 @@ func rolledForward(t *testing.T) selfupdate.Env {
 	return e
 }
 
-// The delegate's test: a default build refuses even a correctly signed release, before any request.
-// The delegate's test, moved from self update to update's self step: a default build refuses even a
-// correctly signed release, before any request.
+// A default build refuses even a correctly signed release, before any request.
 func TestUpdateDefaultBuildRefusesSelf(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("MAKEIT_DIR", filepath.Join(os.Getenv("HOME"), ".makeit"))
@@ -430,9 +428,9 @@ func TestRollbackAfterAgedUpdate(t *testing.T) {
 	}
 }
 
-// Distro suite, 2026-11-04: setup finished, then makeit was replaced seconds later, then an update
-// left a run with nothing to undo. makeit is the last change: its swap came after the newest run
-// rollback can undo had finished, even though that run started less than a minute earlier.
+// Setup finished, makeit was replaced seconds later, then an update left a run with nothing to
+// undo. makeit is the last change: its swap came after the newest run rollback can undo had
+// finished, even though that run started less than a minute earlier.
 func TestBinaryIsLastAfterAFinishedRun(t *testing.T) {
 	e, _ := selfMachine(t, true)
 	write(t, e.Exe, "makeit 0.3.2")

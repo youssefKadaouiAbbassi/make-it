@@ -25,7 +25,7 @@ type UI struct {
 	Color       bool
 	Quiet       bool
 	Verbose     bool
-	// Mode is Plain (today's lines) unless the command decided Live; Light picks the accent for
+	// Mode is Plain (line by line) unless the command decided Live; Light picks the accent for
 	// a light terminal background.
 	Mode  Mode
 	Light bool

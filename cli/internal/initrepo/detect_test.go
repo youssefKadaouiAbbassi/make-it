@@ -87,7 +87,7 @@ func TestDetectGitHub(t *testing.T) {
 	}
 }
 
-// Review Focus 5: manifests below the root feed the docs; types and CI come from the root.
+// Manifests below the root feed the docs; types and CI come from the root.
 func TestDetectMonorepo(t *testing.T) {
 	p, err := Detect(tree(t, map[string]string{
 		"package.json":                       pkg,
@@ -276,8 +276,7 @@ func TestDetectUnreadableDir(t *testing.T) {
 }
 
 // A folder outside git whose direct children are repositories is a workspace: each repository's
-// manifests count, a worktree child (.git is a file) and a plain folder do not (2026-11-06,
-// the Uni-CE root: 3 repositories and 23 worktrees, 2,176 libraries).
+// manifests count, a worktree child (.git is a file) and a plain folder do not.
 func TestDetectWorkspace(t *testing.T) {
 	dir := tree(t, map[string]string{
 		"a/.git/":            "",
@@ -308,7 +307,7 @@ func TestDetectWorkspace(t *testing.T) {
 	}
 }
 
-// A folder with files and no repository child keeps 0.3.3's no-git reading.
+// A folder with files and no repository child is read as a plain no-git folder.
 func TestDetectPlainFolderUnchanged(t *testing.T) {
 	dir := tree(t, map[string]string{"notes/package.json": `{"dependencies": {"chalk": "5.0.0"}}`})
 	p, err := Detect(dir)

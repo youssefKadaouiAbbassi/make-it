@@ -110,8 +110,8 @@ check "(Recommandé) in prose, no numbers" fire "$human" false $'C\'est sur dev.
 # A plan approval asked in the reply (templates/global/CLAUDE.md): the plan's own numbered steps
 # sit right above the choices.
 check "plan approval in the reply" quiet "$human" false $'## Backend\n1. PaymentMethodTypeEnum.INTERNE\n2. VENTES export: 6 columns at the end\n3. 409 on deleting a user with orders\n\nTL;DR\n- backend: Interne + 6 export columns\n- app: welcome texts in the org colour\n\nDecisions (my pick, change any by letter)\n  a. welcome text colour → a colour field\n  b. ID RCU → hidden without READ_USER_SSO_IDS\n\nYour answer:\n\n1. **Go** · recommended\n   build all three repos; stop before any push\n2. **Change something**\n   say what, or a: … to switch a decision'
-# Choices that a terminal shows renumbered because Markdown joins them to a numbered list above
-# (the 2026-11-05 Uni-CE reply showed 11, 12). Claude Code numbers a list as its start plus each
+# Choices that a terminal shows renumbered (11, 12) because Markdown joins them to a numbered list
+# above. Claude Code numbers a list as its start plus each
 # item's place, from marked's parse; every expected result below is what marked 18.1.3 builds.
 renum=$'The design\n1. **Why:** prod moves to OVH.\n2. **Cluster:** 3 zones.\n   - one node per zone\n3. **Not in this round:** the switch night.\n\n1. **Approve, write the build plan** · recommended\n   next is the step-by-step plan\n2. **Change something**\n   tell me which line'
 go=$'1. **Go** · recommended\n2. **Stop**'

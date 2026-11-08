@@ -14,7 +14,7 @@ var checkScripts = [][2]string{
 	{"check:full", "echo \"check:full: wire the linter, type checker and tests\" && exit 1"},
 }
 
-// Review Focus 2: a 4-space CRLF package.json keeps its style; only the new scripts are added.
+// A 4-space CRLF package.json keeps its style; only the new scripts are added.
 func TestPackageScriptsKeepStyle(t *testing.T) {
 	in := strings.ReplaceAll(`{
     "name": "app",

@@ -84,8 +84,7 @@ func TestGlobalAdoptsDifferent(t *testing.T) {
 }
 
 // A global file that was there before makeit but is byte-identical to makeit's version is makeit's
-// from then on, in setup and in update, so the next release reaches it (found 2026-11-05: the
-// owner's CLAUDE.md was 0.3.3's text and never got 0.3.4's rule). One byte off stays yours.
+// from then on, in setup and in update, so the next release reaches it. One byte off stays yours.
 func TestGlobalEqualToMakeitsIsTakenOver(t *testing.T) {
 	want, err := catalog.Embedded.ReadFile("templates/global/CLAUDE.md")
 	if err != nil {
@@ -161,8 +160,8 @@ func TestGlobalDifferentStaysYours(t *testing.T) {
 	}
 }
 
-// Review I1: an update with nothing else to do still saves a takeover, or the next release finds
-// the record unchanged and leaves the file stuck.
+// An update with nothing else to do still saves a takeover, or the next release finds the record
+// unchanged and leaves the file stuck.
 func TestQuietUpdateSavesTakeover(t *testing.T) {
 	m := converged(t)
 	want, err := catalog.Embedded.ReadFile("templates/global/CLAUDE.md")
@@ -191,8 +190,8 @@ func TestQuietUpdateSavesTakeover(t *testing.T) {
 	}
 }
 
-// Review I2: a file holding an older makeit release's text (the owner's case) is taken over too,
-// so the update writes the current version.
+// A file holding an older makeit release's text is taken over too, so the update writes the
+// current version.
 func TestGlobalOlderMakeitVersionTakenOver(t *testing.T) {
 	old := "makeit's CLAUDE.md as an earlier release shipped it\n"
 	saved := globalHistory
@@ -208,8 +207,8 @@ func TestGlobalOlderMakeitVersionTakenOver(t *testing.T) {
 	}
 }
 
-// Review M6: a file taken over, which the user then made identical to makeit's newer text, is
-// makeit's again (the stale sha would otherwise mark it as theirs).
+// A file taken over, which the user then made identical to makeit's newer text, is makeit's again
+// (the stale sha would otherwise mark it as theirs).
 func TestGlobalStaleShaRetaken(t *testing.T) {
 	want, err := catalog.Embedded.ReadFile("templates/global/CLAUDE.md")
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 )
 
 // A tool a newer makeit installed (after a self rollback this binary lacks its row): uninstall
-// names it and goes on, instead of panicking (the 2026-11-05 audit).
+// names it and goes on, instead of panicking.
 func TestUninstallUnknownTool(t *testing.T) {
 	e, _ := newEnv(t)
 	e.st.Prereqs = map[string]*state.Prereq{"newtool": {InstalledBy: "makeit", Route: "release", Sha256: "x"}}

@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# options.sh: Stop. When a turn the user started ends by handing them a question, a wait, an offer or
-# a phrase to type in prose, block once. The reason sends a decision the work cannot go on without to
-# AskUserQuestion, a decision that needs reading first (a plan, a release step) to the reply shape
-# that ends on numbered choices, and suggestions after finished work to numbered options laid out
-# like the picker (the rules in templates/global/CLAUDE.md). A reply that already ends on such options passes
-# before any pattern is tried, unless they sit right under another numbered list (a terminal joins the
-# two and renumbers the choices): then the reason asks for the plain line before them. stop_hook_active guards the loop.
-# Only turns whose prompt line in the transcript has origin.kind human or task-notification and
-# entrypoint cli are checked: claude -p (entrypoint sdk-cli, no origin) and messages from other
-# sessions (origin peer) pass untouched, and Stop does not fire for subagents.
+# options.sh: Stop. When a turn the user started ends by handing them a question, a wait, an offer
+# or a phrase to type in prose, block once and say where it belongs (templates/global/CLAUDE.md): a
+# blocking decision in AskUserQuestion, a decision that needs reading in the reply shape that ends
+# on numbered choices, suggestions after finished work as numbered options. A reply that already
+# ends on such options passes, unless they sit right under another numbered list, which a terminal
+# joins and renumbers. stop_hook_active guards the loop.
+# Only prompts with origin.kind human or task-notification and entrypoint cli are checked:
+# claude -p (sdk-cli, no origin) and messages from other sessions (origin peer) pass, and Stop does
+# not fire for subagents.
 # Exits 0 on every path it does not understand. Needs jq; without it it does nothing.
 set -euo pipefail
 # Handback patterns, case-insensitive ERE, matched against the reply's last two paragraphs.

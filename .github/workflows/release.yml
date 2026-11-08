@@ -1,10 +1,10 @@
 # On a vX.Y.Z tag: build makeit for the six targets with this release's version, repository and
 # public key (minisign.pub at the tag), write checksums.txt, fill in the install scripts, and
-# attach all of it to a draft release (a normal one, numbered 0.x in beta: /releases/latest skips
-# pre-releases, and self update reads it). It runs only for the owner's pushed tag; it never creates
-# one (--verify-tag; the tag ruleset lets only the owner create v* tags). Signing stays with the owner: they sign checksums.txt
-# with their key (the trusted comment "makeit X.Y.Z checksums.txt"), upload checksums.txt.minisig
-# and publish the draft. No secret key reaches this workflow.
+# attach all of it to a draft release (a normal one, not a pre-release: /releases/latest, which
+# self update reads, skips pre-releases). It runs only for a pushed tag and never creates one
+# (--verify-tag; the tag ruleset lets only the owner create v* tags). The owner signs checksums.txt
+# with their key (trusted comment "makeit X.Y.Z checksums.txt"), uploads checksums.txt.minisig and
+# publishes the draft. No secret key reaches this workflow.
 name: release
 
 on:
