@@ -3,6 +3,16 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.3.11
+
+Docs:
+
+- The README says what makeit does, at the machine, project and session level, and how to start.
+- New guide, [Working with makeit every day](docs/daily.md): opening a session, how Claude works
+  on a task, answering it, looking things up, reviews, and what to do when something goes wrong.
+- The code comments lost their project history (dates, review labels, decision notes); one wrong
+  doc comment on init in a folder without git is corrected. No behaviour changes.
+
 ## 0.3.10
 
 Fixes:
