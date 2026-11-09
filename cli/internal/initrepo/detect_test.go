@@ -87,7 +87,7 @@ func TestDetectGitHub(t *testing.T) {
 	}
 }
 
-// Manifests below the root feed the docs; types and CI come from the root.
+// Types and CI come from the root manifests only.
 func TestDetectMonorepo(t *testing.T) {
 	p, err := Detect(tree(t, map[string]string{
 		"package.json":                       pkg,
@@ -136,61 +136,6 @@ func TestDetectVersions(t *testing.T) {
 	}
 	if !slices.Equal(p.Deps, want) {
 		t.Errorf("toml deps\n got %v\nwant %v", p.Deps, want)
-	}
-}
-
-// requirements.txt feeds the docs (as docs.sh lists it) but does not make a python project.
-func TestDetectRequirements(t *testing.T) {
-	dir := tree(t, map[string]string{
-		"requirements.txt": "# pinned\nhttpx==0.28.1  # client\nRich>=14.0,<15\npydantic[email]~=2.12 ; python_version >= \"3.10\"\n" +
-			"-r dev.txt\n-e .\n--index-url https://pypi.org/simple\nfoo @ https://example.com/foo.whl\nhttps://example.com/bar.tar.gz\n./vendored\n\nplain\nsqlalchemy==2.0.44\n",
-		"services/api/requirements.txt": "anthropic==0.70.0\n",
-	})
-	p, err := Detect(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Types != nil {
-		t.Errorf("types %v", p.Types)
-	}
-	want := []Dep{
-		{Name: "httpx", Version: "0.28.1", Ecosystem: "pypi", Manifest: "requirements.txt"},
-		{Name: "plain", Version: "", Ecosystem: "pypi", Manifest: "requirements.txt"},
-		{Name: "pydantic", Version: "2.12", Ecosystem: "pypi", Manifest: "requirements.txt"},
-		{Name: "rich", Version: "14.0", Ecosystem: "pypi", Manifest: "requirements.txt"},
-		{Name: "sqlalchemy", Version: "2.0.44", Ecosystem: "pypi", Manifest: "requirements.txt"},
-		{Name: "anthropic", Version: "0.70.0", Ecosystem: "pypi", Manifest: "services/api/requirements.txt"},
-	}
-	if !slices.Equal(p.Deps, want) {
-		t.Errorf("deps\n got %v\nwant %v", p.Deps, want)
-	}
-	h, _ := ManifestHashes(dir)
-	if keys := slices.Sorted(maps.Keys(p.Manifests)); !slices.Equal(keys, []string{"requirements.txt", "services/api/requirements.txt"}) || !maps.Equal(h, p.Manifests) {
-		t.Errorf("read %v, on disk %v", p.Manifests, h)
-	}
-}
-
-// The docs record compares these: what Detect read, and what is on disk now.
-func TestManifestHashes(t *testing.T) {
-	dir := tree(t, map[string]string{"package.json": pkg, "package-lock.json": `{"packages": {}}`,
-		"apps/api/go.mod": "module api\n", "node_modules/zod/package.json": `{"version": "4.1.13"}`})
-	p, err := Detect(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	now, err := ManifestHashes(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keys := slices.Sorted(maps.Keys(p.Manifests))
-	if !slices.Equal(keys, []string{"apps/api/go.mod", "package-lock.json", "package.json"}) || !maps.Equal(p.Manifests, now) {
-		t.Fatalf("read %v, on disk %v", p.Manifests, now)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "package-lock.json"), []byte(`{"packages": {"node_modules/zod": {"version": "4.1.14"}}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if after, _ := ManifestHashes(dir); maps.Equal(after, p.Manifests) {
-		t.Error("a lockfile change was not seen")
 	}
 }
 
@@ -269,10 +214,6 @@ func TestDetectUnreadableDir(t *testing.T) {
 	if !slices.Equal(p.Types, []string{"node"}) {
 		t.Errorf("types %v", p.Types)
 	}
-	h, err := ManifestHashes(dir)
-	if err != nil || !maps.Equal(h, p.Manifests) || len(h) != 2 {
-		t.Errorf("ManifestHashes %v %v; Detect read %v", h, err, p.Manifests)
-	}
 }
 
 // A folder outside git whose direct children are repositories is a workspace: each repository's
@@ -300,10 +241,6 @@ func TestDetectWorkspace(t *testing.T) {
 	}
 	if !names["left-pad"] || !names["golang.org/x/term"] || names["lodash"] || names["chalk"] {
 		t.Errorf("deps %v: want left-pad and golang.org/x/term only", slices.Sorted(maps.Keys(names)))
-	}
-	// The docs hook's --if-changed compares these: the same files Detect read.
-	if h, err := ManifestHashes(dir); err != nil || !maps.Equal(h, p.Manifests) {
-		t.Errorf("ManifestHashes %v (%v), want what Detect read %v", slices.Sorted(maps.Keys(h)), err, slices.Sorted(maps.Keys(p.Manifests)))
 	}
 }
 

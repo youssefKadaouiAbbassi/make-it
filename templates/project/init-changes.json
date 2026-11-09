@@ -1,6 +1,6 @@
 {
   "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
-  "sources": "sha256:9c1faed9920696fd51d752e5a753efa3d6554cf292fba66d10e61e1a460659d9",
+  "sources": "sha256:1fded9f5a9a9ed250e027e7852add0180df9116631fdca242d7f15642a8bc8b9",
   "changes": [
     {
       "version": "0.3.7",

@@ -836,3 +836,39 @@ func TestUpdateKeepsForeignDocsDir(t *testing.T) {
 		t.Errorf("changes %+v", rep.Changes)
 	}
 }
+
+// A store with only a record (a sha256-named json) and no lock is still makeit's.
+func TestUpdateRemovesDocsStoreWithRecordOnly(t *testing.T) {
+	m := converged(t)
+	store := filepath.Join(m.env.Roots.Stack, "docs")
+	writeFile(t, filepath.Join(store, strings.Repeat("ab", 32)+".json"), "{}")
+	if _, err := Update(context.Background(), m.env, plan.Apply, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(store); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("record-only store still there: %v", err)
+	}
+}
+
+// A foreign docs directory is no work: a plan needs no consent and a dry run changes nothing.
+func TestUpdateForeignDocsDirNeedsNoConsent(t *testing.T) {
+	m := converged(t)
+	foreign := filepath.Join(m.env.Roots.Stack, "docs", "notes.md")
+	writeFile(t, foreign, "mine\n")
+	rep, err := Update(context.Background(), m.env, plan.NeedConsent, nil, nil)
+	if err != nil {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if read(t, foreign) != "mine\n" || stepStatusOf(rep.Plan, "docs.store") != plan.Already {
+		t.Errorf("docs.store %q", stepStatusOf(rep.Plan, "docs.store"))
+	}
+}
+
+func stepStatusOf(r plan.Report, id string) plan.Status {
+	for _, o := range r.Outcomes {
+		if o.ID == id {
+			return o.Status
+		}
+	}
+	return ""
+}

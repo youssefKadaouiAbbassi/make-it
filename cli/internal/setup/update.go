@@ -50,7 +50,7 @@ func (e *env) docsStoreStep() plan.Step {
 		Already: func(context.Context) (bool, error) { return !isDocsStore(e.Roots.Stack), nil },
 		Run: func(context.Context) (string, error) {
 			removed, err := removeDocsStore(e.Roots.Stack)
-			if removed {
+			if removed && err == nil {
 				e.changes = append(e.changes, state.Change{Kind: "remove", Item: "docs index"})
 			}
 			return "", err

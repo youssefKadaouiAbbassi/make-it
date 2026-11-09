@@ -14,8 +14,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-
-	"makeit/internal/fsx"
 )
 
 // Dep is one direct dependency read from a manifest. Version is exact when a lockfile, the
@@ -58,34 +56,10 @@ type Project struct {
 	Prettier bool
 	// Lockfile is a committed package-lock.json, which npm ci needs.
 	Lockfile bool
-	// Manifests maps each manifest and lockfile Detect read (slash path) to the sha256 of the
-	// bytes it read, so a docs sync records what it actually indexed.
-	Manifests map[string]string
 }
 
 // lockfiles beside a manifest that decide its versions.
 var lockfiles = map[string]string{"package.json": "package-lock.json", "pyproject.toml": "uv.lock", "Cargo.toml": "Cargo.lock"}
-
-// ManifestHashes is what Project.Manifests would be for dir now, without parsing anything.
-func ManifestHashes(dir string) (map[string]string, error) {
-	repos, _ := workspaceChildren(dir)
-	manifests, err := findManifests(dir, repos)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]string{}
-	for _, m := range manifests {
-		for _, rel := range []string{m, siblingLock(m)} {
-			if rel == "" {
-				continue
-			}
-			if b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel))); err == nil {
-				out[rel] = fsx.Sha256(b)
-			}
-		}
-	}
-	return out, nil
-}
 
 // siblingLock is the lockfile next to manifest m, or "" for go.mod.
 func siblingLock(m string) string {
@@ -99,11 +73,11 @@ func siblingLock(m string) string {
 	return l
 }
 
-// pruned are directories no manifest or spec is looked for in (docs.sh prunes the same).
+// pruned are directories where no manifest or spec is looked for.
 var pruned = map[string]bool{"node_modules": true, "vendor": true, ".git": true, "target": true, ".venv": true}
 
 // manifestNames are the files Detect reads dependencies from.
-var manifestNames = map[string]bool{"go.mod": true, "package.json": true, "pyproject.toml": true, "Cargo.toml": true, "requirements.txt": true}
+var manifestNames = map[string]bool{"go.mod": true, "package.json": true, "pyproject.toml": true, "Cargo.toml": true}
 
 var (
 	webDeps    = []string{"react", "vue", "svelte", "solid-js", "next", "nuxt", "@sveltejs/kit", "astro", "vite"}
@@ -115,7 +89,7 @@ var (
 // Detect reads dir's manifests, lockfiles and layout. A directory with no manifest gives a
 // Project with no types.
 func Detect(dir string) (Project, error) {
-	p := Project{Dir: dir, Manifests: map[string]string{}, Scripts: map[string]bool{}}
+	p := Project{Dir: dir, Scripts: map[string]bool{}}
 	p.Repos, p.Worktrees = workspaceChildren(dir)
 	manifests, err := findManifests(dir, p.Repos)
 	if err != nil {
@@ -123,7 +97,7 @@ func Detect(dir string) (Project, error) {
 	}
 	root := map[string]bool{}
 	for _, m := range manifests {
-		deps, err := readDeps(dir, m, p.Manifests)
+		deps, err := readDeps(dir, m)
 		if err != nil {
 			return p, err
 		}
@@ -141,8 +115,7 @@ func Detect(dir string) (Project, error) {
 	})
 	rootDeps := map[string]bool{}
 	for _, d := range p.Deps {
-		// requirements.txt feeds the docs only; the types stay those of the other manifests.
-		if !strings.Contains(d.Manifest, "/") && d.Manifest != "requirements.txt" {
+		if !strings.Contains(d.Manifest, "/") {
 			rootDeps[d.Name] = true
 		}
 	}
@@ -354,17 +327,16 @@ func findManifests(dir string, repos []string) ([]string, error) {
 	return out, err
 }
 
-// readDeps parses one manifest and its lockfile, recording the sha256 of each file it read.
-func readDeps(dir, manifest string, read map[string]string) ([]Dep, error) {
+// readDeps parses one manifest and its lockfile.
+func readDeps(dir, manifest string) ([]Dep, error) {
 	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(manifest)))
 	if err != nil {
 		return nil, err
 	}
-	read[manifest] = fsx.Sha256(b)
 	var lock []byte
 	if l := siblingLock(manifest); l != "" {
 		if lb, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(l))); err == nil {
-			lock, read[l] = lb, fsx.Sha256(lb)
+			lock = lb
 		}
 	}
 	base := filepath.Join(dir, filepath.FromSlash(path.Dir(manifest)))
@@ -375,14 +347,12 @@ func readDeps(dir, manifest string, read map[string]string) ([]Dep, error) {
 		return npmDeps(b, lock, base, manifest), nil
 	case "pyproject.toml":
 		return withLock(pyDeps(b), lock, "pypi", manifest), nil
-	case "requirements.txt":
-		return withLock(reqDeps(b), nil, "pypi", manifest), nil
 	default:
 		return withLock(cargoDeps(b), lock, "cargo", manifest), nil
 	}
 }
 
-// goDeps reads the go directive and the direct requirements, as hooks/docs.sh does.
+// goDeps reads the go directive and the direct requirements.
 func goDeps(b []byte, manifest string) []Dep {
 	var out []Dep
 	add := func(name, v string) {
@@ -443,7 +413,6 @@ func npmDeps(b, lockJSON []byte, base, manifest string) []Dep {
 
 var (
 	pyReq    = regexp.MustCompile(`^\s*"([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*([^";]*)`)
-	reqLine  = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]*\])?\s*((?:[=<>~!].*)?)$`)
 	tomlKV   = regexp.MustCompile(`^\s*([A-Za-z0-9_-]+)\s*=\s*(.*)$`)
 	tomlVer  = regexp.MustCompile(`version\s*=\s*"([^"]*)"`)
 	quoted   = regexp.MustCompile(`^"([^"]*)"`)
@@ -478,25 +447,6 @@ func pyDeps(b []byte) map[string]string {
 		}
 		if strings.Contains(t, "]") && !strings.Contains(t, "[") {
 			inDeps = false
-		}
-	}
-	return out
-}
-
-// reqDeps reads requirement lines: "name==1.2.3" exact, other specifiers stripped. Comments,
-// environment markers, options (-r, -e, --index-url), URLs, direct references and paths are
-// skipped.
-func reqDeps(b []byte) map[string]string {
-	out := map[string]string{}
-	for _, line := range strings.Split(string(b), "\n") {
-		t, _, _ := strings.Cut(line, "#")
-		t, _, _ = strings.Cut(t, ";")
-		t = strings.TrimSpace(t)
-		if t == "" || strings.HasPrefix(t, "-") || strings.Contains(t, "://") || strings.Contains(t, "@") {
-			continue
-		}
-		if m := reqLine.FindStringSubmatch(t); m != nil {
-			out[strings.ToLower(m[1])] = stripRange(m[2])
 		}
 	}
 	return out

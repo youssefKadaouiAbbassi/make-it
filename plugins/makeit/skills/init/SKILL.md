@@ -34,11 +34,11 @@ exactly this command, so do not chain it with others), with `timeout: 600000`:
 
 - Exit 0: read the JSON on stdout: `plan` (what each step did), `kept` (what makeit left as the
   user had it, and why), `manual` (exact text for files makeit does not edit), `notices` (what the
-  user should know: prerequisites such as Docker for check:api, `prek install` per clone). A `notices` line "no git
-  repository here" means a folder with files and no git, set up without git on purpose: leave
-  the commit hooks out, skip step 8 (no commit, no `git init`) and say so in one line. A line
-  starting "a folder of repositories" means the folder holds repositories and is set up for the
-  folder alone: the same, and change nothing inside those repositories.
+  user should know: prerequisites such as Docker for check:api, `prek install` per clone). A
+  `notices` line "no git repository here" means a folder with files and no git, set up without
+  git on purpose: leave the commit hooks out, skip step 8 (no commit, no `git init`) and say so
+  in one line. A line starting "a folder of repositories" means the folder holds repositories
+  and is set up for the folder alone: the same, and change nothing inside those repositories.
 - `makeit: command not found`: makeit is not installed. Stop and say so in one line; do not set
   the project up another way.
 - Exit 1: a step failed, or init refused before changing anything; the JSON's `error` says why.

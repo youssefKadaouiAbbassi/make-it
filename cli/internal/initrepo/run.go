@@ -603,7 +603,7 @@ func gitTop(abs string) string {
 // detectOrEmpty is Detect, with a directory that does not exist yet giving an empty project.
 func detectOrEmpty(dir string) (Project, error) {
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-		return Project{Dir: dir, Manifests: map[string]string{}}, nil
+		return Project{Dir: dir}, nil
 	}
 	return Detect(dir)
 }
