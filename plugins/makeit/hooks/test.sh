@@ -221,11 +221,16 @@ bash "$here/optional/order-test.sh" | tail -n 1 | grep -q "ORDER OK" && ok "orde
 
 
 # --- skills.sh ----------------------------------------------------------------------------------
-out=$(printf '{"hook_event_name":"UserPromptSubmit","cwd":"/x","prompt":"continue from HANDOFF.md"}' | bash "$here/skills.sh")
+out=$(printf '{"hook_event_name":"UserPromptSubmit","cwd":"/x","prompt":"continue the work from HANDOFF.md"}' | bash "$here/skills.sh")
 expect "skills adds prompt context" '"hookEventName":"UserPromptSubmit"' "$out"
 expect "skills lists the usual matches" 'superpowers:executing-plans' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills covers follow-ups" '"go for it"' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills comes before a deja recall" 'including a deja recall' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
+for short in 1 go "keep going" ""; do
+  expect_empty "skills silent on short prompt '$short'" "$(jq -n --arg p "$short" '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
+done
+expect "skills reminds on a 5-word prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix the login page bug"}' | bash "$here/skills.sh")"
+expect "skills reminds on a multi-line prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix this\nplease now"}' | bash "$here/skills.sh")"
 expect_empty "skills ignores other events" "$(printf '{"hook_event_name":"Stop","cwd":"/x"}' | bash "$here/skills.sh")"
 out=$(printf '{"hook_event_name":"UserPromptSubmit"}' | PATH="$tmp/nojq" bash "$here/skills.sh" 2>&1; echo "rc=$?")
 expect "skills without jq exits 0" "rc=0" "$out"

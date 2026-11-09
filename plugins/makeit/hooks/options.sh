@@ -26,28 +26,36 @@ pats=(
 )
 input=$(cat) || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
-[ "$(jq -r '.hook_event_name // empty' <<<"$input" 2>/dev/null)" = "Stop" ] || exit 0
-[ "$(jq -r '.stop_hook_active // false' <<<"$input")" = "true" ] && exit 0
-pid=$(jq -r '.prompt_id // empty' <<<"$input") || exit 0
-tp=$(jq -r '.transcript_path // empty' <<<"$input") || exit 0
-[ -n "$pid" ] && [ -f "$tp" ] || exit 0
-# The turn's prompt line says who started it; fail open while it is not on disk yet.
-who=$({ grep -F -m 20 "\"promptId\":\"$pid\"" "$tp" |
-  jq -r 'select(.type == "user" and .origin.kind != null) | "\(.origin.kind) \(.entrypoint // "")"' |
-  head -n 1; } 2>/dev/null) || true
-case "$who" in "human cli" | "task-notification cli") ;; *) exit 0 ;; esac
-msg=$(jq -r '.last_assistant_message // empty' <<<"$input") || exit 0
-[ -n "$msg" ] || exit 0
+# One jq call reads everything; the reply text comes last, after the four one-line fields.
+{ read -r ev; read -r active; read -r pid; read -r tp; msg=$(cat); } 2>/dev/null < <(jq -r '
+  .hook_event_name // "", (.stop_hook_active // false | tostring), .prompt_id // "", .transcript_path // "",
+  .last_assistant_message // ""' <<<"$input" 2>/dev/null) || exit 0
+[ "${ev:-}" = "Stop" ] && [ "${active:-}" != "true" ] && [ -n "${msg:-}" ] || exit 0
+# human_turn: the turn's prompt line says who started it; false while it is not on disk yet.
+# Run only when a reply is about to be flagged, so a plain reply never reads the transcript.
+human_turn() {
+  [ -n "$pid" ] && [ -f "$tp" ] || return 1
+  local who
+  who=$({ grep -F -m 20 "\"promptId\":\"$pid\"" "$tp" |
+    jq -r 'select(.type == "user" and .origin.kind != null) | "\(.origin.kind) \(.entrypoint // "")"' |
+    head -n 1; } 2>/dev/null) || true
+  case "$who" in "human cli" | "task-notification cli") return 0 ;; *) return 1 ;; esac
+}
 # What the user reads, outside fenced code. Skipped: a resume command (claude --resume) and
-# quoted lines (a draft for someone else, "> ...").
+# quoted lines (a draft for someone else, "> ..."), and the block under a "Sources:" or "Draft:"
+# line (list items, indented lines and contiguous lines; it ends at a blank line and then a plain one).
 # A fence closes on a run of its own character at least as long as the one that opened it; a line
 # with a backtick after its opening run (```make``` runs it) is inline code, not a fence.
 # A fence indented 4 spaces or more opens only inside a list item (from its marker line to the next
 # line at the margin): at the margin marked reads it as indented code, and the lines after it show.
 clean=$(printf '%s\n' "$msg" | awk '
   f != "" { if ($0 ~ ("^[[:space:]]*" f "+[[:space:]]*$")) f = ""; next }
+  sk && /^[[:space:]]*$/ { if (got) pend = 1; next }
+  sk && got && pend && !/^[[:space:]]/ && !/^([-*+]|[0-9]+[.)])([ \t]|$)/ { sk = 0; print "" }
+  sk { got = 1; pend = 0; next }
   /^([-*+]|[0-9]+[.)])([ \t]|$)/ { item = 1 } /^[^[:space:]]/ && !/^([-*+]|[0-9]+[.)])([ \t]|$)/ { item = 0 }
   match($0, /^[[:space:]]*(```+|~~~+)/) && !/^[[:space:]]*`+[^`]+`/ && (item || $0 !~ /^(    |\t)/) { f = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", f); next }
+  tolower($0) ~ /(sources?|draft|brouillon)[[:space:]]*:[*_[:space:]]*$/ { sk = 1; got = 0; pend = 0 }
   !/claude --resume/ && !/^[[:space:]]*>/') || exit 0
 # The wanted ending: the reply's last run of numbered lines ("1. ", "2) ", "**1.** "; indented
 # lines under an item and blank lines stay in the run) has a marked line and ends at most two lines
@@ -59,7 +67,7 @@ clean=$(printf '%s\n' "$msg" | awk '
 # emit TEXT: Stop additionalContext reaches Claude as a reminder at the end of the turn and continues
 # it, with no "Stop hook error" (decision:block) under the reply; it is phrased as facts, not
 # commands, as the hooks docs advise.
-emit() { jq -cn --arg r "$1" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'; }
+emit() { human_turn || exit 0; jq -cn --arg r "$1" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $r}}'; }
 renumbered='The numbered choices that end this reply belong, for the terminal, to a numbered list above them, so it shows them renumbered (11, 12 instead of 1, 2): Markdown keeps a list going across empty lines, indented lines and a line written right under an item. The owner'\''s rule puts a plain line that is not a list item before the choices, with an empty line above it. Only that plain line and the choices are written again; the rest of the reply stays as it is.'
 # lists TEXT: lists.mjs's answer, or nothing when it fails or takes more than 2 seconds. The
 # watchdog holds no pipe of the hook's, so a hang never keeps Claude Code waiting.
@@ -81,7 +89,7 @@ marked_fn='function marked(l) {
 # marked itself reads the ending when node and makeit's marked are here (lists.mjs, 2 s at most);
 # any other outcome (no node, no marked, an error, a hang, an odd answer) leaves it to the awk.
 answer=
-if [ -z "${MAKEIT_NO_NODE:-}" ] && command -v node >/dev/null 2>&1; then answer=$(lists "$msg"); fi
+if [ -z "${MAKEIT_NO_NODE:-}" ] && [[ $msg == *[0-9][.\)]* ]] && command -v node >/dev/null 2>&1; then answer=$(lists "$msg"); fi
 case "$answer" in
 joined) emit "$renumbered" && exit 0 ;;
 options) exit 0 ;;

@@ -77,6 +77,12 @@ check "French question at the end" fire "$human" false $'C\'est en place sur dev
 check "empty message" quiet "$human" false ''
 check "handback above ponytail's not-checked line" fire "$human" false $'Upload a file on dev-admin. Tell me when it\'s done.\n\nI didn\'t watch the deploy finish.'
 check "question above ponytail's not-checked line" fire "$human" false $'Should I release it now?\n\nI did not test a real outage.'
+check "numbered sources under a Sources: line" quiet "$human" false $'Done.\n\nSources:\n1. Docs, let me know before you ship\n2. https://b.example/x'
+check "plain draft after a Draft: line" quiet "$human" false $'Draft:\n\nHi Bob,\nPlease let me know which date works.\n\nSent nothing.'
+check "draft in a fence with a numbered list" quiet "$human" false $'Draft:\n\n```\n1. tell me which\n2. let me know\n```'
+check "draft quoted with a numbered list" quiet "$human" false $'Draft:\n\n> 1. Tell me which (recommended)\n> 2. let me know'
+check "question after a Draft: block still fires" fire "$human" false $'Draft:\n\nHi Bob,\nOk for Monday.\n\nShould I send it?'
+check "trailing choices after a Sources: list still fire" fire "$human" false $'Sources:\n1. a\n2. b\n\nTell me which one to open.'
 check "question three paragraphs up is not the end" quiet "$human" false $'Should I keep it?\n\nKept it.\n\nNothing else changed.'
 check "then tell me" fire "$human" false $'Open the page and upload an image, then tell me.'
 check "tell me a quoted word" fire "$human" false $'Then tell me "done".'
@@ -263,4 +269,14 @@ if [ -z "$out" ] && [ "$code" = 0 ]; then echo "ok    invalid JSON input: silent
   echo "FAIL  invalid JSON input (out=$out exit=$code)"
   fail=1
 fi
+# A reply with no handback never reads the transcript: a grep shim logs every call.
+mkdir -p "$work/shim"
+printf '#!/bin/sh\necho "$*" >>"%s/grep.log"\nexec %s "$@"\n' "$work" "$(command -v grep)" >"$work/shim/grep"
+chmod +x "$work/shim/grep"
+: >"$work/grep.log"
+payload=$(jq -n --arg t "$human" '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: "Fixed on dev."}')
+PATH="$work/shim:$PATH" bash "$hook" <<<"$payload" >/dev/null
+if grep -Fq "$human" "$work/grep.log"; then echo "FAIL  plain reply read the transcript [$OPT_MODE]"; fail=1; else echo "ok    plain reply never reads the transcript [$OPT_MODE]"; fi
+payload=$(jq -n --arg t "$work/nope.jsonl" '{hook_event_name: "Stop", stop_hook_active: false, prompt_id: "p1", transcript_path: $t, last_assistant_message: "Fixed on dev."}')
+if [ -z "$(bash "$hook" <<<"$payload")" ]; then echo "ok    missing transcript, plain reply: silent [$OPT_MODE]"; else echo "FAIL  missing transcript, plain reply [$OPT_MODE]"; fail=1; fi
 exit "$fail"
