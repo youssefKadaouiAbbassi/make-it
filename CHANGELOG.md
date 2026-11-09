@@ -3,19 +3,6 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
-## 0.3.12
-
-Docs:
-
-- The README makes the case: why makeit exists, what changes in a session, the measurement behind
-  each part, and a "How to use it well" table.
-- New guide, [Getting the most out of it](docs/using.md): what to say to each installed part, by
-  task (start a feature, fix a bug, review, check web work, design, look things up, hand off).
-- [What makeit installs](docs/included.md) says what each part does in a session and lists the
-  hooks by moment; the plugin table no longer carries versions the daily run moves past.
-- [Projects](docs/projects.md) says who writes each file and what your part is; the FAQ is
-  ordered by how often a question comes up. Every plugin and tool links to its home.
-
 ## 0.3.11
 
 Docs:
