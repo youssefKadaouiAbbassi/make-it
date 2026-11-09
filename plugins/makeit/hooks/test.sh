@@ -476,16 +476,16 @@ if [ -n "${EPOCHREALTIME:-}" ]; then
   [ -z "$out" ] && [ "$ms" -lt 200 ] && ok "nudge with 80 dependencies and no import takes ${ms} ms (< 200)" || bad "nudge with 80 dependencies: ${ms} ms, out [$out]"
 else echo "SKIP  nudge timing: no EPOCHREALTIME (bash < 5)"; fi
 expect "nudge still finds the one imported dependency in a big lock" 'lib42 1.0.0' "$(seed npm:lib42@1.0.0 2026-10-10; nudge big2 "$np" Write "$np/big/a.ts" 'import x from "lib42";')"
-# one call spends at most about 3 s on registry lookups: the later libraries are skipped, not cached
+# one call spends about 3 s on registry lookups at most (a lookup that takes 3 s uses it all): the later libraries are skipped, not cached
 mkdir -p "$np/budget"
 printf '{"dependencies":{"b1":"1.0.0","b2":"1.0.0","b3":"1.0.0"}}\n' >"$np/budget/package.json"
 printf '{"packages":{"node_modules/b1":{"version":"1.0.0","resolved":"https://registry.npmjs.org/b1/-/b.tgz"},"node_modules/b2":{"version":"1.0.0","resolved":"https://registry.npmjs.org/b2/-/b.tgz"},"node_modules/b3":{"version":"1.0.0","resolved":"https://registry.npmjs.org/b3/-/b.tgz"}}}\n' >"$np/budget/package-lock.json"
 mkdir -p "$tmp/slowbin"; for f in "$tmp"/nobin/*; do ln -sf "$(readlink "$f")" "$tmp/slowbin/$(basename "$f")"; done
 ln -sf "$(command -v sleep)" "$tmp/slowbin/sleep"
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" >>"%s/slow.log"\nsleep 2\necho "{\\"time\\":{\\"1.0.0\\":\\"2020-01-01T00:00:00Z\\"}}"\n' "$tmp" >"$tmp/slowbin/curl"; chmod +x "$tmp/slowbin/curl"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >>"%s/slow.log"\nsleep 3\necho "{\\"time\\":{\\"1.0.0\\":\\"2020-01-01T00:00:00Z\\"}}"\n' "$tmp" >"$tmp/slowbin/curl"; chmod +x "$tmp/slowbin/curl"
 NPATH="$tmp/slowbin" nudge bud1 "$np" Write "$np/budget/a.ts" $'import a from "b1";\nimport b from "b2";\nimport c from "b3";' >/dev/null
-[ "$(grep -c . "$tmp/slow.log")" = 2 ] && ok "registry lookups stop after the time budget (2 of 3 ran)" || bad "registry budget: $(grep -c . "$tmp/slow.log") lookups"
-expect "the second lookup gets only the time that is left" '-m 1' "$(sed -n 2p "$tmp/slow.log")"
+[ "$(grep -c . "$tmp/slow.log")" = 1 ] && ok "registry lookups stop after the time budget (1 of 3 ran)" || bad "registry budget: $(grep -c . "$tmp/slow.log") lookups"
+expect "the first lookup gets the whole 3 s" '-m 3' "$(sed -n 1p "$tmp/slow.log")"
 expect "registry lookups ask for a compressed answer" '--compressed' "$(cat "$tmp/curl.log")"
 # M7: session folders older than 7 days are pruned on the next run
 mkdir -p "$tmp/makeit-docs/oldsess" "$tmp/makeit-docs/newsess"; touch -d '10 days ago' "$tmp/makeit-docs/oldsess"

@@ -167,7 +167,7 @@ esac
 [ ${#libs[@]} -gt 0 ] || exit 0
 
 netfail=""
-t0=$SECONDS # registry time budget for this call: 3 s in all
+t0="" # SECONDS at the first registry lookup: the budget for this call is 3 s from then
 today=$(date +%F)
 # eco name version [repo] -> $rd: YYYY-MM-DD, "skip" (no answer: no nudge) or empty (the registry
 # has no date). Sets netfail in this shell, so it is called without a subshell.
@@ -181,6 +181,7 @@ rd_get() {
   [ -z "$d" ] && [ -f "$cache" ] && d=$(awk -F'\t' -v k="$key" '$1 == k { r = $2 } END { print r }' "$cache")
   case "$d" in "skip:$today") rd=skip; return ;; skip:*) d="" ;; esac
   [ -n "$d" ] && { rd=${d:0:10}; return; }
+  t0=${t0:-$SECONDS}
   left=$((3 - (SECONDS - t0)))
   if [ -n "$netfail" ] || [ "$left" -le 0 ] || ! command -v curl >/dev/null 2>&1; then rd=skip; return; fi
   case "$1" in
