@@ -67,6 +67,7 @@ s="$HOME/.claude/settings.json"; if [ -f "$s" ]; then left=$(jq -c -n --slurpfil
 test ! -e "$HOME/.claude/CLAUDE.md"
 if claude plugin marketplace list --json | grep -q "\"name\": \"makeit\""; then echo "the makeit marketplace is still there"; exit 1; fi
 test ! -e "$HOME/.makeit/catalog"
+test ! -e "$HOME/.makeit/mcp/chrome-devtools"
 makeit setup --yes
 EOS
 chmod 755 /tmp/upkeep.sh
@@ -260,6 +261,18 @@ if command -v npm >/dev/null; then
   [ "$(printf '1. a\n2. b\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = joined ] || { echo "lists.mjs did not read joined"; exit 1; }
   [ "$(printf '1. a\n2. b\n\nPick:\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = options ] || { echo "lists.mjs did not read options"; exit 1; }
   echo "reply check through marked: ok"
+  # chrome-devtools-mcp is installed locally, and the shipped .mcp.json starts that copy (a PATH
+  # with node only, so npx could not have served it) and gets an initialize reply.
+  test -f "$HOME/.makeit/mcp/chrome-devtools/node_modules/chrome-devtools-mcp/package.json" || { echo "no local chrome-devtools-mcp"; exit 1; }
+  # chrome-devtools-mcp 1.12.0 needs Node 20.19 or newer (Ubuntu 24.04's apt node is 18, where npx fails too).
+  if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>20||(a===20&&b>=19)?0:1)'; then
+    echo "chrome-devtools-mcp needs Node 20.19+, this is $(node -v): server start not checked"
+  else
+  nd=$(mktemp -d)
+  ln -s "$(command -v node)" "$nd/node"
+  PATH="$nd" node -e 'const j=require(process.argv[1]).mcpServers["chrome-devtools"];const c=require("child_process").spawn(j.command,j.args,{stdio:["pipe","pipe","inherit"],env:process.env});c.stdout.once("data",d=>{console.log(String(d));c.kill();process.exit(/"serverInfo"/.test(String(d))?0:1)});c.stdin.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"initialize",params:{protocolVersion:"2025-06-18",capabilities:{},clientInfo:{name:"t",version:"0"}}})+"\n");setTimeout(()=>process.exit(1),30000)' "$HOME/.makeit/catalog/plugins/makeit/.mcp.json" || { echo "the shipped .mcp.json did not start the local copy"; exit 1; }
+  echo "chrome-devtools-mcp from the local copy: ok"
+  fi
 fi
 EOS
 chmod 755 /tmp/toolcheck.sh

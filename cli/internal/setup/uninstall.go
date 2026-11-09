@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"makeit/internal/platform"
 	"maps"
 	"os"
 	"path"
@@ -18,6 +17,7 @@ import (
 	"makeit/internal/fsx"
 	"makeit/internal/jsonx"
 	"makeit/internal/plan"
+	"makeit/internal/platform"
 	"makeit/internal/pluginrule"
 	"makeit/internal/settings"
 	"makeit/internal/state"
@@ -153,7 +153,7 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 		steps = append(steps, e.unFileStep(k))
 	}
 	steps = append(steps, e.toolSteps()...)
-	steps = append(steps, e.unDirsStep(), e.unCatalogStep(), e.unStateStep())
+	steps = append(steps, e.unDirsStep(), e.unCatalogStep(), e.unMCPLocalStep(), e.unStateStep())
 	if opts.Purge {
 		steps = append(steps, plan.Step{ID: "purge",
 			Title: "Delete the data of the plugins makeit installed, and every backup in " + e.Roots.Stack + " (cannot be undone)",

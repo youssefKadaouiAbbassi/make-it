@@ -469,3 +469,6 @@ func applyMCP(ctx context.Context, run execx.Runner, b, current []byte) ([]byte,
 	}
 	return out, true
 }
+
+// MCPPin is the version of npm package pkg that an .mcp.json pins, or "".
+func MCPPin(b []byte, pkg string) string { return npmPins(b)[pkg] }

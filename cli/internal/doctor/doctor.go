@@ -6,7 +6,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"makeit/internal/pathenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/fsx"
+	"makeit/internal/pathenv"
 	"makeit/internal/platform"
 	"makeit/internal/selfupdate"
 	"makeit/internal/state"
@@ -57,7 +57,9 @@ type Machine struct {
 	// ClaudeDir is Claude Code's configuration directory; Globals are the catalog paths of the
 	// global files setup writes into it (templates/global/...).
 	ClaudeDir string
-	Globals   []string
+	// StackDir is makeit's own directory; "" skips the checks that read it.
+	StackDir string
+	Globals  []string
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
 	// Root and HasSudo say whether setup could use the package manager here (brew and winget
@@ -103,6 +105,7 @@ func Run(ctx context.Context, m Machine) []Check {
 	st, info, stErr := state.LoadState(m.StatePath)
 	warm.Wait()
 	r.plugins(ctx, m, req, reqErr, unusable, st)
+	r.mcpLocal(m)
 	r.global(m)
 	r.record(st, info, stErr)
 	return r.checks

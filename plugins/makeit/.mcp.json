@@ -1,9 +1,17 @@
 {
   "mcpServers": {
     "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@1.12.0", "--isolated", "--no-performance-crux"],
-      "env": { "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1" }
+      "command": "node",
+      "args": [
+        "-e",
+        "const fs=require('fs'),path=require('path'),os=require('os'),cp=require('child_process');const spec=process.argv[1],args=process.argv.slice(2);const entry=path.join(process.env.MAKEIT_DIR||path.join(os.homedir(),'.makeit'),'mcp','chrome-devtools','node_modules','chrome-devtools-mcp','build','src','bin','chrome-devtools-mcp.js');const local=fs.existsSync(entry);const c=local?cp.spawn(process.execPath,[entry].concat(args),{stdio:'inherit'}):cp.spawn('npx',['-y',spec].concat(args),{stdio:'inherit',shell:process.platform==='win32'});c.on('error',function(){process.exit(1)});c.on('exit',function(code){process.exit(code===null?1:code)});['SIGTERM','SIGINT'].forEach(function(s){process.on(s,function(){c.kill(s)})})",
+        "chrome-devtools-mcp@1.12.0",
+        "--isolated",
+        "--no-performance-crux"
+      ],
+      "env": {
+        "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1"
+      }
     }
   }
 }

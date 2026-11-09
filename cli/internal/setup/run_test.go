@@ -81,6 +81,11 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 		return "[" + strings.Join(rows, ",") + "]"
 	}
 	switch {
+	case strings.HasPrefix(cmd, "npm install --prefix ") && len(c.Argv) == 7:
+		// The local chrome-devtools-mcp install: leaves the package.json npm would.
+		pkg, ver, _ := strings.Cut(c.Argv[6], "@")
+		mustWrite(filepath.Join(c.Argv[3], "node_modules", pkg, "package.json"), `{"version":"`+ver+`"}`)
+		return execx.Result{}, nil
 	case cmd == "/usr/bin/claude --version":
 		return execx.Result{Stdout: "2.1.319 (Claude Code)\n"}, nil
 	case cmd == "/usr/bin/claude doctor":
@@ -216,8 +221,8 @@ func TestSecondRunResumes(t *testing.T) {
 	second := apply(t, m)
 	for _, o := range second.Plan.Outcomes {
 		want := plan.Already
-		// bundle failed on the first run; settings and the global files come after it.
-		if o.ID == "bundle" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") || strings.HasPrefix(o.ID, "path.") {
+		// bundle failed on the first run; the local MCP install, settings and the global files come after it.
+		if o.ID == "bundle" || o.ID == "mcp.chrome-devtools" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") || strings.HasPrefix(o.ID, "path.") {
 			want = plan.Done
 		}
 		if o.Status != want {

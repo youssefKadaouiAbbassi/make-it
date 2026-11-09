@@ -38,6 +38,7 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 		SettingsPath: filepath.Join(roots.Claude, "settings.json"),
 		StatePath:    filepath.Join(roots.Stack, "state.json"),
 		ClaudeDir:    roots.Claude,
+		StackDir:     roots.Stack,
 	}
 	if exe, err := os.Executable(); err == nil {
 		if r, err := filepath.EvalSymlinks(exe); err == nil {

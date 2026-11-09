@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -241,5 +243,46 @@ func TestMCPSetupReview(t *testing.T) {
 		if strings.Contains(string(d), "docs-mcp-server") {
 			t.Errorf("%s still mentions docs-mcp-server", f)
 		}
+	}
+}
+
+// The shipped server starts the local copy with node when it is there and npx otherwise, on the
+// version .mcp.json pins; the layout is the one mcplocal installs.
+func TestMCPLocalFirstNpxFallback(t *testing.T) {
+	b, err := Embedded.ReadFile("plugins/makeit/.mcp.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		MCPServers map[string]struct {
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	cd := m.MCPServers["chrome-devtools"]
+	if cd.Command != "node" || len(cd.Args) < 4 || cd.Args[0] != "-e" {
+		t.Fatalf("command %q args %q, want node -e <script> <package@version> ...", cd.Command, cd.Args)
+	}
+	script := cd.Args[1]
+	local := strings.Index(script, "'mcp','chrome-devtools','node_modules','chrome-devtools-mcp'")
+	exists := strings.Index(script, "existsSync(entry)")
+	npx := strings.Index(script, "'npx',['-y',spec]")
+	if local < 0 || exists < local || npx < exists {
+		t.Errorf("script order wrong (local path %d, exists check %d, npx %d)", local, exists, npx)
+	}
+	if !regexp.MustCompile(`^chrome-devtools-mcp@\d+\.\d+\.\d+$`).MatchString(cd.Args[2]) {
+		t.Errorf("args[2] = %q, want the pinned package", cd.Args[2])
+	}
+	for _, flag := range []string{"--isolated", "--no-performance-crux"} {
+		if !slices.Contains(cd.Args, flag) {
+			t.Errorf("args %v lack %s", cd.Args, flag)
+		}
+	}
+	if cd.Env["CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS"] != "1" {
+		t.Errorf("env %v lacks the telemetry switch", cd.Env)
 	}
 }

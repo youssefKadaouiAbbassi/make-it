@@ -95,6 +95,7 @@ func (e *env) setupSteps(global []plan.Step) []plan.Step {
 	steps = append(steps, e.npmUpgradeSteps()...)
 	steps = append(steps, e.claudeStep(), e.claudeSeenStep(), e.claudeUpgradeStep())
 	steps = append(steps, e.stackSteps()...)
+	steps = append(steps, e.mcpLocalStep())
 	steps = append(steps, e.settingsStep())
 	steps = append(steps, global...)
 	return append(steps, e.pathSteps()...)
