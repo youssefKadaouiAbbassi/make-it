@@ -54,6 +54,15 @@ func runSetup(ctx context.Context, p cli.Parsed, args []string, stdout, stderr i
 	return runModifying(ctx, p, stdout, stderr, modifying{name: "setup", question: "Apply this plan?", yesFirst: true, prepare: prepareCatalog("setup", stderr),
 		run: func(ctx context.Context, e setup.Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error)) (setup.Report, error) {
 			return setup.Run(ctx, e, mode, confirm, args)
+		},
+		finish: func(u *ui.UI) {
+			// --yes takes no questions; a dry run changed nothing to ask about.
+			if p.Bool["yes"] || p.Bool["dry-run"] {
+				return
+			}
+			if err := askNotifyOnce(u); err != nil {
+				fmt.Fprintf(stderr, "%s: %v\n", prog, err)
+			}
 		}})
 }
 
@@ -68,6 +77,8 @@ type modifying struct {
 	notice func(ctx context.Context) string
 	// after prints the command's own closing lines, in text mode, after a run without error.
 	after func(w io.Writer, rep setup.Report, live bool)
+	// finish asks what comes after a run that applied or had nothing to do; nil for the others.
+	finish func(u *ui.UI)
 	// self is the swap update's parent made before running this binary; nil otherwise.
 	self *selfMove
 	// prepare picks the catalog the run plans with (setup and update); its lines join the notice.
@@ -308,6 +319,9 @@ func runModifying(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer, m
 	}
 	if m.after != nil && err == nil {
 		m.after(stderr, rep, u.Mode == ui.Live)
+	}
+	if m.finish != nil && code == 0 && (err == nil || errors.Is(err, setup.ErrNothing)) {
+		m.finish(u)
 	}
 	return code
 }

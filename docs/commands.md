@@ -11,6 +11,7 @@ Commands:
   doctor                 check this machine against what makeit sets up; changes nothing
   help [command|exit-codes|environment] show help for a command or a topic
   init [dir]             set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI
+  notify                 send notifications to your phone: ask again about ntfy and Claude Code's own push
   rollback               undo the last update that changed something
   setup                  set up this machine: prerequisites, Claude Code, the plugin set, settings and global files
   uninstall              remove what makeit put on this machine and nobody changed since

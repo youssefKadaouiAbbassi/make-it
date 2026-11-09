@@ -41,6 +41,7 @@ var commands = []cli.Command{
 		{Name: "applied", Value: "version", Help: "record that /makeit:init applied the listed init changes up to version (the initTarget init --json reports); writes only .makeit.json"},
 		{Name: "keep", Value: "line", Help: "with --applied: a difference from the current way the user kept, never raised again"},
 	}},
+	{Name: "notify", Summary: "send notifications to your phone: ask again about ntfy and Claude Code's own push"},
 	{Name: "rollback", Summary: "undo the last update that changed something", Modifies: true},
 	// self install is what install.sh and install.ps1 run; update and rollback replaced the rest.
 	{Name: "self", Hidden: true, Args: "install", Summary: "install this makeit binary", Flags: []cli.Flag{
@@ -176,6 +177,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 			return runUninstall(ctx, p, args, stdout, stderr)
 		}
 		return runSetup(ctx, p, args, stdout, stderr)
+	case "notify":
+		if len(p.Positionals) > 0 {
+			fmt.Fprintf(stderr, "%s: notify takes no arguments\n", prog)
+			return 2
+		}
+		return runNotify(p, stderr)
 	case "self":
 		return runSelf(ctx, p, stdout, stderr)
 	case "rollback":

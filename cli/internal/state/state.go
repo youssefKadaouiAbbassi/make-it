@@ -47,8 +47,10 @@ type State struct {
 	// newer release exists, or until an update run by hand clears them.
 	PluginSkips map[string][]string `json:"pluginSkips,omitempty"`
 	// ToolSkips are the release tags of a tool makeit rollback undid; update leaves them, as for plugins.
-	ToolSkips  map[string][]string `json:"toolSkips,omitempty"`
-	Migrations []MigrationRun      `json:"migrations,omitempty"`
+	ToolSkips map[string][]string `json:"toolSkips,omitempty"`
+	// Notify is "asked" once setup or makeit notify has put the phone questions.
+	Notify     string         `json:"notify,omitempty"`
+	Migrations []MigrationRun `json:"migrations,omitempty"`
 	// Extra, here and in every record, holds members written by a newer revision, so they
 	// survive a round trip.
 	Extra jsontext.Value `json:",embed"`
