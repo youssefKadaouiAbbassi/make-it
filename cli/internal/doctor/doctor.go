@@ -59,7 +59,9 @@ type Machine struct {
 	ClaudeDir string
 	// StackDir is makeit's own directory; "" skips the checks that read it.
 	StackDir string
-	Globals  []string
+	// NodeVersion is `node -v` ("v22.1.0"), or "" when node is missing or unreadable.
+	NodeVersion string
+	Globals     []string
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
 	// Root and HasSudo say whether setup could use the package manager here (brew and winget

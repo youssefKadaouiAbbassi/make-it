@@ -32,7 +32,7 @@ func mcpEnv(t *testing.T, pin, installed string) (*env, *fakeRunner) {
 	return e, f
 }
 
-func write(t *testing.T, path, data string) {
+func write(t testing.TB, path, data string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -129,16 +129,6 @@ func TestUnMCPLocalRemovesOnlyItsDir(t *testing.T) {
 	}
 	if done, _ := s.Already(context.Background()); !done {
 		t.Error("removed copy still planned")
-	}
-}
-
-// mustWrite is write for the fake machine, which has no *testing.T of its own.
-func mustWrite(path, data string) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		panic(err)
-	}
-	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
-		panic(err)
 	}
 }
 

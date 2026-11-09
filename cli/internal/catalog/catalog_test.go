@@ -274,6 +274,16 @@ func TestMCPLocalFirstNpxFallback(t *testing.T) {
 	if local < 0 || exists < local || npx < exists {
 		t.Errorf("script order wrong (local path %d, exists check %d, npx %d)", local, exists, npx)
 	}
+	// In-process (one node, not two), only when the copy is the pinned version, and npx when the
+	// load throws or npx itself cannot start (with one line saying so).
+	for _, want := range []string{"import(url.pathToFileURL(entry).href)", "version===spec.split('@').pop()", ".catch(function(e)", "makeit: could not start npx"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("script lacks %q", want)
+		}
+	}
+	if strings.Contains(script, "spawn(process.execPath") {
+		t.Error("script spawns a second node for the local copy")
+	}
 	if !regexp.MustCompile(`^chrome-devtools-mcp@\d+\.\d+\.\d+$`).MatchString(cd.Args[2]) {
 		t.Errorf("args[2] = %q, want the pinned package", cd.Args[2])
 	}

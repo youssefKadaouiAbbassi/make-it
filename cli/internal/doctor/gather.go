@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/catalog"
@@ -64,6 +65,9 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 		if strings.HasPrefix(f.Path, "templates/global/") {
 			m.Globals = append(m.Globals, f.Path)
 		}
+	}
+	if res, err := execx.Run(ctx, execx.Cmd{Argv: []string{"node", "-v"}, Timeout: 5 * time.Second}); err == nil && res.Code == 0 {
+		m.NodeVersion = strings.TrimSpace(res.Stdout)
 	}
 	if len(m.Installs) > 0 {
 		m.Claude = &claudecli.CLI{Path: m.Installs[0].Path, Run: execx.Run}

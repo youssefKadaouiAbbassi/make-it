@@ -26,6 +26,7 @@ import (
 // fakeMachine is a linux machine with every prerequisite, Claude Code 2.1.312 at /usr/bin/claude
 // and a claude that remembers the marketplaces and plugins it was asked to add.
 type fakeMachine struct {
+	t           *testing.T
 	env         Env
 	markets     []string
 	plugins     []string
@@ -45,7 +46,7 @@ type fakeMachine struct {
 func newMachine(t *testing.T) *fakeMachine {
 	t.Helper()
 	home := t.TempDir()
-	m := &fakeMachine{}
+	m := &fakeMachine{t: t}
 	m.env = Env{
 		Roots:    paths.Roots{Home: home, Claude: filepath.Join(home, ".claude"), Stack: filepath.Join(home, ".makeit")},
 		Platform: platform.Platform{OS: "linux", Arch: "amd64", PM: platform.APT},
@@ -84,7 +85,7 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 	case strings.HasPrefix(cmd, "npm install --prefix ") && len(c.Argv) == 7:
 		// The local chrome-devtools-mcp install: leaves the package.json npm would.
 		pkg, ver, _ := strings.Cut(c.Argv[6], "@")
-		mustWrite(filepath.Join(c.Argv[3], "node_modules", pkg, "package.json"), `{"version":"`+ver+`"}`)
+		write(m.t, filepath.Join(c.Argv[3], "node_modules", pkg, "package.json"), `{"version":"`+ver+`"}`)
 		return execx.Result{}, nil
 	case cmd == "/usr/bin/claude --version":
 		return execx.Result{Stdout: "2.1.319 (Claude Code)\n"}, nil
