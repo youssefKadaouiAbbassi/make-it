@@ -3,12 +3,13 @@
   "model": "opus",
   "advisorModel": "fable",
   "cleanupPeriodDays": 3650,
+  "crossSessionInbound": "accept",
   "skipDangerousModePermissionPrompt": true,
   "permissions": {
     "defaultMode": "bypassPermissions",
     "ask": [
       "Bash(gh pr merge *)", "Bash(gh stack merge *)",
-      "Bash(gh api *merge-async*)", "Bash(gh api *DELETE*)",
+      "Bash(gh api *merge*)", "Bash(gh api *DELETE*)",
       "Bash(git push * main)", "Bash(git push * master)", "Bash(git push *:main)", "Bash(git push *:master)",
       "Bash(git push -f *)", "Bash(git push *--force*)",
       "Bash(git reset --hard *)",
@@ -36,7 +37,8 @@
   },
   "env": {
     "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1",
-    "DOCS_MCP_TELEMETRY": "false",
+    "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
+    "CLAUDE_CODE_SUBAGENT_EFFORT": "medium",
     "FASTLANE_OPT_OUT_USAGE": "1",
     "MAESTRO_CLI_NO_ANALYTICS": "1",
     "PONYTAIL_DEFAULT_MODE": "full",

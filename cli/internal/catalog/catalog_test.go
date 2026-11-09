@@ -159,3 +159,49 @@ func TestNoGitHubSources(t *testing.T) {
 		}
 	}
 }
+
+func TestBaselineSetupReview(t *testing.T) {
+	b, err := Embedded.ReadFile("settings.baseline.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		CrossSessionInbound string            `json:"crossSessionInbound"`
+		Env                 map[string]string `json:"env"`
+		Permissions         struct{ Ask []string }
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.CrossSessionInbound != "accept" {
+		t.Errorf("crossSessionInbound = %q", s.CrossSessionInbound)
+	}
+	for k, want := range map[string]string{"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1", "CLAUDE_CODE_SUBAGENT_EFFORT": "medium"} {
+		if s.Env[k] != want {
+			t.Errorf("env %s = %q, want %q", k, s.Env[k], want)
+		}
+	}
+	if _, ok := s.Env["DOCS_MCP_TELEMETRY"]; ok {
+		t.Error("env DOCS_MCP_TELEMETRY still in the baseline")
+	}
+	has := func(r string) bool {
+		for _, a := range s.Permissions.Ask {
+			if a == r {
+				return true
+			}
+		}
+		return false
+	}
+	for _, r := range []string{"Bash(gh api *merge*)", "Bash(gh pr merge *)"} {
+		if !has(r) {
+			t.Errorf("ask lacks %s", r)
+		}
+	}
+	if has("Bash(gh api *merge-async*)") {
+		t.Error("ask still has the merge-async rule")
+	}
+	r, err := LoadRequires(Embedded)
+	if err != nil || r.Requires.ClaudeCode.Hard != "2.1.319" {
+		t.Errorf("hard floor = %q, %v", r.Requires.ClaudeCode.Hard, err)
+	}
+}

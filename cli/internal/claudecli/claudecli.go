@@ -29,7 +29,7 @@ import (
 
 // Floor is the lowest Claude Code that modifying commands accept: --json on the marketplace
 // verbs needs it (plugins cli-reference, marketplace add/remove/update).
-const Floor = "2.1.287"
+const Floor = "2.1.319"
 
 // CLI runs one claude binary.
 type CLI struct {

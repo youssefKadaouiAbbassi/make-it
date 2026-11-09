@@ -2,7 +2,7 @@
   "$comment": "Read by the makeit CLI. hard: commands that write refuse below it (marketplace add/remove/update --json need 2.1.287, plugins/cli-reference). soft: the version this catalog was tested with; doctor warns below it.",
   "schemaVersion": 1,
   "requires": {
-    "claudeCode": { "hard": "2.1.287", "soft": "2.1.310" }
+    "claudeCode": { "hard": "2.1.319", "soft": "2.1.319" }
   },
   "marketplace": "makeit",
   "bundle": "makeit-bundle@makeit",

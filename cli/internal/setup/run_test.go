@@ -82,7 +82,7 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 	}
 	switch {
 	case cmd == "/usr/bin/claude --version":
-		return execx.Result{Stdout: "2.1.312 (Claude Code)\n"}, nil
+		return execx.Result{Stdout: "2.1.319 (Claude Code)\n"}, nil
 	case cmd == "/usr/bin/claude doctor":
 		return execx.Result{}, nil
 	case cmd == "/usr/bin/claude plugin marketplace list --json":

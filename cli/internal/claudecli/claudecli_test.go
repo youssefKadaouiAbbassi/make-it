@@ -52,7 +52,7 @@ func TestVersionAndFloor(t *testing.T) {
 	cases := []struct {
 		have string
 		ok   bool
-	}{{"2.1.287", true}, {"2.1.311", true}, {"2.2.0", true}, {"3.0", true}, {"2.1.286", false}, {"2.1.9", false}, {"1.99.999", false}}
+	}{{"2.1.319", true}, {"2.1.320", true}, {"2.2.0", true}, {"3.0", true}, {"2.1.318", false}, {"2.1.9", false}, {"1.99.999", false}}
 	for _, c := range cases {
 		err := CheckFloor(c.have, Floor)
 		if (err == nil) != c.ok || (err != nil && !errors.Is(err, ErrBelowFloor)) {

@@ -89,7 +89,9 @@ differs. `--dry-run` prints each path with its value.
 | `advisorModel` | `fable` | the newest Fable as the advisor, resolved by Claude Code |
 | `cleanupPeriodDays` | `3650` | keeps session transcripts for ten years (deja-vu searches them) |
 | `env.PONYTAIL_DEFAULT_MODE` | `full` | ponytail's level |
-| `env.CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`, `env.DOCS_MCP_TELEMETRY`, `env.REDOCLY_TELEMETRY`, `env.FASTLANE_OPT_OUT_USAGE`, `env.MAESTRO_CLI_NO_ANALYTICS` | off | telemetry off for the tools the plugins and the CI checks run |
+| `crossSessionInbound` | `accept` | lets sessions receive messages from other sessions |
+| `env.CLAUDE_CODE_ENABLE_TODO_TOOLS`, `env.CLAUDE_CODE_SUBAGENT_EFFORT` | `1`, `medium` | the todo tools on, subagents at medium effort |
+| `env.CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`, `env.REDOCLY_TELEMETRY`, `env.FASTLANE_OPT_OUT_USAGE`, `env.MAESTRO_CLI_NO_ANALYTICS` | off | telemetry off for the tools the plugins and the CI checks run |
 | `extraKnownMarketplaces.claude-plugins-official` | GitHub `anthropics/claude-plugins-official`, `autoUpdate: true` | the marketplace of the four language server plugins |
 
 Read the ask list before you run setup: with `bypassPermissions`, everything not on it runs
@@ -112,7 +114,7 @@ Edit them to taste: they are yours once written, and `makeit update` leaves a ch
 
 ## Claude Code
 
-setup installs Claude Code when it is missing or older than 2.1.287, by Homebrew on macOS, winget
+setup installs Claude Code when it is missing or older than 2.1.319, by Homebrew on macOS, winget
 on Windows, and on Linux Homebrew when present, otherwise Anthropic's signed apt, dnf or apk
 repository (the repository key's fingerprint is checked first), or Anthropic's native installer
 when none of those can be used. An existing Claude Code is kept, however it was installed.
@@ -120,7 +122,7 @@ when none of those can be used. An existing Claude Code is kept, however it was 
 Every setup and update then brings it to the newest release of its channel (`latest`, or `stable`
 when you set `autoUpdatesChannel`). The daily run never asks for a password: where the upgrade
 needs sudo, it leaves a line saying `makeit update` will do it. `makeit doctor` warns when Claude
-Code is older than 2.1.310, the version this release was tested with.
+Code is older than 2.1.319, the version this release was tested with.
 
 ## Tools on PATH
 
