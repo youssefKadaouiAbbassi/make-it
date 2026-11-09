@@ -126,6 +126,14 @@ git -C "$repo" checkout -q master 2>/dev/null || git -C "$repo" checkout -q main
 git -C "$repo" worktree add -q -b 'we#ird/b' "$tmp/wt" 2>/dev/null
 wt=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","session_id":"wt","source":"startup"}' "$tmp/wt" | bash "$here/handoff.sh")
 expect "handoff worktree (.git file) uses the hook cwd and a safe slug" 'HANDOFF.we-ird-b.md' "$(ctx "$wt")"
+# A repo with no commits yet: main is the default, not a feature branch.
+ub="$tmp/unborn"; mkdir -p "$ub"; git -C "$ub" init -q -b main; printf "# h\n" >"$ub/HANDOFF.md"
+expect "handoff unborn main uses HANDOFF.md" 'rewrite HANDOFF.md' "$(printf '{"hook_event_name":"PreCompact","cwd":"%s"}' "$ub" | bash "$here/handoff.sh"; true)"
+ub2="$tmp/unborn2"; mkdir -p "$ub2"; git -C "$ub2" init -q -b feat/new; printf "# h\n" >"$ub2/HANDOFF.md"
+expect "handoff unborn branch of any name uses HANDOFF.md" 'rewrite HANDOFF.md' "$(printf '{"hook_event_name":"PreCompact","cwd":"%s"}' "$ub2" | bash "$here/handoff.sh")"
+# A cwd with a space still finds the plan.
+sp="$tmp/a b"; mkdir -p "$sp/docs/superpowers/plans"; printf '# s\n' >"$sp/docs/superpowers/plans/s.md"
+expect "handoff compact finds a plan in a cwd with a space" 's.md' "$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"compact"}' "$sp" | bash "$here/handoff.sh")"
 
 # --- variant-ask.sh ---------------------------------------------------------------------------
 va() { printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"%s","tool_input":{"command":%s}}' "$repo" "$(printf '%s' "$1" | jq -Rs .)" | HOME="$tmp/home" CLAUDE_PROJECT_DIR="$repo" bash "$here/optional/variant-ask.sh"; }
