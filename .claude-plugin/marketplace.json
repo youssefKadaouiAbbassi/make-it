@@ -28,7 +28,7 @@
     },
     {
       "name": "makeit",
-      "description": "makeit's own plugin: hooks (handoff, docs index, reply checks, notifications), the /makeit:init and expand-contract skills, and one MCP server with telemetry off (chrome-devtools, isolated).",
+      "description": "makeit's own plugin: hooks (handoff, docs version reminder, reply checks, notifications), the /makeit:init and expand-contract skills, and one MCP server with telemetry off (chrome-devtools, isolated).",
       "version": "0.3.11",
       "license": "MIT",
       "source": "./plugins/makeit"

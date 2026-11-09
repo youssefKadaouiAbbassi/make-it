@@ -180,20 +180,20 @@ out=$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$dp" | PATH="$tmp/
 # network is never reached (no curl on this PATH).
 export XDG_CACHE_HOME="$tmp/cache"; export TMPDIR="$tmp"
 mkdir -p "$XDG_CACHE_HOME/makeit-docs" "$tmp/nobin"
-for b in bash cat basename dirname head sed awk grep tr cut jq mkdir touch date; do ln -sf "$(command -v $b)" "$tmp/nobin/$b" 2>/dev/null; done
+for b in bash cat basename dirname head sed awk grep tr cut jq mkdir touch date python3; do ln -sf "$(command -v $b)" "$tmp/nobin/$b" 2>/dev/null; done
 printf 'npm:oldlib@1.0.0\t2024-01-01\ngo:github.com/new/mod@v1.4.0\t2026-10-01\npypi:newpy@2.0.0\t2026-09-01\ncrates:newcrate@0.9.0\t2026-09-01\n' >"$XDG_CACHE_HOME/makeit-docs/dates.tsv"
 nudge() { # session cwd tool file text -> hook output
   jq -n --arg s "$1" --arg c "$2" --arg t "$3" --arg f "$4" --arg x "$5" '{hook_event_name:"PreToolUse",session_id:$s,cwd:$c,tool_name:$t,tool_input:{file_path:$f,content:$x}}' |
-    PATH="$tmp/nobin" bash "$here/docs-nudge.sh"
+    PATH="${NPATH:-$tmp/nobin}" bash "$here/docs-nudge.sh"
 }
 np="$tmp/nudgeproj"; mkdir -p "$np/src" "$np/cli" "$np/py" "$np/rs"
 printf '{"devDependencies":{"vitest":"^5.1.0","oldlib":"^1.0.0"}}\n' >"$np/package.json"
 printf '{"packages":{"node_modules/vitest":{"version":"5.1.0"},"node_modules/oldlib":{"version":"1.0.0"}}}\n' >"$np/package-lock.json"
 printf 'module m\n\ngo 1.27\n\nrequire github.com/new/mod v1.4.0\n' >"$np/cli/go.mod"
 printf '[project]\nname = "p"\ndependencies = ["newpy>=2"]\n' >"$np/py/pyproject.toml"
-printf '[[package]]\nname = "newpy"\nversion = "2.0.0"\n' >"$np/py/uv.lock"
+printf '[[package]]\nname = "newpy"\nversion = "2.0.0"\nsource = { registry = "https://pypi.org/simple" }\n' >"$np/py/uv.lock"
 printf '[package]\nname = "p"\n\n[dependencies]\nnewcrate = "0.9"\n' >"$np/rs/Cargo.toml"
-printf '[[package]]\nname = "newcrate"\nversion = "0.9.0"\n' >"$np/rs/Cargo.lock"
+printf '[[package]]\nname = "newcrate"\nversion = "0.9.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n' >"$np/rs/Cargo.lock"
 out=$(nudge s1 "$np" Write "$np/src/a.ts" 'import { test } from "vitest";')
 expect "nudge denies a dependency newer than the cutoff" '"permissionDecision":"deny"' "$out"
 expect "nudge names the library and its version" 'vitest 5.1.0' "$out"
@@ -219,6 +219,105 @@ out=$(printf 'not json' | PATH="$tmp/nobin" bash "$here/docs-nudge.sh" 2>&1; ech
 out=$(printf '{"tool_name":"WebFetch","session_id":"s11","tool_input":{"url":"u"}}' | PATH="$tmp/nojq" bash "$here/docs-mark.sh" 2>&1; echo "rc=$?")
 [ "$out" = "rc=0" ] && ok "mark without jq: silent, exit 0" || bad "mark without jq: [$out]"
 [ -s "$tmp/makeit-docs/s2/lookups.txt" ] && ok "mark logs under makeit-docs/<session>" || bad "mark state dir missing"
+# Review additions: every nudge path, public registries only, network and cache behaviour.
+nudgeb() { # session cwd command -> hook output (Bash tool)
+  jq -nc --arg s "$1" --arg c "$2" --arg x "$3" '{hook_event_name:"PreToolUse",session_id:$s,cwd:$c,tool_name:"Bash",tool_input:{command:$x}}' | PATH="${NPATH:-$tmp/nobin}" bash "$here/docs-nudge.sh"
+}
+nudgem() { # session cwd file text -> hook output (MultiEdit tool)
+  jq -nc --arg s "$1" --arg c "$2" --arg f "$3" --arg x "$4" '{hook_event_name:"PreToolUse",session_id:$s,cwd:$c,tool_name:"MultiEdit",tool_input:{file_path:$f,edits:[{old_string:"a",new_string:"b"},{old_string:"c",new_string:$x}]}}' | PATH="${NPATH:-$tmp/nobin}" bash "$here/docs-nudge.sh"
+}
+seed() { printf '%s\t%s\n' "$1" "$2" >>"$XDG_CACHE_HOME/makeit-docs/dates.tsv"; }
+out=$(nudgem m1 "$np" "$np/src/b.ts" 'import { test } from "vitest";')
+expect "nudge reads MultiEdit edits[].new_string" 'vitest 5.1.0' "$out"
+# helm: Chart.lock edited from a nested folder, Chart.yaml alone through a Bash helm command
+mkdir -p "$np/chart" "$np/chart2"
+printf 'apiVersion: v2\nname: c\nversion: 0.1.0\n' >"$np/chart/Chart.yaml"
+printf 'dependencies:\n- name: traefik\n  repository: https://traefik.github.io/charts\n  version: 42.3.1\n' >"$np/chart/Chart.lock"
+printf 'apiVersion: v2\nname: c\nversion: 0.1.0\ndependencies:\n- name: traefik\n  version: 42.3.1\n  repository: https://traefik.github.io/charts\n' >"$np/chart2/Chart.yaml"
+out=$(nudge h1 "$np" Write "$np/chart/values.yaml" $'traefik:\n  replicas: 2')
+expect "nudge covers a helm dependency in Chart.lock, found from the edited file" 'traefik 42.3.1 (Chart.lock)' "$out"
+out=$(nudgeb h2 "$np/chart2" 'helm template .')
+expect "nudge covers a helm command with Chart.yaml only" 'traefik 42.3.1 (Chart.yaml)' "$out"
+expect_empty "nudge ignores a Bash command that is not helm or tofu" "$(nudgeb h3 "$np/chart2" 'ls -la')"
+# tofu: lock file, Bash tofu and terraform commands, and an edit of a .tf from a nested folder
+mkdir -p "$np/tf"
+printf 'terraform {\n  required_providers {\n    aws = {\n      source  = "hashicorp/aws"\n      version = "~> 6.0"\n    }\n  }\n}\n' >"$np/tf/main.tf"
+printf 'provider "registry.opentofu.org/hashicorp/aws" {\n  version     = "6.99.0"\n  constraints = "~> 6.0"\n}\n' >"$np/tf/.terraform.lock.hcl"
+seed 'tofu:hashicorp/aws@6.99.0' 2026-10-15
+out=$(nudgeb t1 "$np/tf" 'tofu plan')
+expect "nudge covers a tofu plan" 'hashicorp/aws 6.99.0 (.terraform.lock.hcl)' "$out"
+expect "nudge covers a terraform apply" 'hashicorp/aws 6.99.0' "$(nudgeb t2 "$np/tf" 'terraform apply')"
+expect "nudge covers a .tf edit, found from the edited file" 'hashicorp/aws 6.99.0' "$(nudge t3 "$np" Write "$np/tf/b.tf" 'resource "aws_s3_bucket" "b" {}')"
+# python: requirements.txt, poetry.lock (a package from another source is skipped), pyproject alone
+mkdir -p "$np/req" "$np/poe" "$np/pyo" "$np/py2"
+printf 'newreq==3.0.0\n# c\n' >"$np/req/requirements.txt"
+printf '[[package]]\nname = "poepy"\nversion = "1.5.0"\n\n[package.dependencies]\nidna = ">=2"\n\n[[package]]\nname = "privpoe"\nversion = "1.0.0"\n\n[package.source]\ntype = "legacy"\nurl = "https://pypi.corp.example/simple"\n' >"$np/poe/poetry.lock"
+printf '[project]\nname = "p"\ndependencies = ["onlypy>=4.0"]\n' >"$np/pyo/pyproject.toml"
+printf '[[package]]\nname = "p"\nversion = "0.1.0"\nsource = { editable = "." }\n\n[[package]]\nname = "privpy"\nversion = "1.0.0"\nsource = { registry = "https://pypi.corp.example/simple" }\n' >"$np/py2/uv.lock"
+seed pypi:newreq@3.0.0 2026-09-15; seed pypi:poepy@1.5.0 2026-09-15; seed pypi:privpoe@1.0.0 2026-09-15; seed pypi:onlypy@4.0 2026-09-15; seed pypi:privpy@1.0.0 2026-09-15
+expect "nudge covers requirements.txt" 'newreq 3.0.0 (requirements.txt)' "$(nudge p1 "$np" Write "$np/req/app.py" 'from newreq import x')"
+out=$(nudge p2 "$np" Write "$np/poe/app.py" $'import poepy\nimport privpoe')
+expect "nudge covers poetry.lock" 'poepy 1.5.0 (poetry.lock)' "$out"
+case "$out" in *privpoe*) bad "nudge skips a poetry package from another source" ;; *) ok "nudge skips a poetry package from another source" ;; esac
+expect_empty "nudge skips a uv.lock package from another registry" "$(nudge p3 "$np" Write "$np/py2/app.py" 'import privpy')"
+command -v python3 >/dev/null 2>&1 && expect "nudge covers pyproject.toml alone" 'onlypy 4.0 (pyproject.toml)' "$(nudge p4 "$np" Write "$np/pyo/app.py" 'import onlypy')"
+# cargo: Cargo.toml alone (path dependencies skipped), a Cargo.lock package without a registry source
+mkdir -p "$np/rso" "$np/rs2"
+printf '[package]\nname = "p"\n\n[dependencies]\nonlycrate = "1.2"\nlocalcrate = { path = "../x", version = "3.0" }\nwscrate.workspace = true\n' >"$np/rso/Cargo.toml"
+printf '[[package]]\nname = "privcrate"\nversion = "1.0.0"\n' >"$np/rs2/Cargo.lock"
+seed crates:onlycrate@1.2 2026-09-01; seed crates:localcrate@3.0 2026-09-01; seed crates:privcrate@1.0.0 2026-09-01
+out=$(nudge c1 "$np" Write "$np/rso/main.rs" $'use onlycrate::A;\nuse localcrate::B;\nuse wscrate::C;')
+expect "nudge covers Cargo.toml alone" 'onlycrate 1.2 (Cargo.toml)' "$out"
+case "$out" in *localcrate* | *wscrate*) bad "nudge skips path and workspace dependencies" ;; *) ok "nudge skips path and workspace dependencies" ;; esac
+expect_empty "nudge skips a Cargo.lock package without a registry source" "$(nudge c2 "$np" Write "$np/rs2/main.rs" 'use privcrate::A;')"
+# go: private modules (GOPRIVATE, a host without a dot) are never looked up or nudged
+mkdir -p "$np/gop"
+printf 'module m\n\nrequire (\n\tcorp.example/x/y v1.0.0\n\tinternal/z v1.0.0\n\tgithub.com/new/mod v1.4.0\n)\n' >"$np/gop/go.mod"
+seed go:corp.example/x/y@v1.0.0 2026-09-01; seed go:internal/z@v1.0.0 2026-09-01
+out=$(GOPRIVATE=corp.example nudge g1 "$np" Write "$np/gop/main.go" $'import "corp.example/x/y"\nimport "internal/z"\nimport "github.com/new/mod"')
+expect "nudge keeps a public go module" 'github.com/new/mod v1.4.0' "$out"
+case "$out" in *corp.example* | *internal/z*) bad "nudge skips GOPRIVATE and dotless go modules" ;; *) ok "nudge skips GOPRIVATE and dotless go modules" ;; esac
+# lookups match the library name as a whole token
+mkdir -p "$np/tok"
+printf '{"dependencies":{"vit":"1.0.0"}}\n' >"$np/tok/package.json"; seed npm:vit@1.0.0 2026-10-10
+printf '{"hook_event_name":"PostToolUse","session_id":"k1","tool_name":"WebFetch","tool_input":{"url":"https://vitest.dev/guide"}}' | PATH="$tmp/nobin" bash "$here/docs-mark.sh"
+expect "a lookup of vitest does not count for vit" 'vit 1.0.0' "$(nudge k1 "$np" Write "$np/tok/a.ts" 'import x from "vit";')"
+printf '{"hook_event_name":"PostToolUse","session_id":"k2","tool_name":"WebSearch","tool_input":{"query":"vit 1.0 changelog"}}' | PATH="$tmp/nobin" bash "$here/docs-mark.sh"
+expect_empty "a lookup naming vit counts for vit" "$(nudge k2 "$np" Write "$np/tok/a.ts" 'import x from "vit";')"
+# network: a fake curl answers per URL and logs its arguments
+mkdir -p "$tmp/netbin" "$np/net"
+for f in "$tmp"/nobin/*; do ln -sf "$(readlink "$f")" "$tmp/netbin/$(basename "$f")"; done
+cat >"$tmp/netbin/curl" <<CURL
+#!/bin/bash
+printf '%s\n' "\$*" >>"$tmp/curl.log"
+case "\$*" in
+  *registry.npmjs.org/netlib*) echo '{"time":{"1.0.0":"2026-10-20T00:00:00Z"}}' ;;
+  *registry.npmjs.org/nodate*) echo '{"time":{}}' ;;
+  *charts.example/index.yaml*) printf 'entries:\n  foo:\n  - apiVersion: v2\n    created: "2026-10-30T00:00:00Z"\n    version: 1.0.0\n' ;;
+  *) exit 7 ;;
+esac
+CURL
+chmod +x "$tmp/netbin/curl"; : >"$tmp/curl.log"
+printf '{"dependencies":{"netlib":"1.0.0","nodate":"1.0.0","failing":"1.0.0","privlib":"1.0.0"}}\n' >"$np/net/package.json"
+printf '{"packages":{"node_modules/netlib":{"version":"1.0.0","resolved":"https://registry.npmjs.org/netlib/-/netlib-1.0.0.tgz"},"node_modules/nodate":{"version":"1.0.0","resolved":"https://registry.npmjs.org/nodate/-/nodate-1.0.0.tgz"},"node_modules/failing":{"version":"1.0.0","resolved":"https://registry.npmjs.org/failing/-/failing-1.0.0.tgz"},"node_modules/privlib":{"version":"1.0.0","resolved":"https://npm.corp.example/privlib/-/privlib-1.0.0.tgz"}}}\n' >"$np/net/package-lock.json"
+imports=$'import a from "netlib";\nimport b from "nodate";\nimport c from "failing";\nimport d from "privlib";'
+out=$(NPATH="$tmp/netbin" nudge n1 "$np" Write "$np/net/a.ts" "$imports")
+expect "nudge looks the release date up in the registry" 'netlib 1.0.0 (package-lock.json): released 2026-10-20' "$out"
+expect "nudge denies when the registry gives no date" 'nodate 1.0.0 (package-lock.json): release date unknown' "$out"
+case "$out" in *failing* | *privlib*) bad "nudge does not deny on a failed lookup or a private package" ;; *) ok "nudge does not deny on a failed lookup or a private package" ;; esac
+expect "registry lookups use a 3 s cap" '-m 3' "$(cat "$tmp/curl.log")"
+case "$(cat "$tmp/curl.log")" in *privlib*) bad "nudge never sends a private package name out" ;; *) ok "nudge never sends a private package name out" ;; esac
+expect "a registry date is cached" "npm:netlib@1.0.0	2026-10-20" "$(cat "$XDG_CACHE_HOME/makeit-docs/dates.tsv")"
+expect "a failed lookup is cached as skip for the day" "npm:failing@1.0.0	skip:" "$(cat "$XDG_CACHE_HOME/makeit-docs/dates.tsv")"
+before=$(grep -c . "$tmp/curl.log")
+out=$(NPATH="$tmp/netbin" nudge n2 "$np" Write "$np/net/a.ts" 'import c from "failing";'; NPATH="$tmp/netbin" nudge n3 "$np" Write "$np/net/a.ts" 'import a from "netlib";')
+expect "a cached date serves a new session without the network" 'netlib 1.0.0' "$out"
+[ "$(grep -c . "$tmp/curl.log")" = "$before" ] && ok "a cached skip means no new lookup" || bad "a cached skip means no new lookup: curl ran again"
+# helm repository: https only
+mkdir -p "$np/chart3"
+printf 'dependencies:\n- name: foo\n  repository: https://charts.example\n  version: 1.0.0\n' >"$np/chart3/Chart.lock"
+expect "nudge reads a helm repository index (https only)" 'foo 1.0.0 (Chart.lock): released 2026-10-30' "$(NPATH="$tmp/netbin" nudgeb h9 "$np/chart3" 'helm dep build')"
+expect "helm repository lookups pass --proto =https" '--proto =https' "$(grep charts.example "$tmp/curl.log")"
 unset XDG_CACHE_HOME TMPDIR
 
 # --- autoupdate.sh -------------------------------------------------------------------------------
