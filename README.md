@@ -11,7 +11,7 @@ makeit sets up Claude Code for real software work, the same way on every machine
 project, and keeps it current. It installs a plugin set where every core plugin was tested against
 Claude Code without it and against its alternatives (the losers were dropped), then sets each
 project up so Claude knows its rules, runs its checks, and remembers where the last session
-stopped. [What was tested](docs/included.md#the-plugin-set).
+stopped. [What was tested](docs/included.md#the-plugins).
 
 <p align="center">
   <a href="https://github.com/youssefKadaouiAbbassi/make-it/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/youssefKadaouiAbbassi/make-it?color=555"></a>
