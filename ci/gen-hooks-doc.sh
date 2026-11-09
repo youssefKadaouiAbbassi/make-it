@@ -37,7 +37,7 @@ what() { # $1 event, $2 normalised command
     hooks/notify.sh) echo "notifies: desktop and ntfy message when the agent finishes or needs the user" ;;
     hooks/push.sh) echo "blocks: asks first for a push that names no branch from a deploy branch" ;;
     "hooks/deja.sh hook-context") echo "injects: a digest of past sessions at session start; says once if the deja binary is missing" ;;
-    "hooks/deja.sh hook-precompact") echo "records: saves the session to deja memory before compaction (no output)" ;;
+    "hooks/deja.sh hook-precompact") echo "records: a recovery packet (objective, conclusions, open items) used by the digest after compaction (no output)" ;;
     "hooks/deja.sh hook-session-end") echo "records: marks the session as ended in deja (no output)" ;;
     hooks/hint.sh) echo "injects: one line pointing at deja search, no recall content" ;;
     hooks/ponytail-activate.js) echo "injects: the ponytail ruleset at session start" ;;

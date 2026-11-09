@@ -42,7 +42,7 @@ Sources:
 | impeccable | Stop |  |  | `skills/impeccable/scripts/impeccable hook` | injects: the deep pass, remaining design findings over the UI files touched this session, and a reminder when a design build is unfinished; never blocks |
 | deja-vu | UserPromptSubmit |  |  | `hooks/hint.sh` | injects: one line pointing at deja search, no recall content |
 | deja-vu | SessionStart |  |  | `hooks/deja.sh hook-context` | injects: a digest of past sessions at session start; says once if the deja binary is missing |
-| deja-vu | PreCompact | `manual\|auto` |  | `hooks/deja.sh hook-precompact` | records: saves the session to deja memory before compaction (no output) |
+| deja-vu | PreCompact | `manual\|auto` |  | `hooks/deja.sh hook-precompact` | records: a recovery packet (objective, conclusions, open items) used by the digest after compaction (no output) |
 | deja-vu | SessionEnd |  |  | `hooks/deja.sh hook-session-end` | records: marks the session as ended in deja (no output) |
 
 No hooks: `makeit-bundle`, `makeit-ui`, `chrome-devtools-mcp`, `security-audit`.
