@@ -61,7 +61,8 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "if": "Bash(git push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 }
+          { "type": "command", "if": "Bash(git push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 },
+          { "type": "command", "if": "Bash(git -C * push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 }
         ]
       },
       {

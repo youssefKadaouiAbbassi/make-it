@@ -462,7 +462,7 @@ git -C "$prepo" checkout -q -b feat/x
 out=$(push 'git push' "$prepo"); expect_empty "push: bare push on feat/x is silent" "$out"
 git -C "$prepo" checkout -q dev
 out=$(push 'git push origin feat/x' "$prepo"); expect_empty "push: a named push is silent" "$out"
-out=$(push 'cd x && git push origin' "$prepo"); expect "push: chained bare push asks" '"permissionDecision":"ask"' "$out"
+out=$(push 'cd . && git push origin' "$prepo"); expect "push: chained bare push asks" '"permissionDecision":"ask"' "$out"
 git -C "$prepo" checkout -q -b main
 /bin/rm -rf "$prepo/.claude"
 out=$(push 'git push' "$prepo"); expect "push: main asks with no settings file" '"permissionDecision":"ask"' "$out"
@@ -470,6 +470,30 @@ git -C "$prepo" checkout -q --detach
 out=$(push 'git push' "$prepo"); expect_empty "push: detached HEAD is silent" "$out"
 mkdir -p "$tmp/notgit"; out=$(push 'git push' "$tmp/notgit"); expect_empty "push: not a git repo is silent" "$out"
 out=$(printf 'not json' | bash "$here/push.sh"; echo "rc=$?"); expect "push: bad input exits 0" "rc=0" "$out"
+qrepo="$tmp/qrepo"; mkdir -p "$qrepo/.claude" "$qrepo/sub" "$tmp/files"; : >"$tmp/files/a"; : >"$tmp/files/b"
+git -C "$qrepo" init -q -b dev; git -C "$qrepo" config user.email t@e; git -C "$qrepo" config user.name t; git -C "$qrepo" commit -q --allow-empty -m init
+printf '{"permissions":{"ask":["Bash(git push * dev)"]}}' >"$qrepo/.claude/settings.json"
+out=$(push 'git push && git push origin x' "$qrepo"); expect "push: a bare push before a named one asks" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push origin x && git push' "$qrepo"); expect "push: a bare push after a named one asks" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push origin HEAD' "$qrepo"); expect "push: origin HEAD is bare" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push origin HEAD:HEAD' "$qrepo"); expect "push: HEAD:HEAD is bare" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push origin HEAD:other' "$qrepo"); expect_empty "push: HEAD:other is named" "$out"
+out=$(push 'git push --all' "$qrepo"); expect "push: --all asks when a deploy branch exists" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push --mirror' "$qrepo"); expect "push: --mirror asks when a deploy branch exists" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push --tags' "$qrepo"); expect_empty "push: --tags alone is silent" "$out"
+out=$(push 'git push -o ci.skip' "$qrepo"); expect "push: -o value is not a ref" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push --push-option x --repo r' "$qrepo"); expect "push: value flags are not refs" '"permissionDecision":"ask"' "$out"
+out=$(cd "$tmp/files" && push 'git push *' "$qrepo"); expect "push: a * in the command is not expanded" '"permissionDecision":"ask"' "$out"
+git -C "$qrepo" checkout -q -b feat/y; git -C "$qrepo" checkout -q dev
+out=$(push "cd $tmp/notgit && git push" "$qrepo"); expect_empty "push: the cd target, not cwd, is judged" "$out"
+out=$(push 'cd sub && git push' "$qrepo"); expect "push: cd into a dir of the repo, branch dev, asks" '"permissionDecision":"ask"' "$out"
+git -C "$qrepo" checkout -q feat/y
+out=$(push 'git -C "'"$qrepo"'" push' "$qrepo"); expect_empty "push: git -C on feat/y is silent" "$out"
+git -C "$qrepo" checkout -q dev
+out=$(push 'git -C "'"$qrepo"'" push' "$qrepo"); expect "push: git -C on dev asks" '"permissionDecision":"ask"' "$out"
+out=$(printf '{"cwd":"%s","tool_input":{"command":"git push"}}' "$qrepo" | PATH="$tmp/nojq" bash "$here/push.sh" 2>&1; echo "rc=$?"); expect "push: without jq exits 0, no output" "rc=0" "$out"
+case "$out" in rc=0) ok "push: without jq prints nothing" ;; *) bad "push: without jq printed [$out]" ;; esac
+
 
 # --- skills/init/SKILL.md: the /makeit:init agent step (cli/INIT.md) ---------------------------
 sk="$here/../skills/init/SKILL.md"
