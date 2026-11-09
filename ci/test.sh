@@ -120,6 +120,13 @@ for d in . ..; do
   /bin/rm -rf "$t"
 done
 
+# docs/hooks.md is generated from every bundled plugin's hooks (external ones at their pinned sha).
+echo "== hooks doc"
+hd=$(mktemp -d "${TMPDIR:-/tmp}/hooks-doc.XXXXXX")
+if bash gen-hooks-doc.sh "$hd/hooks.md" && diff -u ../docs/hooks.md "$hd/hooks.md" >/dev/null; then echo "ok docs/hooks.md matches a fresh generation"
+else echo "FAIL docs/hooks.md differs from ci/gen-hooks-doc.sh output (bash ci/gen-hooks-doc.sh docs/hooks.md)"; fail=1; fi
+/bin/rm -rf "$hd"
+
 echo "== json"
 for f in rulesets/*.json renovate.json budget.json release-please-config.json .release-please-manifest.json; do
   python3 -c "import json,sys; json.load(open('$f'))" && echo "ok $f" || { echo "FAIL $f"; fail=1; }
