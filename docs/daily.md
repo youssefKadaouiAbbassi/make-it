@@ -78,11 +78,13 @@ has Claude ask properly.
 ## Reviewing work
 
 - `/code-review` reviews the current changes for bugs.
-- `/ponytail:ponytail-review` reviews a change for logic, safety and code nobody needed.
+- `/ponytail-review` reviews a change for logic, safety and code nobody needed.
 - `/security-review` checks the pending changes for security problems; ask for a "security
   audit" when you want the whole codebase looked at.
 - Run `check:full` yourself before a push (`make check:full`, `npm run check:full`, or whatever
   runner the project uses). It runs everything CI runs.
+
+What to say to get the most out of each part, by task: [Getting the most out of it](using.md).
 
 ## Ending a session
 
