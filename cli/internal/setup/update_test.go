@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -799,5 +800,39 @@ func TestUpdateRecordsAdoptedPinMove(t *testing.T) {
 	}
 	if len(rep.Pins) != 1 || rep.Pins[0].ID != "makeit-bundle@makeit" {
 		t.Errorf("pins %+v, want the adopted plugin's move recorded", rep.Pins)
+	}
+}
+
+// The docs index of the removed docs command goes: only when it holds makeit's lock or a record.
+func TestUpdateRemovesDocsStore(t *testing.T) {
+	m := converged(t)
+	store := filepath.Join(m.env.Roots.Stack, "docs")
+	writeFile(t, filepath.Join(store, "lock"), "1\n")
+	writeFile(t, filepath.Join(store, "documents.db"), "x")
+	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+	if err != nil {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if _, err := os.Stat(store); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("docs store still there: %v", err)
+	}
+	if !slices.Contains(rep.Changes, state.Change{Kind: "remove", Item: "docs index"}) {
+		t.Errorf("changes %+v lack the docs index removal", rep.Changes)
+	}
+}
+
+func TestUpdateKeepsForeignDocsDir(t *testing.T) {
+	m := converged(t)
+	foreign := filepath.Join(m.env.Roots.Stack, "docs", "notes.md")
+	writeFile(t, foreign, "mine\n")
+	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+	if err != nil {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if read(t, foreign) != "mine\n" {
+		t.Error("a docs directory without makeit's lock was removed")
+	}
+	if slices.ContainsFunc(rep.Changes, func(c state.Change) bool { return c.Kind == "remove" }) {
+		t.Errorf("changes %+v", rep.Changes)
 	}
 }

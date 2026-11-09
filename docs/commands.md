@@ -1,16 +1,16 @@
 # Commands
 
-Every command and flag, as `makeit help` prints them in makeit 0.3.11. Run `makeit help <command>` for the same text in your terminal.
+Every command and flag, as `makeit help` prints them in makeit 0.4.0. Run `makeit help <command>` for the same text in your terminal.
 
 ```
-makeit 0.3.11: a tested Claude Code setup for serious coding.
+makeit 0.4.0: a tested Claude Code setup for serious coding.
 
 Usage: makeit [command] [flags]   (no command: status and what to do next)
 
 Commands:
   doctor                 check this machine against what makeit sets up; changes nothing
   help [command|exit-codes|environment] show help for a command or a topic
-  init [dir]             set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index
+  init [dir]             set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI
   rollback               undo the last update that changed something
   setup                  set up this machine: prerequisites, Claude Code, the plugin set, settings and global files
   uninstall              remove what makeit put on this machine and nobody changed since
@@ -62,7 +62,7 @@ Flags for every command:
 ```
 Usage: makeit init [dir] [flags]
 
-set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index
+set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI
 
 Flags:
   --applied <version>                record that /makeit:init applied the listed init changes up to version (the initTarget init --json reports); writes only .makeit.json

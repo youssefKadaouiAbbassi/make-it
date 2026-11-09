@@ -382,3 +382,10 @@ esac
 		t.Errorf("doctor wrote under HOME:\nbefore %v\nafter  %v", before, after)
 	}
 }
+
+func TestDocsCommandIsGone(t *testing.T) {
+	code, _, errOut := run2(t, "docs", "sync")
+	if code != 2 || !strings.Contains(errOut, "unknown command 'docs'") {
+		t.Errorf("exit %d %q", code, errOut)
+	}
+}

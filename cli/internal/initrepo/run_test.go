@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,7 +14,6 @@ import (
 
 	"makeit/internal/buildinfo"
 	"makeit/internal/catalog"
-	"makeit/internal/docs"
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
 	"makeit/internal/plan"
@@ -26,8 +23,7 @@ import (
 
 var runNow = time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 
-// fakeRunner stands in for git and docs-mcp-server: git init makes .git, list says every library
-// is indexed and current, and every call is recorded.
+// fakeRunner stands in for git and gh: git init makes .git, and every call is recorded.
 type fakeRunner struct {
 	mu    sync.Mutex
 	calls []string
@@ -54,8 +50,6 @@ func (f *fakeRunner) run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 	switch {
 	case slices.Equal(c.Argv, []string{"git", "init", "-q"}):
 		return execx.Result{}, os.MkdirAll(filepath.Join(c.Dir, ".git"), 0o755)
-	case len(c.Argv) > 3 && c.Argv[3] == "list":
-		return execx.Result{Stdout: `[{"name": "zod", "versions": [{"version": "4.1.12", "indexedAt": "2026-10-30T00:00:00.000Z"}]}]`}, nil
 	}
 	return execx.Result{}, nil
 }
@@ -76,7 +70,6 @@ func testEnv(t *testing.T, dir string) (Env, *fakeRunner) {
 	}
 	f := &fakeRunner{}
 	return Env{Dir: dir, Stack: t.TempDir(), Catalog: catalog.Embedded, Req: req, Run: f.run,
-		Docs:    docs.Options{Run: f.run, Server: []string{"npx", "-y", "@arabold/docs-mcp-server@3.4.1"}, Now: func() time.Time { return runNow }},
 		Present: func(string) bool { return true }, Now: func() time.Time { return runNow }, CatalogKind: "embedded"}, f
 }
 
@@ -112,18 +105,15 @@ func nodeRepo(t *testing.T) string {
 
 func TestInitFresh(t *testing.T) {
 	dir := nodeRepo(t)
-	e, f := testEnv(t, dir)
+	e, _ := testEnv(t, dir)
 	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
 	if err != nil || rep.Plan.Failed() {
 		t.Fatalf("%v %s", err, rep.Plan.Summary())
 	}
 	want := []string{"doc:CLAUDE.md", "doc:CONSTRAINTS.md", "doc:HANDOFF.md", "merge:package.json", "merge:.gitignore", "merge:renovate.json",
-		"settings:.pre-commit-config.yaml", "settings:.env.example", "ci:.grype.yaml", "ci:.github/workflows/gate.yml", "ci:ci/floor-guard.mjs", "docs", "record"}
+		"settings:.pre-commit-config.yaml", "settings:.env.example", "ci:.grype.yaml", "ci:.github/workflows/gate.yml", "ci:ci/floor-guard.mjs", "record"}
 	if !slices.Equal(ids(rep), want) {
 		t.Fatalf("steps %v", ids(rep))
-	}
-	if c := f.take(); !slices.ContainsFunc(c, func(s string) bool { return strings.HasSuffix(s, " list --output json") }) {
-		t.Errorf("no docs sync: %v", c)
 	}
 	r := loadRepo(t, dir)
 	if r.CLI != buildinfo.Version || r.Catalog.Kind != "embedded" || !slices.Equal(r.Answers.Types, []string{"node"}) {
@@ -144,9 +134,6 @@ func TestInitFresh(t *testing.T) {
 	body, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
 	if !strings.HasPrefix(string(body), "# "+filepath.Base(dir)+"\n") || !strings.Contains(string(body), "`npm run check:full`") {
 		t.Errorf("CLAUDE.md not rendered:\n%.300s", body)
-	}
-	if docs.LoadRecord(e.Stack, dir).Manifests["package.json"] == "" {
-		t.Error("the docs record was not written")
 	}
 }
 
@@ -261,17 +248,13 @@ func TestInitDryRun(t *testing.T) {
 			t.Fatalf("%v %v", ids(rep), err)
 		}
 		for _, o := range rep.Plan.Outcomes {
-			// An empty directory has no manifests, so there are no docs to index.
-			if o.Status != plan.WouldChange && !(o.ID == "docs" && o.Status == plan.Already && len(before) == 0) {
+			if o.Status != plan.WouldChange {
 				t.Errorf("%s: %s", o.ID, o.Status)
 			}
 		}
 		after, _ := os.ReadDir(dir)
 		if len(after) != len(before) || len(f.take()) != 0 {
 			t.Errorf("a dry run wrote or ran something: %v", after)
-		}
-		if _, err := os.Stat(filepath.Join(e.Stack, "docs")); !os.IsNotExist(err) {
-			t.Error("a dry run wrote the docs record")
 		}
 	}
 }
@@ -289,16 +272,6 @@ func TestInitConsent(t *testing.T) {
 	_, err = Run(context.Background(), e, plan.Prompt, func([]plan.Outcome) (bool, error) { return false, nil }, Options{})
 	if !errors.Is(err, setup.ErrDeclined) {
 		t.Errorf("declined: %v", err)
-	}
-}
-
-// The go directive names the standard library, whose pkg.go.dev page at depth 0 is only a package
-// list: indexing it would claim docs that answer nothing, so it is left out.
-func TestLibsLeaveOutTheGoDirective(t *testing.T) {
-	p := Project{Deps: []Dep{{Name: "go", Version: "1.27.3", Ecosystem: "go"}, {Name: "golang.org/x/term", Version: "v0.47.0", Ecosystem: "go"}}}
-	got := Libs(p)
-	if len(got) != 1 || got[0].Name != "golang.org/x/term" {
-		t.Errorf("libs %v", got)
 	}
 }
 
@@ -336,17 +309,13 @@ func TestInitDoesNotFollowSymlinks(t *testing.T) {
 	}
 }
 
-// --offline syncs no docs and runs no gh: the docs step is left out with a notice, and --rulesets
-// is refused.
+// --offline runs no gh, and --rulesets is refused.
 func TestInitOffline(t *testing.T) {
 	dir := nodeRepo(t)
 	e, f := testEnv(t, dir)
 	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{Offline: true})
 	if err != nil || rep.Plan.Failed() {
 		t.Fatalf("%v %s", err, rep.Plan.Summary())
-	}
-	if slices.Contains(ids(rep), "docs") || !slices.Contains(rep.Notices, "--offline: docs not synced") {
-		t.Errorf("steps %v notices %q", ids(rep), rep.Notices)
 	}
 	if c := f.take(); len(c) != 0 {
 		t.Errorf("offline ran %v", c)
@@ -358,88 +327,6 @@ func TestInitOffline(t *testing.T) {
 	if err == nil || err.Error() != "--rulesets needs the network; drop --offline" {
 		t.Errorf("--offline --rulesets: %v", err)
 	}
-}
-
-// The docs record is saved only when the sync had no failure but unresolvable libraries: a failed
-// list or scrape leaves it out, so the next run syncs again.
-func TestInitDocsRecordMarksFailedSync(t *testing.T) {
-	registry := httptest.NewServer(http.NotFoundHandler())
-	defer registry.Close()
-	for _, c := range []struct {
-		name   string
-		list   execx.Result
-		failed bool
-	}{
-		{"list fails", execx.Result{Stderr: "npx: not found", Code: 127}, true},
-		{"only unresolvable", execx.Result{Stdout: "[]"}, false},
-	} {
-		dir := nodeRepo(t)
-		e, _ := testEnv(t, dir)
-		e.Docs.Resolver = docs.Resolver{NPM: registry.URL}
-		e.Docs.Run = func(_ context.Context, cmd execx.Cmd) (execx.Result, error) { return c.list, nil }
-		rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
-		if err != nil || rep.Plan.Failed() {
-			t.Fatalf("%s: %v %s", c.name, err, rep.Plan.Summary())
-		}
-		// The record is kept either way, so the hook can wait before retrying a failed sync.
-		if rec := docs.LoadRecord(e.Stack, dir); len(rec.Manifests) == 0 || rec.Failed != c.failed {
-			t.Errorf("%s: docs record %+v, docs %q", c.name, rec, rep.Docs)
-		}
-		if !c.failed && !strings.Contains(strings.Join(rep.Docs, "\n"), "no versioned docs URL") {
-			t.Errorf("%s: docs %q", c.name, rep.Docs)
-		}
-		// init is run on purpose, so it syncs a failed index again at once.
-		again, err := Run(context.Background(), e, plan.DryRunOnly, nil, Options{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		want := plan.Already
-		if c.failed {
-			want = plan.WouldChange
-		}
-		if got := stepStatus(again.Plan, "docs"); got != want {
-			t.Errorf("%s: second init's docs step %q, want %q", c.name, got, want)
-		}
-	}
-}
-
-func TestInitSkipsDocsWhileSyncRuns(t *testing.T) {
-	dir := nodeRepo(t)
-	e, _ := testEnv(t, dir)
-	calls := 0
-	e.Docs.Run = func(context.Context, execx.Cmd) (execx.Result, error) {
-		calls++
-		return execx.Result{Stdout: "[]"}, nil
-	}
-	// A sync the docs hook started holds the docs lock; two syncs would write one index at once.
-	lock, err := fsx.Acquire(docs.LockPath(e.Stack), time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Release()
-	rep, err := Run(context.Background(), e, plan.Apply, nil, Options{})
-	if err != nil || rep.Plan.Failed() {
-		t.Fatalf("%v %s", err, rep.Plan.Summary())
-	}
-	if calls != 0 {
-		t.Errorf("docs-mcp-server ran %d times while another sync held the docs lock", calls)
-	}
-	if got := stepStatus(rep.Plan, "docs"); got != plan.Skipped {
-		t.Errorf("docs step %q, want skipped", got)
-	}
-	if len(docs.LoadRecord(e.Stack, dir).Manifests) > 0 {
-		t.Error("a docs record for a sync that did not run")
-	}
-}
-
-// stepStatus is the status of the step with id in rep, or "".
-func stepStatus(rep plan.Report, id string) plan.Status {
-	for _, o := range rep.Outcomes {
-		if o.ID == id {
-			return o.Status
-		}
-	}
-	return ""
 }
 
 // A merge step with nothing merged for its path refuses to write rather than empty the file.

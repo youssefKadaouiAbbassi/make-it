@@ -197,14 +197,7 @@ initchain=$(cat <<'INITCHAIN'
 cat > /tmp/initchain.sh <<"EOS"
 set -e
 M=/usr/local/bin/makeit
-mkdir -p /tmp/initchain-bin
-cat > /tmp/initchain-bin/npx <<"NPX"
-#!/bin/sh
-echo "$*" >> /tmp/initchain-npx.log
-case "$*" in *" list --output json"*) echo "[]" ;; *) echo "Successfully scraped 1 pages" ;; esac
-NPX
-chmod 755 /tmp/initchain-bin/npx
-i() { PATH="/tmp/initchain-bin:$HOME/.local/bin:$PATH" "$M" "$@"; }
+i() { PATH="$HOME/.local/bin:$PATH" "$M" "$@"; }
 p=/tmp/initchain-proj
 mkdir -p "$p"
 cd "$p"
@@ -216,8 +209,7 @@ for f in CLAUDE.md CONSTRAINTS.md HANDOFF.md .gitignore .env.example .makeit.jso
   if [ ! -f "$p/$f" ]; then echo "init did not write $f"; cat /tmp/initchain-1.log; exit 1; fi
 done
 if ! grep -q '"check:full"' package.json; then echo "no check stubs"; cat package.json; exit 1; fi
-if ! grep -q "scrape golang.org/x/term https://pkg.go.dev/golang.org/x/term@v0.47.0 --version v0.47.0" /tmp/initchain-npx.log; then echo "no docs sync"; cat /tmp/initchain-npx.log; exit 1; fi
-echo "init writes the project files and indexes the docs: ok"
+echo "init writes the project files: ok"
 i init --yes --json > /tmp/initchain-2.json 2>/tmp/initchain-2.log || { cat /tmp/initchain-2.log /tmp/initchain-2.json; exit 1; }
 if grep -q '"status": "done"' /tmp/initchain-2.json; then echo "the second init changed something"; cat /tmp/initchain-2.json; exit 1; fi
 echo "a second init changes nothing: ok"

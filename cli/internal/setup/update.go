@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -18,12 +20,49 @@ import (
 	"makeit/internal/state"
 )
 
+var docsRecordName = regexp.MustCompile(`^[0-9a-f]{64}\.json$`)
+
+// isDocsStore reports whether <stack>/docs is the index of the removed `makeit docs` command: a
+// directory holding makeit's lock file or a record (a sha-named json), not one of the user's.
+func isDocsStore(stack string) bool {
+	dir := filepath.Join(stack, "docs")
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
+		return false
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "lock")); err == nil {
+		return true
+	}
+	names, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+	return slices.ContainsFunc(names, func(n string) bool { return docsRecordName.MatchString(filepath.Base(n)) })
+}
+
+// removeDocsStore deletes that store; a directory that is not makeit's is kept.
+func removeDocsStore(stack string) (removed bool, err error) {
+	if !isDocsStore(stack) {
+		return false, nil
+	}
+	return true, os.RemoveAll(filepath.Join(stack, "docs"))
+}
+
+// docsStoreStep removes that store on update.
+func (e *env) docsStoreStep() plan.Step {
+	return plan.Step{ID: "docs.store", Title: "Remove " + filepath.Join(e.Roots.Stack, "docs") + " (the docs index, no longer used)",
+		Already: func(context.Context) (bool, error) { return !isDocsStore(e.Roots.Stack), nil },
+		Run: func(context.Context) (string, error) {
+			removed, err := removeDocsStore(e.Roots.Stack)
+			if removed {
+				e.changes = append(e.changes, state.Change{Kind: "remove", Item: "docs index"})
+			}
+			return "", err
+		}}
+}
+
 // Update brings the machine to the stack this binary carries (cli/UPDATE-UNINSTALL.md): setup's
 // steps with update's rules for what makeit owns, then the plugin phase, which keeps going past a
 // failed plugin and never undoes the earlier steps.
 func Update(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome) (bool, error), argv []string) (Report, error) {
 	rep, _, err := execute(ctx, e, "update", mode, confirm, argv, func(en *env) []phase {
-		return []phase{{steps: en.setupSteps(en.updateGlobalSteps())}, {steps: en.pluginSteps(), keepGoing: true}}
+		return []phase{{steps: append(en.setupSteps(en.updateGlobalSteps()), en.docsStoreStep())}, {steps: en.pluginSteps(), keepGoing: true}}
 	})
 	return rep, err
 }
