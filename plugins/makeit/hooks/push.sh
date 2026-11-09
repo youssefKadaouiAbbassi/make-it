@@ -8,8 +8,8 @@
 set -u
 command -v jq >/dev/null 2>&1 || exit 0
 input=$(cat)
-cmd=$(jq -r '.tool_input.command // empty' <<<"$input")
-cwd=$(jq -r '.cwd // "."' <<<"$input")
+cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null)
+cwd=$(jq -r '.cwd // "."' <<<"$input" 2>/dev/null)
 deploys="main
 master"
 if [ -f "$cwd/.claude/settings.json" ]; then

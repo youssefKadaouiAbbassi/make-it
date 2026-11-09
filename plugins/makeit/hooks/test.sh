@@ -221,13 +221,16 @@ bash "$here/optional/order-test.sh" | tail -n 1 | grep -q "ORDER OK" && ok "orde
 
 
 # --- skills.sh ----------------------------------------------------------------------------------
-out=$(printf '{"hook_event_name":"UserPromptSubmit","cwd":"/x","prompt":"continue the work from HANDOFF.md"}' | bash "$here/skills.sh")
+out=$(printf '{"hook_event_name":"UserPromptSubmit","cwd":"/x","prompt":"continue from HANDOFF.md"}' | bash "$here/skills.sh")
 expect "skills adds prompt context" '"hookEventName":"UserPromptSubmit"' "$out"
 expect "skills lists the usual matches" 'superpowers:executing-plans' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills covers follow-ups" '"go for it"' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills comes before a deja recall" 'including a deja recall' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
-for short in 1 go "keep going" ""; do
+for short in 1 a done ""; do
   expect_empty "skills silent on short prompt '$short'" "$(jq -n --arg p "$short" '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
+done
+for long in "go for it" "fix it" "keep going"; do
+  expect "skills reminds on '$long'" 'hookEventName' "$(jq -n --arg p "$long" '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
 done
 expect "skills reminds on a 5-word prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix the login page bug"}' | bash "$here/skills.sh")"
 expect "skills reminds on a multi-line prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix this\nplease now"}' | bash "$here/skills.sh")"
@@ -524,7 +527,8 @@ out=$(push 'git push' "$prepo"); expect "push: main asks with no settings file" 
 git -C "$prepo" checkout -q --detach
 out=$(push 'git push' "$prepo"); expect_empty "push: detached HEAD is silent" "$out"
 mkdir -p "$tmp/notgit"; out=$(push 'git push' "$tmp/notgit"); expect_empty "push: not a git repo is silent" "$out"
-out=$(printf 'not json' | bash "$here/push.sh"; echo "rc=$?"); expect "push: bad input exits 0" "rc=0" "$out"
+out=$(printf 'not json' | bash "$here/push.sh" 2>&1; echo "rc=$?")
+if [ "$out" = "rc=0" ]; then ok "push: bad input exits 0, no output"; else bad "push: bad input exits 0, no output: $out"; fi
 qrepo="$tmp/qrepo"; mkdir -p "$qrepo/.claude" "$qrepo/sub" "$tmp/files"; : >"$tmp/files/a"; : >"$tmp/files/b"
 git -C "$qrepo" init -q -b dev; git -C "$qrepo" config user.email t@e; git -C "$qrepo" config user.name t; git -C "$qrepo" commit -q --allow-empty -m init
 printf '{"permissions":{"ask":["Bash(git push * dev)"]}}' >"$qrepo/.claude/settings.json"
