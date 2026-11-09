@@ -2,11 +2,13 @@ package setup
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +19,7 @@ import (
 	"makeit/internal/claudecli"
 	"makeit/internal/execx"
 	"makeit/internal/jsonx"
+	"makeit/internal/notify"
 	"makeit/internal/plan"
 	"makeit/internal/settings"
 	"makeit/internal/state"
@@ -650,5 +653,63 @@ func TestUninstallPurgeKeepsBinaryFiles(t *testing.T) {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("%s: %v", p, err)
 		}
+	}
+}
+
+// notifyOn records what `makeit notify` wrote, as it does: the keys in settings.json and their records in state.
+func notifyOn(t *testing.T, m *fakeMachine) {
+	t.Helper()
+	path := filepath.Join(m.env.Roots.Claude, "settings.json")
+	_, rec, err := notify.EnableNtfy(path, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	push, err := notify.EnablePush(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(m.env.Roots.Stack, "state.json")
+	st, _, err := state.LoadState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.NotifyKeys = settings.State{}
+	maps.Copy(st.NotifyKeys, rec)
+	maps.Copy(st.NotifyKeys, push)
+	if err := state.SaveState(statePath, st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUninstallRemovesNotifyKeys(t *testing.T) {
+	m := installed(t)
+	notifyOn(t, m)
+	uninstall(t, m, UninstallOptions{})
+	got := read(t, filepath.Join(m.env.Roots.Claude, "settings.json"))
+	for _, k := range []string{"NTFY_TOPIC", "remoteControlAtStartup", "inputNeededNotifEnabled", "agentPushNotifEnabled"} {
+		if strings.Contains(got, k) {
+			t.Errorf("%s still in settings.json: %s", k, got)
+		}
+	}
+}
+
+func TestUninstallKeepsChangedNotifyKeys(t *testing.T) {
+	m := installed(t)
+	notifyOn(t, m)
+	live := settingsOf(t, m)
+	live.Set("remoteControlAtStartup", false)
+	env, _ := live.Get("env")
+	env.(*jsonx.Object).Set("NTFY_TOPIC", "my-own-topic")
+	saveSettings(t, m, live)
+	rep := uninstall(t, m, UninstallOptions{})
+	got := read(t, filepath.Join(m.env.Roots.Claude, "settings.json"))
+	if !strings.Contains(got, "my-own-topic") || !strings.Contains(got, `"remoteControlAtStartup": false`) {
+		t.Errorf("a changed value was removed: %s", got)
+	}
+	if strings.Contains(got, "agentPushNotifEnabled") {
+		t.Errorf("an unchanged key stayed: %s", got)
+	}
+	if reasonOf(rep, "/env/NTFY_TOPIC") == "" {
+		t.Errorf("the kept topic is not reported: %+v", rep.Kept)
 	}
 }

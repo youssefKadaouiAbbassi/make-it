@@ -49,7 +49,10 @@ type State struct {
 	// ToolSkips are the release tags of a tool makeit rollback undid; update leaves them, as for plugins.
 	ToolSkips map[string][]string `json:"toolSkips,omitempty"`
 	// Notify is "asked" once setup or makeit notify has put the phone questions.
-	Notify     string         `json:"notify,omitempty"`
+	Notify string `json:"notify,omitempty"`
+	// NotifyKeys are the merge records of the settings.json keys makeit notify wrote, apart from
+	// Settings.Paths because the plugin set's settings merge must not take them out again.
+	NotifyKeys settings.State `json:"notifyKeys,omitempty"`
 	Migrations []MigrationRun `json:"migrations,omitempty"`
 	// Extra, here and in every record, holds members written by a newer revision, so they
 	// survive a round trip.

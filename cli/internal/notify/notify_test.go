@@ -33,9 +33,12 @@ func read(t *testing.T, p string) string {
 
 func TestEnableNtfyTopic(t *testing.T) {
 	p := fixture(t, "{\n  \"model\": \"opus\"\n}\n")
-	topic, err := EnableNtfy(p, rand.Reader)
+	topic, rec, err := EnableNtfy(p, rand.Reader)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if r := rec["/env/NTFY_TOPIC"]; r == nil || !r.Secret {
+		t.Errorf("record %v: want a secret record of the topic", rec)
 	}
 	if !regexp.MustCompile(`^makeit-[a-z2-7]{20}$`).MatchString(topic) {
 		t.Fatalf("topic %q", topic)
@@ -43,18 +46,18 @@ func TestEnableNtfyTopic(t *testing.T) {
 	if got := read(t, p); !strings.Contains(got, `"NTFY_TOPIC": "`+topic+`"`) || !strings.Contains(got, `"model": "opus"`) {
 		t.Errorf("settings %s", got)
 	}
-	again, err := EnableNtfy(p, bytes.NewReader(bytes.Repeat([]byte{0xff}, 13)))
-	if err != nil || again != topic {
+	again, rec, err := EnableNtfy(p, bytes.NewReader(bytes.Repeat([]byte{0xff}, 13)))
+	if err != nil || again != topic || len(rec) != 0 {
 		t.Errorf("second call gave %q, %v; want the existing %q", again, err, topic)
 	}
 }
 
 func TestEnableNtfyMissingFileAndShortRand(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "new", "settings.json")
-	if _, err := EnableNtfy(p, rand.Reader); err != nil {
+	if _, _, err := EnableNtfy(p, rand.Reader); err != nil {
 		t.Fatalf("missing file: %v", err)
 	}
-	if _, err := EnableNtfy(p+"2", bytes.NewReader([]byte{1})); err == nil {
+	if _, _, err := EnableNtfy(p+"2", bytes.NewReader([]byte{1})); err == nil {
 		t.Error("a short random source was accepted")
 	}
 	if _, err := os.Stat(p + "2"); err == nil {
@@ -64,7 +67,7 @@ func TestEnableNtfyMissingFileAndShortRand(t *testing.T) {
 
 func TestEnableNtfyRefusesBrokenJSON(t *testing.T) {
 	p := fixture(t, "{ not json")
-	if _, err := EnableNtfy(p, rand.Reader); err == nil {
+	if _, _, err := EnableNtfy(p, rand.Reader); err == nil {
 		t.Fatal("broken settings.json accepted")
 	}
 	if read(t, p) != "{ not json" {
@@ -82,11 +85,11 @@ func TestEnablePush(t *testing.T) {
 	b.WriteString("\n}\n")
 	orig := b.String()
 	p := fixture(t, orig)
-	if err := EnablePush(p); err != nil {
+	if _, err := EnablePush(p); err != nil {
 		t.Fatal(err)
 	}
-	if got := read(t, p+".makeit-bak"); got != orig {
-		t.Errorf("backup differs from the original: %q", got)
+	if _, err := os.Stat(p + ".makeit-bak"); err == nil {
+		t.Error("a backup was written; settings.json writes are leaf merges")
 	}
 	after, err := jsonx.DecodeObject([]byte(read(t, p)))
 	if err != nil {
@@ -108,7 +111,8 @@ func TestEnablePush(t *testing.T) {
 	}
 }
 
-func TestEnablePushRefusesSymlink(t *testing.T) {
+// A linked settings.json (stow, home-manager) is written through and the link survives.
+func TestEnableWritesThroughSymlink(t *testing.T) {
 	dir := t.TempDir()
 	real := filepath.Join(dir, "real.json")
 	if err := os.WriteFile(real, []byte("{}\n"), 0o644); err != nil {
@@ -118,13 +122,36 @@ func TestEnablePushRefusesSymlink(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Skip("no symlinks here")
 	}
-	if err := EnablePush(link); err == nil {
-		t.Fatal("symlink accepted")
+	topic, _, err := EnableNtfy(link, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if read(t, real) != "{}\n" {
-		t.Error("target was changed")
+	if _, err := EnablePush(link); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(link + ".makeit-bak"); err == nil {
-		t.Error("backup written for a refused symlink")
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the link was replaced: %v", err)
+	}
+	if got := read(t, real); !strings.Contains(got, topic) || !strings.Contains(got, `"agentPushNotifEnabled": true`) {
+		t.Errorf("target %s", got)
+	}
+	if err := os.Remove(real); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnablePush(link); err == nil {
+		t.Error("a link to a missing file was accepted")
+	}
+}
+
+func TestEnableNtfyReplacesEmptyOrNonStringTopic(t *testing.T) {
+	for _, bad := range []string{`""`, `42`, `null`} {
+		p := fixture(t, `{"env": {"NTFY_TOPIC": `+bad+`, "OTHER": "x"}}`)
+		topic, rec, err := EnableNtfy(p, rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := read(t, p); !strings.Contains(got, `"NTFY_TOPIC": "`+topic+`"`) || !strings.Contains(got, `"OTHER": "x"`) || len(rec) != 1 {
+			t.Errorf("%s: topic %q, settings %s", bad, topic, got)
+		}
 	}
 }

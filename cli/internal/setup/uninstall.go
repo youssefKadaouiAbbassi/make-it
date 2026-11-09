@@ -136,7 +136,8 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 				return true, nil
 			}})
 	} else {
-		steps = append(steps, e.unSettingsStep())
+		// Before the merge records: a settings.json makeit created is removed only once empty.
+		steps = append(steps, e.unNotifyStep(), e.unSettingsStep())
 	}
 	keys := make([]string, 0, len(e.st.Files))
 	for k := range e.st.Files {
@@ -355,6 +356,64 @@ func (e *env) settingsLeft() bool {
 	}
 	res, _, found, err := e.unmergeSettings()
 	return err != nil || (found && (res.Changed() || e.settingsEmptied(res)))
+}
+
+// unNotifyStep takes out the settings.json keys makeit notify wrote that still hold what it wrote;
+// a key the user changed stays and is reported.
+func (e *env) unNotifyStep() plan.Step {
+	path := filepath.Join(e.Roots.Claude, "settings.json")
+	unmerge := func() (res settings.Result, dst string, found bool, err error) {
+		dst, _, err = landing(path, 0o600)
+		if err != nil {
+			return res, dst, false, err
+		}
+		data, found, err := fsx.ReadOptional(dst)
+		if err != nil || !found {
+			return res, dst, false, err
+		}
+		live, err := jsonx.DecodeObject(data)
+		if err != nil {
+			return res, dst, true, fmt.Errorf("%s is not valid JSON, fix it first: %w", path, err)
+		}
+		return settings.Unmerge(live, e.st.NotifyKeys), dst, true, nil
+	}
+	keepTheirs := func(changes []settings.Change) {
+		for _, c := range changes {
+			if c.Action == settings.KeptTheirs {
+				e.keep(c.Path, "changed since makeit notify set it")
+			}
+		}
+	}
+	return plan.Step{ID: "notify", Title: "Take the keys makeit notify wrote out of " + path,
+		Already: func(context.Context) (bool, error) {
+			if len(e.st.NotifyKeys) == 0 {
+				return true, nil
+			}
+			res, _, found, err := unmerge()
+			if err != nil {
+				return false, err
+			}
+			keepTheirs(res.Changes)
+			return !found || !res.Changed(), nil
+		},
+		Run: func(context.Context) (string, error) {
+			res, dst, found, err := unmerge()
+			if err != nil {
+				return "", err
+			}
+			keepTheirs(res.Changes)
+			if found && res.Changed() {
+				data, err := jsonx.Marshal(res.Settings)
+				if err != nil {
+					return "", err
+				}
+				if err := e.write("notify", dst, data, 0o600); err != nil {
+					return "", err
+				}
+			}
+			e.st.NotifyKeys = nil
+			return "", nil
+		}}
 }
 
 // unSettingsStep takes makeit's values out of settings.json with the merge records: a value still
