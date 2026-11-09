@@ -30,7 +30,7 @@ Run `check:task` before saying a task is done; `check:full` before a push.
 
 ## End of a task
 
-1. `check:task` passes, and the app was started and the change exercised (`/verify`).
+1. `check:task` passes, and the app was started and the change exercised (the verify skill).
 2. `check:full` before a push.
 3. Deploy: push the branch and open the PR; a push to a deploy branch (`main`, `master`, or the
    ones in `.claude/settings.json` ask rules) is the owner's call.

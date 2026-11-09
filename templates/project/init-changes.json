@@ -1,6 +1,6 @@
 {
   "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
-  "sources": "sha256:0da9d5cb628f98fceee6f2beb3da8cf1461060972f9814ad552b3df87248ea2c",
+  "sources": "sha256:2deefbd63f924c396b5a34bb44d600c3a4d3f09a1c15a410ba282746848ae68e",
   "changes": [
     {
       "version": "0.3.7",
@@ -30,13 +30,13 @@
       "version": "0.4.0",
       "id": "verify-skill",
       "files": [".claude/skills/verify/SKILL.md"],
-      "prompt": "The project has a skill named verify at .claude/skills/verify/SKILL.md that runs check:task, starts the app, exercises the change and reports the output (templates/project/verify-skill.md in the plugin set, filled from the run recipe .claude/skills/run-<project>/SKILL.md). When the file exists, keep it as it is. With no run recipe, write none: the review's gap list says why."
+      "prompt": "The project has a skill named verify at .claude/skills/verify/SKILL.md that runs check:task, starts the app, exercises the change and reports the output (templates/project/verify-skill.md in the plugin set, filled from the run recipe .claude/skills/run-<project>/SKILL.md, each <...> replaced by a command you ran and saw work). When the file exists, keep it as it is. With no run recipe, write none: the review's gap list says why."
     },
     {
       "version": "0.4.0",
       "id": "task-start-end",
       "files": ["CLAUDE.md"],
-      "prompt": "CLAUDE.md has the sections \"## Start of a task\" (read the ticket, branch from the default branch, baseline check:task) and \"## End of a task\" (check:task and /verify, check:full before a push, deploy, handoff: on a branch HANDOFF.<slug>.md, deleted in the merge), as in templates/project/CLAUDE.md. Add a missing section after the Product priority paragraph; keep every section the file has and every value the user wrote."
+      "prompt": "CLAUDE.md has the sections \"## Start of a task\" (read the ticket, branch from the default branch, baseline check:task) and \"## End of a task\" (check:task and /verify, check:full before a push, deploy, handoff: on a branch HANDOFF.<slug>.md, deleted in the merge), as in templates/project/CLAUDE.md. Place \"Start of a task\" before the Commands table and \"End of a task\" after it, as the template does; keep every section the file has and every value the user wrote."
     }
   ]
 }

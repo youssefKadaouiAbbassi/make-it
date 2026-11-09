@@ -329,6 +329,9 @@ func TestChangesSetupReview(t *testing.T) {
 	at := map[string]string{}
 	for _, c := range all {
 		at[c.ID] = c.Version
+		if c.Version == "0.4.0" && (c.Prompt == "" || len(c.Files) == 0) {
+			t.Errorf("init change %q lacks a prompt or files", c.ID)
+		}
 	}
 	for _, id := range []string{"deploy-ask-rules", "verify-skill", "task-start-end"} {
 		if at[id] != "0.4.0" {
