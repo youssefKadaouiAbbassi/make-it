@@ -13,7 +13,6 @@ event=$(jq -r '.hook_event_name // empty' <<<"$input" 2>/dev/null) || exit 0
 repo=$(basename "$(jq -r '.cwd // "."' <<<"$input" 2>/dev/null)")
 case "$event" in
   Stop)
-    [ "$(jq -r ".stop_hook_active // false" <<<"$input" 2>/dev/null)" = true ] && exit 0 # re-fired after another hook blocked
     msg="done"
     n=$(jq -r '.background_tasks // empty | if type=="array" then length else 0 end' <<<"$input" 2>/dev/null)
     case "$n" in ''|*[!0-9]*|0) ;; *) msg="$msg, still running: $n" ;; esac ;;

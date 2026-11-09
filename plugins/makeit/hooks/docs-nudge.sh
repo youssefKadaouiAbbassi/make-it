@@ -8,7 +8,7 @@
 # Without a lock (or a lock entry resolved from the public registry) a dependency gets no lookup and
 # no nudge; likewise a go.mod `replace` target.
 # Dates: release-dates.json beside this script,
-# then a per-user cache, then one registry lookup (3 s cap, none after the first failure; a failure
+# then a per-user cache, then one registry lookup (3 s budget per call, none after the first failure; a failure
 # is cached as "skip" for the day and never denies).
 # Only public registries are asked: a dependency from a private registry, GOPRIVATE, a path or a git
 # source gets no lookup and no nudge. Silent exit 0 without jq or on anything unexpected.
@@ -23,6 +23,7 @@ sid=$(jq -r '.session_id // empty' <<<"$input" | tr -cd 'A-Za-z0-9_-')
 cutoff=${DOCS_NUDGE_CUTOFF:-2026-06-01}
 state="${TMPDIR:-/tmp}/makeit-docs/${sid:-nosession}"
 mkdir -p "$state" 2>/dev/null || exit 0
+find "${TMPDIR:-/tmp}/makeit-docs" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null # old sessions
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/makeit-docs/dates.tsv"
 cd "$cwd" 2>/dev/null || exit 0
 cwd=$(pwd)
@@ -61,16 +62,19 @@ tomllock() {
 npm_libs() {
   gotoroot package.json
   [ -f package.json ] && [ -f package-lock.json ] || return # no lock: the registry cannot be told
+  local cand="" n range want
+  # cheap text match first: the lock is read once, and only for the names this edit uses
   while IFS=$'\t' read -r n range; do
-    # only a lock entry resolved from the public registry counts: anything else cannot be told
-    case "$(jq -r --arg n "$n" '.packages["node_modules/"+$n].resolved // empty' package-lock.json 2>/dev/null)" in
-      https://registry.npmjs.org/*) ;;
-      *) continue ;;
-    esac
-    v=$(jq -r --arg n "$n" '.packages["node_modules/"+$n].version // empty' package-lock.json 2>/dev/null)
+    case "$text" in *"$n"*) ;; *) continue ;; esac # pure bash: no process per dependency
+    used npm "$n" && cand+="$n"$'\t'"$range"$'\n'
+  done < <(jq -r '(.dependencies // {}) + (.devDependencies // {}) | to_entries[] | "\(.key)\t\(.value)"' package.json 2>/dev/null)
+  [ -n "$cand" ] || return
+  want=$(jq -Rn '[inputs | select(. != "") | split("\t") | {n: .[0], r: .[1]}]' <<<"$cand") || return
+  # only a lock entry resolved from the public registry counts: anything else cannot be told
+  while IFS=$'\t' read -r n v range; do
     [ -n "$v" ] || v=$(sed 's/^[^0-9]*//' <<<"$range")
     libs+=("npm|$n|$v|package-lock.json")
-  done < <(jq -r '(.dependencies // {}) + (.devDependencies // {}) | to_entries[] | "\(.key)\t\(.value)"' package.json 2>/dev/null)
+  done < <(jq -r --argjson want "$want" '.packages as $p | $want[] | . as $w | ($p["node_modules/" + $w.n] // {}) | select((.resolved // "") | startswith("https://registry.npmjs.org/")) | "\($w.n)\t\(.version // "")\t\($w.r)"' package-lock.json 2>/dev/null)
 }
 go_libs() {
   gotoroot go.mod
@@ -126,6 +130,23 @@ tf_libs() {
   done < <(awk '/source *=/ { s = $0; sub(/.*source *= *"/, "", s); sub(/".*/, "", s) } /version *=/ && s != "" { v = $0; sub(/.*version *= *"/, "", v); sub(/".*/, "", v); print s "|" v; s = "" }' ./*.tf)
 }
 
+used() { # does this edit use the library?
+  local eco=$1 n short id
+  # escaped for the regexes below: a dot in socket.io is not a wildcard
+  esc() { sed 's/[].[\*^$+?(){}|]/\\&/g' <<<"$1"; }
+  n=$(esc "$2"); short=$(esc "${2##*/}")
+  case "$eco" in
+    npm) [ "$base" = package.json ] && grep -qE "\"$n\"" <<<"$text" && return 0
+         grep -qE "(^|[^A-Za-z0-9_])(from|require\(|import\(?) *['\"]$n(/[^'\"]*)?['\"]" <<<"$text" ;;
+    go) grep -qF "\"$2\"" <<<"$text" || grep -qF "\"$2/" <<<"$text" ;;
+    pypi) id=$(esc "$(tr 'A-Z-' 'a-z_' <<<"$2")")
+          tr 'A-Z-' 'a-z_' <<<"$text" | grep -qE "^[[:space:]]*(import|from)[[:space:]]+$id([[:space:].,]|$)" ;;
+    crates) id=$(esc "$(tr '-' '_' <<<"$2")")
+            grep -qE "(^|[^A-Za-z0-9_])$id::|extern crate $id" <<<"$text" ;;
+    helm) [ "$tool" = Bash ] || grep -qE "^$short:" <<<"$text" || [ "$base" = values.yaml ] ;;
+    tofu) [ "$tool" = Bash ] || grep -qE "(resource|data|provider) +\"${short}[_\"]" <<<"$text" ;;
+  esac
+}
 case "$tool" in
   Edit | Write | MultiEdit)
     base=$(basename "$file")
@@ -145,24 +166,8 @@ case "$tool" in
 esac
 [ ${#libs[@]} -gt 0 ] || exit 0
 
-used() { # does this edit use the library?
-  local eco=$1 n short id
-  # escaped for the regexes below: a dot in socket.io is not a wildcard
-  esc() { sed 's/[].[\*^$+?(){}|]/\\&/g' <<<"$1"; }
-  n=$(esc "$2"); short=$(esc "${2##*/}")
-  case "$eco" in
-    npm) [ "$base" = package.json ] && grep -qE "\"$n\"" <<<"$text" && return 0
-         grep -qE "(^|[^A-Za-z0-9_])(from|require\(|import\(?) *['\"]$n(/[^'\"]*)?['\"]" <<<"$text" ;;
-    go) grep -qF "\"$2\"" <<<"$text" || grep -qF "\"$2/" <<<"$text" ;;
-    pypi) id=$(esc "$(tr 'A-Z-' 'a-z_' <<<"$2")")
-          tr 'A-Z-' 'a-z_' <<<"$text" | grep -qE "^[[:space:]]*(import|from)[[:space:]]+$id([[:space:].,]|$)" ;;
-    crates) id=$(esc "$(tr '-' '_' <<<"$2")")
-            grep -qE "(^|[^A-Za-z0-9_])$id::|extern crate $id" <<<"$text" ;;
-    helm) [ "$tool" = Bash ] || grep -qE "^$short:" <<<"$text" || [ "$base" = values.yaml ] ;;
-    tofu) [ "$tool" = Bash ] || grep -qE "(resource|data|provider) +\"${short}[_\"]" <<<"$text" ;;
-  esac
-}
 netfail=""
+t0=$SECONDS # registry time budget for this call: 3 s in all
 today=$(date +%F)
 # eco name version [repo] -> $rd: YYYY-MM-DD, "skip" (no answer: no nudge) or empty (the registry
 # has no date). Sets netfail in this shell, so it is called without a subshell.
@@ -171,12 +176,13 @@ release_date() {
   rd_get "$@"
 }
 rd_get() {
-  local key="$1:$2@$3" d="" url body f=".published_at"
+  local key="$1:$2@$3" d="" url body left f=".published_at"
   d=$(jq -r --arg k "$key" '.[$k].date // empty' "$here/release-dates.json" 2>/dev/null)
   [ -z "$d" ] && [ -f "$cache" ] && d=$(awk -F'\t' -v k="$key" '$1 == k { r = $2 } END { print r }' "$cache")
   case "$d" in "skip:$today") rd=skip; return ;; skip:*) d="" ;; esac
   [ -n "$d" ] && { rd=${d:0:10}; return; }
-  if [ -n "$netfail" ] || ! command -v curl >/dev/null 2>&1; then rd=skip; return; fi
+  left=$((3 - (SECONDS - t0)))
+  if [ -n "$netfail" ] || [ "$left" -le 0 ] || ! command -v curl >/dev/null 2>&1; then rd=skip; return; fi
   case "$1" in
     npm) url="https://registry.npmjs.org/$2"; f='.time[$v] // empty' ;;
     go) url="https://proxy.golang.org/$2/@v/$3.info"; f='.Time // empty' ;; # upper-case module paths are not !-escaped: the proxy answers 404 and the library is skipped
@@ -186,7 +192,7 @@ rd_get() {
     tofu) url="https://api.github.com/repos/${2%%/*}/terraform-provider-${2##*/}/releases/tags/v$3" ;;
   esac
   # --proto: https only, also across redirects and for a chart repository named by a manifest
-  if body=$(curl -fsSL -m 3 --proto =https --proto-redir =https -A makeit-docs-nudge "$url" 2>/dev/null); then
+  if body=$(curl -fsSL --compressed -m "$left" --proto =https --proto-redir =https -A makeit-docs-nudge "$url" 2>/dev/null); then
     if [ "$1" = helm ]; then
       d=$(awk -v n="  $2:" -v v="$3" '$0 == n { f = 1; next } f && /^  [^ -]/ { f = 0 }
         f && /created:/ { c = $2 } f && $1 == "version:" && $2 == v { print c; exit }' <<<"$body" | tr -d '"')

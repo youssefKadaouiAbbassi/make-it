@@ -93,7 +93,8 @@ nodes=$(grep -o "CreateTextNode('[^']*')" "$tmp/powershell.exe.log" | wc -l | tr
 [ -z "$bad_nodes" ] && [ "$nodes" = 2 ] && [ ! -e "$tmp/pwned" ] && expect "notify powershell hostile cwd reaches the title" "CreateTextNode('claude - it_s__x_')" "$(cat "$tmp/powershell.exe.log")" && ok "notify powershell text holds only plain characters" || bad "notify powershell hostile text: [$bad_nodes] nodes=$nodes"
 reset_logs
 printf '{"hook_event_name":"Stop","cwd":"/x/repo","stop_hook_active":true}' | run_notify
-[ ! -s "$tmp/curl.log" ] && [ ! -s "$tmp/ns.log" ] && ok "notify is quiet on a re-fired Stop" || bad "notify re-fired Stop notified"
+expect "notify still says done on a Stop with stop_hook_active" "-d done" "$(cat "$tmp/curl.log")"
+reset_logs
 long=$(printf 'x%.0s' $(seq 1 300))
 printf '{"hook_event_name":"PreToolUse","cwd":"/x/repo","tool_name":"%s"}' "$long" | run_notify
 sent=$(sed 's/.* -d \(.*\) https:.*/\1/' "$tmp/curl.log")
@@ -462,6 +463,35 @@ mkdir -p "$np/chart3"
 printf 'dependencies:\n- name: foo\n  repository: https://charts.example\n  version: 1.0.0\n' >"$np/chart3/Chart.lock"
 expect "nudge reads a helm repository index (https only)" 'foo 1.0.0 (Chart.lock): released 2026-10-30' "$(NPATH="$tmp/netbin" nudgeb h9 "$np/chart3" 'helm dep build')"
 expect "helm repository lookups pass --proto =https" '--proto =https' "$(grep charts.example "$tmp/curl.log")"
+# I1: a big package.json + lock must not cost per-dependency jq passes when the edit imports nothing
+mkdir -p "$np/big"
+bigpk=$(for i in $(seq 1 80); do printf '"lib%s":"1.0.0",' "$i"; done)
+printf '{"dependencies":{%s"last":"1.0.0"}}\n' "$bigpk" >"$np/big/package.json"
+for i in $(seq 1 80); do printf '"node_modules/lib%s":{"version":"1.0.0","resolved":"https://registry.npmjs.org/lib%s/-/l.tgz"},' "$i" "$i"; done >"$tmp/biglock"
+printf '{"packages":{%s"node_modules/last":{"version":"1.0.0","resolved":"https://registry.npmjs.org/last/-/l.tgz"}}}\n' "$(cat "$tmp/biglock")" >"$np/big/package-lock.json"
+if [ -n "${EPOCHREALTIME:-}" ]; then
+  t0=${EPOCHREALTIME/[.,]/}
+  out=$(NPATH="$tmp/netbin" nudge big1 "$np" Write "$np/big/a.ts" 'const x = 1;')
+  ms=$(( (${EPOCHREALTIME/[.,]/} - t0) / 1000 ))
+  [ -z "$out" ] && [ "$ms" -lt 200 ] && ok "nudge with 80 dependencies and no import takes ${ms} ms (< 200)" || bad "nudge with 80 dependencies: ${ms} ms, out [$out]"
+else echo "SKIP  nudge timing: no EPOCHREALTIME (bash < 5)"; fi
+expect "nudge still finds the one imported dependency in a big lock" 'lib42 1.0.0' "$(seed npm:lib42@1.0.0 2026-10-10; nudge big2 "$np" Write "$np/big/a.ts" 'import x from "lib42";')"
+# one call spends at most about 3 s on registry lookups: the later libraries are skipped, not cached
+mkdir -p "$np/budget"
+printf '{"dependencies":{"b1":"1.0.0","b2":"1.0.0","b3":"1.0.0"}}\n' >"$np/budget/package.json"
+printf '{"packages":{"node_modules/b1":{"version":"1.0.0","resolved":"https://registry.npmjs.org/b1/-/b.tgz"},"node_modules/b2":{"version":"1.0.0","resolved":"https://registry.npmjs.org/b2/-/b.tgz"},"node_modules/b3":{"version":"1.0.0","resolved":"https://registry.npmjs.org/b3/-/b.tgz"}}}\n' >"$np/budget/package-lock.json"
+mkdir -p "$tmp/slowbin"; for f in "$tmp"/nobin/*; do ln -sf "$(readlink "$f")" "$tmp/slowbin/$(basename "$f")"; done
+ln -sf "$(command -v sleep)" "$tmp/slowbin/sleep"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >>"%s/slow.log"\nsleep 2\necho "{\\"time\\":{\\"1.0.0\\":\\"2020-01-01T00:00:00Z\\"}}"\n' "$tmp" >"$tmp/slowbin/curl"; chmod +x "$tmp/slowbin/curl"
+NPATH="$tmp/slowbin" nudge bud1 "$np" Write "$np/budget/a.ts" $'import a from "b1";\nimport b from "b2";\nimport c from "b3";' >/dev/null
+[ "$(grep -c . "$tmp/slow.log")" = 2 ] && ok "registry lookups stop after the time budget (2 of 3 ran)" || bad "registry budget: $(grep -c . "$tmp/slow.log") lookups"
+expect "the second lookup gets only the time that is left" '-m 1' "$(sed -n 2p "$tmp/slow.log")"
+expect "registry lookups ask for a compressed answer" '--compressed' "$(cat "$tmp/curl.log")"
+# M7: session folders older than 7 days are pruned on the next run
+mkdir -p "$tmp/makeit-docs/oldsess" "$tmp/makeit-docs/newsess"; touch -d '10 days ago' "$tmp/makeit-docs/oldsess"
+for b in find rm; do ln -sf "$(command -v $b)" "$tmp/nobin/$b"; done
+nudge prune1 "$np" Write "$np/src/a.ts" 'const x = 1;' >/dev/null
+{ [ ! -e "$tmp/makeit-docs/oldsess" ] && [ -d "$tmp/makeit-docs/newsess" ]; } && ok "nudge prunes session folders older than 7 days" || bad "nudge prune: old=$(ls -d "$tmp/makeit-docs/oldsess" 2>&1) new=$(ls -d "$tmp/makeit-docs/newsess" 2>&1)"
 unset XDG_CACHE_HOME TMPDIR
 
 # --- autoupdate.sh -------------------------------------------------------------------------------
