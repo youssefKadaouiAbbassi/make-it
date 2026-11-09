@@ -3,7 +3,8 @@
 # version was released after the model's training cutoff (or whose date is unknown), and nothing
 # this session looked that library up (see docs-mark.sh), deny the call once with a message telling
 # the agent to fetch that version's docs first. The second attempt always passes (no loops).
-# Manifests, nearest to the edited file up to the session cwd: package.json + package-lock.json,
+# Manifests, nearest to the edited file up to the session cwd: package.json + package-lock.json (no lock,
+# no lookup; likewise a go.mod `replace` target and a pyproject.toml without uv.lock/poetry.lock),
 # go.mod, requirements.txt / pyproject.toml + uv.lock / poetry.lock, Cargo.toml + Cargo.lock,
 # Chart.yaml + Chart.lock, *.tf + .terraform.lock.hcl. Dates: release-dates.json beside this script,
 # then a per-user cache, then one registry lookup (3 s cap, none after the first failure; a failure
@@ -58,7 +59,7 @@ tomllock() {
 }
 npm_libs() {
   gotoroot package.json
-  [ -f package.json ] || return
+  [ -f package.json ] && [ -f package-lock.json ] || return # no lock: the registry cannot be told
   while IFS=$'\t' read -r n range; do
     v=""
     if [ -f package-lock.json ]; then
@@ -75,11 +76,13 @@ npm_libs() {
 go_libs() {
   gotoroot go.mod
   [ -f go.mod ] || return
-  local priv p
+  local priv p replaced
+  replaced=$(awk '/^replace \(/ { b = 1; next } b && /^\)/ { b = 0; next } b { print $1 } /^replace [^(]/ { print $2 }' go.mod)
   priv=$( (command -v go >/dev/null 2>&1 && go env GOPRIVATE GONOPROXY) || printf '%s\n%s\n' "${GOPRIVATE:-}" "${GONOPROXY:-}")
   priv=$(tr '\n' ',' <<<"$priv")
   while read -r n v; do
     case "${n%%/*}" in *.*) ;; *) continue ;; esac # no dot in the host: not on the public proxy
+    grep -qxF -- "$n" <<<"$replaced" && continue # replaced: not fetched from the registry
     p=0
     # shellcheck disable=SC2254
     while IFS= read -r pat; do [ -n "$pat" ] && case "$n" in $pat | $pat/*) p=1 ;; esac; done < <(tr ',' '\n' <<<"$priv")
@@ -98,12 +101,6 @@ py_libs() {
     while IFS=$'\t' read -r n v; do libs+=("pypi|$n|$v|$lock"); done < <(tomllock "$lock" "${lock%.lock}")
   elif [ -f requirements.txt ] && ! grep -qE '^(-i|--(extra-)?index-url)' requirements.txt; then
     while read -r n v; do libs+=("pypi|$n|$v|requirements.txt"); done < <(sed -n 's/^\([A-Za-z0-9_.-][A-Za-z0-9_.-]*\)[[:space:]]*[=~<>!]*[[:space:]]*\([0-9][^[:space:];,]*\).*$/\1 \2/p' requirements.txt)
-  elif [ -f pyproject.toml ] && command -v python3 >/dev/null 2>&1; then
-    while read -r n v; do libs+=("pypi|$n|$v|pyproject.toml"); done < <(python3 -I -c '
-import sys, tomllib, re
-for s in tomllib.load(open(sys.argv[1], "rb")).get("project", {}).get("dependencies", []):
-    m = re.match(r"([A-Za-z0-9_.-]+)[^0-9]*([0-9][^\s;,]*)?", s)
-    if m: print(m.group(1), m.group(2) or "")' pyproject.toml 2>/dev/null)
   fi
 }
 cargo_libs() {
@@ -161,14 +158,17 @@ esac
 [ ${#libs[@]} -gt 0 ] || exit 0
 
 used() { # does this edit use the library?
-  local eco=$1 n=$2 short=${2##*/} id
+  local eco=$1 n short id
+  # escaped for the regexes below: a dot in socket.io is not a wildcard
+  esc() { sed 's/[].[\*^$+?(){}|]/\\&/g' <<<"$1"; }
+  n=$(esc "$2"); short=$(esc "${2##*/}")
   case "$eco" in
-    npm) [ "$base" = package.json ] && grep -q "\"$n\"" <<<"$text" && return 0
+    npm) [ "$base" = package.json ] && grep -qE "\"$n\"" <<<"$text" && return 0
          grep -qE "(^|[^A-Za-z0-9_])(from|require\(|import\(?) *['\"]$n(/[^'\"]*)?['\"]" <<<"$text" ;;
-    go) grep -qF "\"$n\"" <<<"$text" || grep -qF "\"$n/" <<<"$text" ;;
-    pypi) id=$(tr 'A-Z-' 'a-z_' <<<"$n")
+    go) grep -qF "\"$2\"" <<<"$text" || grep -qF "\"$2/" <<<"$text" ;;
+    pypi) id=$(esc "$(tr 'A-Z-' 'a-z_' <<<"$2")")
           tr 'A-Z-' 'a-z_' <<<"$text" | grep -qE "^[[:space:]]*(import|from)[[:space:]]+$id([[:space:].,]|$)" ;;
-    crates) id=$(tr '-' '_' <<<"$n")
+    crates) id=$(esc "$(tr '-' '_' <<<"$2")")
             grep -qE "(^|[^A-Za-z0-9_])$id::|extern crate $id" <<<"$text" ;;
     helm) [ "$tool" = Bash ] || grep -qE "^$short:" <<<"$text" || [ "$base" = values.yaml ] ;;
     tofu) [ "$tool" = Bash ] || grep -qE "(resource|data|provider) +\"${short}[_\"]" <<<"$text" ;;
@@ -176,17 +176,22 @@ used() { # does this edit use the library?
 }
 netfail=""
 today=$(date +%F)
-# eco name version [repo] -> YYYY-MM-DD, "skip" (no answer: no nudge) or empty (the registry has no date)
+# eco name version [repo] -> $rd: YYYY-MM-DD, "skip" (no answer: no nudge) or empty (the registry
+# has no date). Sets netfail in this shell, so it is called without a subshell.
 release_date() {
+  rd=""
+  rd_get "$@"
+}
+rd_get() {
   local key="$1:$2@$3" d="" url body f=".published_at"
   d=$(jq -r --arg k "$key" '.[$k].date // empty' "$here/release-dates.json" 2>/dev/null)
   [ -z "$d" ] && [ -f "$cache" ] && d=$(awk -F'\t' -v k="$key" '$1 == k { r = $2 } END { print r }' "$cache")
-  case "$d" in "skip:$today") printf skip; return ;; skip:*) d="" ;; esac
-  [ -n "$d" ] && { printf '%s' "${d:0:10}"; return; }
-  if [ -n "$netfail" ] || ! command -v curl >/dev/null 2>&1; then printf skip; return; fi
+  case "$d" in "skip:$today") rd=skip; return ;; skip:*) d="" ;; esac
+  [ -n "$d" ] && { rd=${d:0:10}; return; }
+  if [ -n "$netfail" ] || ! command -v curl >/dev/null 2>&1; then rd=skip; return; fi
   case "$1" in
     npm) url="https://registry.npmjs.org/$2"; f='.time[$v] // empty' ;;
-    go) url="https://proxy.golang.org/$2/@v/$3.info"; f='.Time // empty' ;; # shortcut: no !-escaping of upper-case module paths, they stay "unknown"
+    go) url="https://proxy.golang.org/$2/@v/$3.info"; f='.Time // empty' ;; # upper-case module paths are not !-escaped: the proxy answers 404 and the library is skipped
     pypi) url="https://pypi.org/pypi/$2/$3/json"; f='.urls[0].upload_time_iso_8601 // empty' ;;
     crates) url="https://crates.io/api/v1/crates/$2/$3"; f='.version.created_at // empty' ;;
     helm) url="${4%/}/index.yaml" ;;
@@ -202,11 +207,12 @@ release_date() {
     fi
     d=${d:0:10}
     [ -n "$d" ] && { mkdir -p "$(dirname "$cache")" && printf '%s\t%s\n' "$key" "$d" >>"$cache"; } 2>/dev/null
-    printf '%s' "$d"
+    rd=$d
   else
-    netfail=1
+    # 22: an HTTP error for this library only; anything else (no route, timeout, TLS) stops the lookups
+    [ $? = 22 ] || netfail=1
     { mkdir -p "$(dirname "$cache")" && printf '%s\tskip:%s\n' "$key" "$today" >>"$cache"; } 2>/dev/null
-    printf skip
+    rd=skip
   fi
 }
 
@@ -220,7 +226,7 @@ for l in "${libs[@]}"; do
   key=${n##*/}; [ "$eco" = go ] && key=$n
   # whole token: "vit" is not found in "vitest"
   grep -qiE "(^|[^A-Za-z0-9_-])$(sed 's/[^A-Za-z0-9_-]/\\&/g' <<<"$key")([^A-Za-z0-9_-]|$)" "$state/lookups.txt" 2>/dev/null && continue
-  d=$(release_date "$eco" "$n" "$v" "$repo")
+  release_date "$eco" "$n" "$v" "$repo"; d=$rd
   [ "$d" = skip ] && continue
   if [ -n "$d" ] && [[ ! "$d" > "$cutoff" ]]; then continue; fi
   touch "$mark.nudged"

@@ -260,7 +260,7 @@ out=$(nudge p2 "$np" Write "$np/poe/app.py" $'import poepy\nimport privpoe')
 expect "nudge covers poetry.lock" 'poepy 1.5.0 (poetry.lock)' "$out"
 case "$out" in *privpoe*) bad "nudge skips a poetry package from another source" ;; *) ok "nudge skips a poetry package from another source" ;; esac
 expect_empty "nudge skips a uv.lock package from another registry" "$(nudge p3 "$np" Write "$np/py2/app.py" 'import privpy')"
-command -v python3 >/dev/null 2>&1 && expect "nudge covers pyproject.toml alone" 'onlypy 4.0 (pyproject.toml)' "$(nudge p4 "$np" Write "$np/pyo/app.py" 'import onlypy')"
+expect_empty "nudge does not look up pyproject.toml alone (no lock, source unknown)" "$(nudge p4 "$np" Write "$np/pyo/app.py" 'import onlypy')"
 # cargo: Cargo.toml alone (path dependencies skipped), a Cargo.lock package without a registry source
 mkdir -p "$np/rso" "$np/rs2"
 printf '[package]\nname = "p"\n\n[dependencies]\nonlycrate = "1.2"\nlocalcrate = { path = "../x", version = "3.0" }\nwscrate.workspace = true\n' >"$np/rso/Cargo.toml"
@@ -280,18 +280,30 @@ case "$out" in *corp.example* | *internal/z*) bad "nudge skips GOPRIVATE and dot
 # lookups match the library name as a whole token
 mkdir -p "$np/tok"
 printf '{"dependencies":{"vit":"1.0.0"}}\n' >"$np/tok/package.json"; seed npm:vit@1.0.0 2026-10-10
+printf '{"packages":{"node_modules/vit":{"version":"1.0.0","resolved":"https://registry.npmjs.org/vit/-/vit-1.0.0.tgz"},"node_modules/@sc/pk":{"version":"1.0.0","resolved":"https://registry.npmjs.org/@sc/pk/-/pk-1.0.0.tgz"},"node_modules/socket.io":{"version":"4.0.0","resolved":"https://registry.npmjs.org/socket.io/-/socket.io-4.0.0.tgz"}}}\n' >"$np/tok/package-lock.json"
 printf '{"hook_event_name":"PostToolUse","session_id":"k1","tool_name":"WebFetch","tool_input":{"url":"https://vitest.dev/guide"}}' | PATH="$tmp/nobin" bash "$here/docs-mark.sh"
 expect "a lookup of vitest does not count for vit" 'vit 1.0.0' "$(nudge k1 "$np" Write "$np/tok/a.ts" 'import x from "vit";')"
 printf '{"hook_event_name":"PostToolUse","session_id":"k2","tool_name":"WebSearch","tool_input":{"query":"vit 1.0 changelog"}}' | PATH="$tmp/nobin" bash "$here/docs-mark.sh"
 expect_empty "a lookup naming vit counts for vit" "$(nudge k2 "$np" Write "$np/tok/a.ts" 'import x from "vit";')"
 # npm usage forms: require with both quotes, bare import, subpaths (scoped too)
-printf '{"dependencies":{"vit":"1.0.0","@sc/pk":"1.0.0"}}\n' >"$np/tok/package.json"; seed 'npm:@sc/pk@1.0.0' 2026-10-10
+printf '{"dependencies":{"vit":"1.0.0","@sc/pk":"1.0.0","socket.io":"4.0.0"}}\n' >"$np/tok/package.json"; seed 'npm:@sc/pk@1.0.0' 2026-10-10; seed npm:socket.io@4.0.0 2026-10-10
 i=0
 for form in 'const x = require("vit");' "const x = require('vit');" 'import "vit";' "import 'vit';" 'import x from "vit/sub/deep";' 'const x = require("@sc/pk/sub");' 'import "@sc/pk/sub";' 'import("vit")'; do
   i=$((i + 1))
   out=$(nudge "u$i" "$np" Write "$np/tok/a.ts" "$form")
   expect "nudge matches the npm usage form: $form" '"permissionDecision":"deny"' "$out"
 done
+expect "a dot in a package name matches only a dot" 'socket.io 4.0.0' "$(nudge d1 "$np" Write "$np/tok/a.ts" 'import x from "socket.io";')"
+expect_empty "a dot in a package name is not a wildcard" "$(nudge d2 "$np" Write "$np/tok/a.ts" 'import x from "socketXio";')"
+# no lock, no lookup: the registry a package comes from cannot be told
+mkdir -p "$np/nolock" "$np/gor"
+printf '{"devDependencies":{"vitest":"^5.1.0"}}\n' >"$np/nolock/package.json"
+expect_empty "nudge does not look up package.json without a lock" "$(nudge nl1 "$np" Write "$np/nolock/a.ts" 'import { test } from "vitest";')"
+printf 'module m\n\nrequire (\n\tgithub.com/new/mod v1.4.0\n\tgithub.com/new/two v1.0.0\n\tgithub.com/new/three v1.0.0\n)\n\nreplace github.com/new/mod => ../mod\n\nreplace (\n\tgithub.com/new/two v1.0.0 => ../two\n)\n' >"$np/gor/go.mod"
+seed go:github.com/new/two@v1.0.0 2026-09-01; seed go:github.com/new/three@v1.0.0 2026-09-01
+out=$(nudge gr1 "$np" Write "$np/gor/main.go" $'import "github.com/new/mod"\nimport "github.com/new/two"\nimport "github.com/new/three"')
+expect "nudge keeps a go module that is not replaced" 'github.com/new/three v1.0.0' "$out"
+case "$out" in *new/mod* | *new/two*) bad "nudge skips replaced go modules (both replace forms)" ;; *) ok "nudge skips replaced go modules (both replace forms)" ;; esac
 expect_empty "nudge does not match another package with the same prefix" "$(nudge u9 "$np" Write "$np/tok/a.ts" 'import x from "vit-extra"; require("vitest/x")')"
 # network: a fake curl answers per URL and logs its arguments
 mkdir -p "$tmp/netbin" "$np/net"
@@ -302,6 +314,8 @@ printf '%s\n' "\$*" >>"$tmp/curl.log"
 case "\$*" in
   *registry.npmjs.org/netlib*) echo '{"time":{"1.0.0":"2026-10-20T00:00:00Z"}}' ;;
   *registry.npmjs.org/nodate*) echo '{"time":{}}' ;;
+  *registry.npmjs.org/gone404*) exit 22 ;;
+  *registry.npmjs.org/later*) echo '{"time":{"1.0.0":"2026-10-21T00:00:00Z"}}' ;;
   *charts.example/index.yaml*) printf 'entries:\n  foo:\n  - apiVersion: v2\n    created: "2026-10-30T00:00:00Z"\n    version: 1.0.0\n' ;;
   *) exit 7 ;;
 esac
@@ -322,6 +336,20 @@ before=$(grep -c . "$tmp/curl.log")
 out=$(NPATH="$tmp/netbin" nudge n2 "$np" Write "$np/net/a.ts" 'import c from "failing";'; NPATH="$tmp/netbin" nudge n3 "$np" Write "$np/net/a.ts" 'import a from "netlib";')
 expect "a cached date serves a new session without the network" 'netlib 1.0.0' "$out"
 [ "$(grep -c . "$tmp/curl.log")" = "$before" ] && ok "a cached skip means no new lookup" || bad "a cached skip means no new lookup: curl ran again"
+# an HTTP error is per library; only a connection failure stops the later lookups
+mkdir -p "$np/net2"
+printf '{"dependencies":{"gone404":"1.0.0","later":"1.0.0"}}\n' >"$np/net2/package.json"
+printf '{"packages":{"node_modules/gone404":{"version":"1.0.0","resolved":"https://registry.npmjs.org/gone404/-/g.tgz"},"node_modules/later":{"version":"1.0.0","resolved":"https://registry.npmjs.org/later/-/l.tgz"}}}\n' >"$np/net2/package-lock.json"
+out=$(NPATH="$tmp/netbin" nudge e1 "$np" Write "$np/net2/a.ts" $'import a from "gone404";\nimport b from "later";')
+expect "a 404 for one library does not stop the lookup of the next" 'later 1.0.0 (package-lock.json): released 2026-10-21' "$out"
+expect "a 404 is cached as skip for that library" "npm:gone404@1.0.0	skip:" "$(cat "$XDG_CACHE_HOME/makeit-docs/dates.tsv")"
+mkdir -p "$np/net3"
+printf '{"dependencies":{"failing3":"1.0.0","later3":"1.0.0"}}\n' >"$np/net3/package.json"
+printf '{"packages":{"node_modules/failing3":{"version":"1.0.0","resolved":"https://registry.npmjs.org/failing3/-/f.tgz"},"node_modules/later3":{"version":"1.0.0","resolved":"https://registry.npmjs.org/later3/-/l.tgz"}}}\n' >"$np/net3/package-lock.json"
+: >"$tmp/curl.log"
+out=$(NPATH="$tmp/netbin" nudge e2 "$np" Write "$np/net3/a.ts" $'import a from "failing3";\nimport b from "later3";')
+expect_empty "a connection failure denies nothing" "$out"
+case "$(cat "$tmp/curl.log")" in *later3*) bad "a connection failure stops the later lookups" ;; *) ok "a connection failure stops the later lookups" ;; esac
 # helm repository: https only
 mkdir -p "$np/chart3"
 printf 'dependencies:\n- name: foo\n  repository: https://charts.example\n  version: 1.0.0\n' >"$np/chart3/Chart.lock"
