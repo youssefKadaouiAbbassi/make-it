@@ -135,21 +135,22 @@ out=$(printf '{"hook_event_name":"UserPromptSubmit"}' | PATH="$tmp/nojq" bash "$
 expect "skills without jq exits 0" "rc=0" "$out"
 
 
-# --- docs.sh -------------------------------------------------------------------------------------
+# --- docs.sh (SessionStart dependency list) -----------------------------------------------------
 dp="$tmp/docsproj"; mkdir -p "$dp/cli" "$dp/web/node_modules/x"
 printf 'module m\n\ngo 1.27.3\n\nrequire (\n\tgolang.org/x/term v0.47.0\n\tgolang.org/x/sys v0.49.0 // indirect\n)\n\nrequire github.com/a/b v1.2.3\n' >"$dp/cli/go.mod"
 printf '{"dependencies":{"react":"^19.2.0"},"devDependencies":{"vitest":"4.1.0"}}\n' >"$dp/web/package.json"
 printf '{"dependencies":{"ignored":"1.0.0"}}\n' >"$dp/web/node_modules/x/package.json"
 printf '[project]\nname = "p"\ndependencies = ["httpx>=0.28", "pydantic==2.12.0"]\n' >"$dp/pyproject.toml"
-# A fake makeit records the sync the hook starts; the real one is never reached from here.
+# A fake makeit records any call; docs.sh must never reach it.
 mkdir -p "$tmp/mbin"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/makeit.log"\n' "$tmp" >"$tmp/mbin/makeit"; chmod +x "$tmp/mbin/makeit"
 nomakeit=/usr/bin:/bin # makeit is never installed there
 docs_hook() { PATH="$1" bash "$here/docs.sh"; }
-waitlog() { for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$tmp/makeit.log" ] && break; sleep 0.2; done; cat "$tmp/makeit.log" 2>/dev/null; : >"$tmp/makeit.log"; }
 ctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit" | jq -r '.hookSpecificOutput.additionalContext')
-expect "docs SessionStart starts the sync" "docs sync --if-changed --quiet $dp" "$(waitlog)"
-case "$ctx" in *"go 1.27.3"*) bad "docs leaves out the go directive (the standard library is not indexed)" ;; *) ok "docs leaves out the go directive (the standard library is not indexed)" ;; esac
+sleep 0.3
+[ ! -s "$tmp/makeit.log" ] && ok "docs.sh never calls makeit" || bad "docs.sh called makeit: $(cat "$tmp/makeit.log")"
+expect "docs tells the agent to fetch the docs of the version in use" 'fetch the docs of the version in use' "$ctx"
+case "$ctx" in *"go 1.27.3"*) bad "docs leaves out the go directive" ;; *) ok "docs leaves out the go directive" ;; esac
 expect "docs lists a direct go require" 'golang.org/x/term v0.47.0' "$ctx"
 expect "docs lists a single-line require" 'github.com/a/b v1.2.3' "$ctx"
 case "$ctx" in *x/sys*) bad "docs skips indirect requires" ;; *) ok "docs skips indirect requires" ;; esac
@@ -157,25 +158,67 @@ expect "docs lists package.json deps" 'react ^19.2.0 (web/package.json)' "$ctx"
 expect "docs lists devDependencies" 'vitest 4.1.0' "$ctx"
 case "$ctx" in *ignored*) bad "docs skips node_modules" ;; *) ok "docs skips node_modules" ;; esac
 command -v python3 >/dev/null 2>&1 && expect "docs lists pyproject deps" 'pydantic ==2.12.0' "$ctx"
-expect "docs says they are indexed and to search" 'These are indexed by makeit; search them (search_docs or the docs-search skill) before you rely on their API.' "$ctx"
-# A folder of repositories: the list is each repository's, as makeit's index (never a worktree's
-# or a plain folder's).
+case "$ctx" in *"indexed by makeit"*) bad "docs no longer mentions an index" ;; *) ok "docs no longer mentions an index" ;; esac
+# A folder of repositories: the list is each repository's (never a worktree's or a plain folder's).
 ws="$tmp/docsws"; mkdir -p "$ws/a/.git" "$ws/a-wt" "$ws/notes"
 printf '{"dependencies":{"left-pad":"1.0.0"}}\n' >"$ws/a/package.json"
 printf 'gitdir: %s/a/.git/worktrees/a-wt\n' "$ws" >"$ws/a-wt/.git"
 printf '{"dependencies":{"lodash":"4.17.21"}}\n' >"$ws/a-wt/package.json"
 printf '{"dependencies":{"chalk":"5.0.0"}}\n' >"$ws/notes/package.json"
-wsctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$ws" | docs_hook "$tmp/mbin:$nomakeit" | jq -r '.hookSpecificOutput.additionalContext')
-waitlog >/dev/null
+wsctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$ws" | docs_hook "$nomakeit" | jq -r '.hookSpecificOutput.additionalContext')
 expect "docs in a workspace lists a repository's deps" 'left-pad 1.0.0 (a/package.json)' "$wsctx"
 case "$wsctx" in *lodash* | *chalk*) bad "docs in a workspace skips worktrees and plain folders" ;; *) ok "docs in a workspace skips worktrees and plain folders" ;; esac
-case "$ctx" in *"docs-manage skill"*) bad "docs no longer tells the agent to index" ;; *) ok "docs no longer tells the agent to index" ;; esac
-expect_empty "docs PostToolUse prints nothing" "$(printf '{"hook_event_name":"PostToolUse","cwd":"%s","tool_name":"Bash"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit")"
-expect "docs PostToolUse starts the sync" "docs sync --if-changed --quiet $dp" "$(waitlog)"
-out=$(printf '{"hook_event_name":"PostToolUse","cwd":"%s","tool_name":"Edit"}' "$dp" | docs_hook "$nomakeit"); rc=$?
-if [ -z "$out" ] && [ "$rc" = 0 ]; then ok "docs without makeit: silent, exit 0"; else bad "docs without makeit: rc $rc out [$out]"; fi
+expect_empty "docs ignores PostToolUse" "$(printf '{"hook_event_name":"PostToolUse","cwd":"%s","tool_name":"Bash"}' "$dp" | docs_hook "$nomakeit")"
 mkdir -p "$tmp/empty"
 expect_empty "docs silent without manifests" "$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$tmp/empty" | docs_hook "$nomakeit")"
+out=$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$dp" | PATH="$tmp/nojq" bash "$here/docs.sh" 2>&1; echo "rc=$?")
+[ "$out" = "rc=0" ] && ok "docs without jq: silent, exit 0" || bad "docs without jq: [$out]"
+
+# --- docs-nudge.sh and docs-mark.sh --------------------------------------------------------------
+# Dates come from release-dates.json (vitest 5.1.0 is there, 2026-11-02) or a seeded cache; the
+# network is never reached (no curl on this PATH).
+export XDG_CACHE_HOME="$tmp/cache"; export TMPDIR="$tmp"
+mkdir -p "$XDG_CACHE_HOME/makeit-docs" "$tmp/nobin"
+for b in bash cat basename dirname head sed awk grep tr cut jq mkdir touch date; do ln -sf "$(command -v $b)" "$tmp/nobin/$b" 2>/dev/null; done
+printf 'npm:oldlib@1.0.0\t2024-01-01\ngo:github.com/new/mod@v1.4.0\t2026-10-01\npypi:newpy@2.0.0\t2026-09-01\ncrates:newcrate@0.9.0\t2026-09-01\n' >"$XDG_CACHE_HOME/makeit-docs/dates.tsv"
+nudge() { # session cwd tool file text -> hook output
+  jq -n --arg s "$1" --arg c "$2" --arg t "$3" --arg f "$4" --arg x "$5" '{hook_event_name:"PreToolUse",session_id:$s,cwd:$c,tool_name:$t,tool_input:{file_path:$f,content:$x}}' |
+    PATH="$tmp/nobin" bash "$here/docs-nudge.sh"
+}
+np="$tmp/nudgeproj"; mkdir -p "$np/src" "$np/cli" "$np/py" "$np/rs"
+printf '{"devDependencies":{"vitest":"^5.1.0","oldlib":"^1.0.0"}}\n' >"$np/package.json"
+printf '{"packages":{"node_modules/vitest":{"version":"5.1.0"},"node_modules/oldlib":{"version":"1.0.0"}}}\n' >"$np/package-lock.json"
+printf 'module m\n\ngo 1.27\n\nrequire github.com/new/mod v1.4.0\n' >"$np/cli/go.mod"
+printf '[project]\nname = "p"\ndependencies = ["newpy>=2"]\n' >"$np/py/pyproject.toml"
+printf '[[package]]\nname = "newpy"\nversion = "2.0.0"\n' >"$np/py/uv.lock"
+printf '[package]\nname = "p"\n\n[dependencies]\nnewcrate = "0.9"\n' >"$np/rs/Cargo.toml"
+printf '[[package]]\nname = "newcrate"\nversion = "0.9.0"\n' >"$np/rs/Cargo.lock"
+out=$(nudge s1 "$np" Write "$np/src/a.ts" 'import { test } from "vitest";')
+expect "nudge denies a dependency newer than the cutoff" '"permissionDecision":"deny"' "$out"
+expect "nudge names the library and its version" 'vitest 5.1.0' "$out"
+expect_empty "nudge lets the second attempt through" "$(nudge s1 "$np" Write "$np/src/a.ts" 'import { test } from "vitest";')"
+printf '{"hook_event_name":"PostToolUse","session_id":"s2","cwd":"%s","tool_name":"WebFetch","tool_input":{"url":"https://vitest.dev/guide","prompt":"vitest 5 API"}}' "$np" | PATH="$tmp/nobin" bash "$here/docs-mark.sh"
+expect_empty "nudge stays quiet after a docs lookup this session" "$(nudge s2 "$np" Write "$np/src/a.ts" 'import { test } from "vitest";')"
+expect_empty "nudge stays quiet for a dependency older than the cutoff" "$(nudge s3 "$np" Write "$np/src/a.ts" 'import x from "oldlib";')"
+out=$(DOCS_NUDGE_CUTOFF=2026-12-01 nudge s4 "$np" Write "$np/src/a.ts" 'import { test } from "vitest";')
+expect_empty "DOCS_NUDGE_CUTOFF moves the cutoff" "$out"
+out=$(nudge s5 "$np" Write "$np/cli/main.go" 'import "github.com/new/mod/sub"')
+expect "nudge covers a go.mod module in a Go edit" 'github.com/new/mod v1.4.0' "$out"
+expect "nudge reads go.mod from the file's own folder" '"permissionDecision":"deny"' "$out"
+out=$(nudge s6 "$np" Write "$np/py/app.py" 'import newpy')
+expect "nudge covers a python dependency locked in uv.lock" 'newpy 2.0.0 (uv.lock)' "$out"
+out=$(nudge s7 "$np" Write "$np/rs/main.rs" 'use newcrate::Thing;')
+expect "nudge covers a cargo dependency locked in Cargo.lock" 'newcrate 0.9.0 (Cargo.lock)' "$out"
+expect_empty "nudge ignores an edit that does not use a dependency" "$(nudge s8 "$np" Write "$np/src/a.ts" 'const x = 1;')"
+expect_empty "nudge silent without manifests" "$(nudge s9 "$tmp/empty" Write "$tmp/empty/a.ts" 'import { test } from "vitest";')"
+out=$(jq -n --arg c "$np" '{hook_event_name:"PreToolUse",session_id:"s10",cwd:$c,tool_name:"Write",tool_input:{file_path:"x/a.ts",content:"import \"vitest\""}}' | PATH="$tmp/nojq" bash "$here/docs-nudge.sh" 2>&1; echo "rc=$?")
+[ "$out" = "rc=0" ] && ok "nudge without jq: silent, exit 0" || bad "nudge without jq: [$out]"
+out=$(printf 'not json' | PATH="$tmp/nobin" bash "$here/docs-nudge.sh" 2>&1; echo "rc=$?")
+[ "$out" = "rc=0" ] && ok "nudge on unreadable input: silent, exit 0" || bad "nudge on unreadable input: [$out]"
+out=$(printf '{"tool_name":"WebFetch","session_id":"s11","tool_input":{"url":"u"}}' | PATH="$tmp/nojq" bash "$here/docs-mark.sh" 2>&1; echo "rc=$?")
+[ "$out" = "rc=0" ] && ok "mark without jq: silent, exit 0" || bad "mark without jq: [$out]"
+[ -s "$tmp/makeit-docs/s2/lookups.txt" ] && ok "mark logs under makeit-docs/<session>" || bad "mark state dir missing"
+unset XDG_CACHE_HOME TMPDIR
 
 # --- autoupdate.sh -------------------------------------------------------------------------------
 au_stack="$tmp/austack"; mkdir -p "$au_stack"
