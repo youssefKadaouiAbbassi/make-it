@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"makeit/internal/platform"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -130,8 +131,12 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 	if opts.KeepSettings {
 		steps = append(steps, plan.Step{ID: "settings", Title: "Leave settings.json as it is (--keep-settings)",
 			Already: func(context.Context) (bool, error) {
-				if len(e.st.Settings.Paths) > 0 {
-					e.keep("settings", "now yours; makeit no longer tracks them")
+				if len(e.st.Settings.Paths) > 0 || len(e.st.NotifyKeys) > 0 {
+					reason := "now yours; makeit no longer tracks them"
+					if keys := slices.Sorted(maps.Keys(e.st.NotifyKeys)); len(keys) > 0 {
+						reason += "; makeit notify wrote " + strings.Join(keys, ", ")
+					}
+					e.keep("settings", reason)
 				}
 				return true, nil
 			}})

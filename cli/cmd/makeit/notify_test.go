@@ -145,6 +145,25 @@ func TestNotifyNeedsTerminal(t *testing.T) {
 	}
 }
 
+// With no terminal and no --yes, a run with nothing to do is the one that reaches setup's closing
+// question: only the Interactive check keeps it silent.
+func TestSetupNoTerminalAsksNothing(t *testing.T) {
+	claudeDir, stack := handInstalled(t, nil)
+	if code, _ := setupYes(t); code != 0 {
+		t.Fatal("setup --yes failed")
+	}
+	code, _, errOut := call(t, noGather(t), "setup", "--plain")
+	if code != 0 || strings.Contains(errOut, "needs an answer") || strings.Contains(errOut, "ntfy") {
+		t.Errorf("exit %d, stderr %q", code, errOut)
+	}
+	if strings.Contains(settingsText(t, claudeDir), "NTFY_TOPIC") {
+		t.Error("a topic was written")
+	}
+	if st, _, _ := state.LoadState(filepath.Join(stack, "state.json")); st.Notify != "" {
+		t.Errorf("recorded %q", st.Notify)
+	}
+}
+
 // Each of these would ask if its guard were gone; the answers are yes, so a question shows as a topic.
 func TestSetupGuardsAskNothing(t *testing.T) {
 	for _, tc := range []struct {
@@ -154,7 +173,6 @@ func TestSetupGuardsAskNothing(t *testing.T) {
 	}{
 		{"yes at a terminal", []string{"setup", "--yes"}, true},
 		{"dry run at a terminal", []string{"setup", "--dry-run"}, true},
-		{"no terminal, plain", []string{"setup", "--yes", "--plain"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			claudeDir, stack := handInstalled(t, nil)

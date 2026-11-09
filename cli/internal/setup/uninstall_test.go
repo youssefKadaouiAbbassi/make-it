@@ -714,3 +714,12 @@ func TestUninstallKeepsChangedNotifyKeys(t *testing.T) {
 		t.Errorf("the kept topic is not reported: %+v", rep.Kept)
 	}
 }
+
+func TestKeepSettingsNamesNotifyKeys(t *testing.T) {
+	m := installed(t)
+	notifyOn(t, m)
+	rep := uninstall(t, m, UninstallOptions{KeepSettings: true})
+	if r := reasonOf(rep, "settings"); !strings.Contains(r, "/env/NTFY_TOPIC") || !strings.Contains(r, "/agentPushNotifEnabled") {
+		t.Errorf("keep note %q does not list the notify keys", r)
+	}
+}

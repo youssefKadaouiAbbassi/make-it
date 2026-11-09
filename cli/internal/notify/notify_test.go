@@ -146,8 +146,8 @@ func TestEnableWritesThroughSymlink(t *testing.T) {
 	if err := os.Remove(real); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnablePush(link, nil); err == nil {
-		t.Error("a link to a missing file was accepted")
+	if err := EnablePush(link, nil); err == nil || !strings.Contains(err.Error(), link) {
+		t.Errorf("a link to a missing file: err %v, want one naming %s", err, link)
 	}
 }
 

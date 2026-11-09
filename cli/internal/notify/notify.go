@@ -62,9 +62,11 @@ func EnablePush(settingsPath string, before func(settings.State) error) error {
 // keeps its value and its place. A symlink is written through, so the link survives.
 func update(path string, want *jsonx.Object, wanted func(*jsonx.Object) bool, before func(settings.State) error) error {
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-		if path, err = filepath.EvalSymlinks(path); err != nil {
+		target, err := filepath.EvalSymlinks(path)
+		if err != nil {
 			return fmt.Errorf("%s is a symlink to a missing file; fix the link first: %w", path, err)
 		}
+		path = target
 	}
 	data, found, err := fsx.ReadOptional(path)
 	if err != nil {
