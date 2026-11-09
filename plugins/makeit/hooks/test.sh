@@ -94,6 +94,38 @@ sleep 1; late SessionStart ',"source":"compact"' >/dev/null; printf '# Handoff\n
 expect_empty "handoff compact keeps the start marker" "$(late Stop ',"stop_hook_active":false')"
 out=$(printf '{"hook_event_name":"Stop","cwd":"%s","session_id":"nostart","stop_hook_active":false}' "$repo" | bash "$here/handoff.sh")
 expect_empty "handoff Stop without a start marker: silent" "$out"
+# Per-branch handoff file, and the plan after compaction.
+git -C "$repo" checkout -qb feat/x
+bsid() { printf '{"hook_event_name":"%s","cwd":"%s","session_id":"br"%s}' "$1" "$repo" "${2:-}" | bash "$here/handoff.sh"; }
+ctx() { printf '%s' "$1" | jq -r '.hookSpecificOutput.additionalContext // .systemMessage // empty'; }
+out=$(bsid SessionStart ',"source":"startup"')
+expect "handoff branch without its file reads HANDOFF.md" 'again' "$(ctx "$out")"
+expect "handoff branch names HANDOFF.feat-x.md to write" 'HANDOFF.feat-x.md' "$(ctx "$out")"
+printf '# Handoff\n- **Goal:** on the branch\n' >"$repo/HANDOFF.feat-x.md"
+expect "handoff branch prefers its own file" 'on the branch' "$(ctx "$(bsid SessionStart ',"source":"startup"')")"
+/bin/rm "$repo/HANDOFF.feat-x.md"
+sleep 1; printf 'f\n' >>"$repo/a.txt"
+expect "handoff Stop on a branch names the branch file" 'after HANDOFF.feat-x.md was last written' "$(ctx "$(bsid Stop ',"stop_hook_active":false')")"
+out=$(bsid PreCompact ',"trigger":"auto"')
+expect "handoff PreCompact names the branch file" 'HANDOFF.feat-x.md' "$out"
+for w in 'open tasks' 'plan' 'last decision'; do expect "handoff PreCompact asks for $w" "$w" "$out"; done
+mkdir -p "$repo/docs/superpowers/plans"; printf '# plan\n' >"$repo/docs/superpowers/plans/p.md"
+out=$(ctx "$(bsid SessionStart ',"source":"compact"')")
+expect "handoff compact names the newest plan" 'p.md' "$out"
+expect "handoff compact says to re-read plan and task list" 're-read it and the task list' "$out"
+printf '# Handoff\n- **Next:** docs/superpowers/plans/q.md task 3\n' >"$repo/HANDOFF.feat-x.md"; printf '# q\n' >"$repo/docs/superpowers/plans/q.md"
+touch -d '30 days ago' "$repo/docs/superpowers/plans/p.md"
+expect "handoff compact prefers the plan the handoff names" 'q.md' "$(ctx "$(bsid SessionStart ',"source":"compact"')")"
+/bin/rm "$repo/HANDOFF.feat-x.md" "$repo/docs/superpowers/plans/q.md"
+case "$(ctx "$(bsid SessionStart ',"source":"compact"')")" in *p.md*) bad "handoff compact ignores a plan older than 14 days" ;; *) ok "handoff compact ignores a plan older than 14 days" ;; esac
+expect_empty "handoff startup does not mention the plan" "$(ctx "$(bsid SessionStart ',"source":"startup"')" | grep 'active plan')"
+git -C "$repo" checkout -q --detach
+expect "handoff detached HEAD uses HANDOFF.md" 'again' "$(ctx "$(bsid SessionStart ',"source":"startup"')")"
+case "$(ctx "$(bsid SessionStart ',"source":"startup"')")" in *HANDOFF.-*|*HANDOFF..md*) bad "handoff detached HEAD names no branch file" ;; *) ok "handoff detached HEAD names no branch file" ;; esac
+git -C "$repo" checkout -q master 2>/dev/null || git -C "$repo" checkout -q main
+git -C "$repo" worktree add -q -b 'we#ird/b' "$tmp/wt" 2>/dev/null
+wt=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","session_id":"wt","source":"startup"}' "$tmp/wt" | bash "$here/handoff.sh")
+expect "handoff worktree (.git file) uses the hook cwd and a safe slug" 'HANDOFF.we-ird-b.md' "$(ctx "$wt")"
 
 # --- variant-ask.sh ---------------------------------------------------------------------------
 va() { printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"%s","tool_input":{"command":%s}}' "$repo" "$(printf '%s' "$1" | jq -Rs .)" | HOME="$tmp/home" CLAUDE_PROJECT_DIR="$repo" bash "$here/optional/variant-ask.sh"; }
@@ -248,7 +280,7 @@ out=$(nudgeb t1 "$np/tf" 'tofu plan')
 expect "nudge covers a tofu plan" 'hashicorp/aws 6.99.0 (.terraform.lock.hcl)' "$out"
 expect "nudge covers a terraform apply" 'hashicorp/aws 6.99.0' "$(nudgeb t2 "$np/tf" 'terraform apply')"
 expect "nudge covers a .tf edit, found from the edited file" 'hashicorp/aws 6.99.0' "$(nudge t3 "$np" Write "$np/tf/b.tf" 'resource "aws_s3_bucket" "b" {}')"
-# python: requirements.txt, poetry.lock (a package from another source is skipped), pyproject alone
+# python: poetry.lock and uv.lock nudge (a package from another source is skipped); requirements.txt and pyproject alone get no lookup
 mkdir -p "$np/req" "$np/poe" "$np/pyo" "$np/py2"
 printf 'newreq==3.0.0\n# c\n' >"$np/req/requirements.txt"
 printf '[[package]]\nname = "poepy"\nversion = "1.5.0"\n\n[package.dependencies]\nidna = ">=2"\n\n[[package]]\nname = "privpoe"\nversion = "1.0.0"\n\n[package.source]\ntype = "legacy"\nurl = "https://pypi.corp.example/simple"\n' >"$np/poe/poetry.lock"
