@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -205,5 +206,40 @@ func TestBaselineSetupReview(t *testing.T) {
 	r, err := LoadRequires(Embedded)
 	if err != nil || r.Requires.ClaudeCode.Hard != "2.1.319" {
 		t.Errorf("hard floor = %q, %v", r.Requires.ClaudeCode.Hard, err)
+	}
+}
+
+func TestMCPSetupReview(t *testing.T) {
+	b, err := Embedded.ReadFile("plugins/makeit/.mcp.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		MCPServers map[string]struct {
+			Args []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	cd, ok := m.MCPServers["chrome-devtools"]
+	if len(m.MCPServers) != 1 || !ok {
+		t.Fatalf("servers = %v, want only chrome-devtools", m.MCPServers)
+	}
+	isolated := false
+	for _, a := range cd.Args {
+		isolated = isolated || a == "--isolated"
+	}
+	if !isolated {
+		t.Errorf("chrome-devtools args %v lack --isolated", cd.Args)
+	}
+	for _, f := range []string{".claude-plugin/marketplace.json", "plugins/makeit-bundle/.claude-plugin/plugin.json"} {
+		d, err := Embedded.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(d), "docs-mcp-server") {
+			t.Errorf("%s still mentions docs-mcp-server", f)
+		}
 	}
 }

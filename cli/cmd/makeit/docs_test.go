@@ -28,6 +28,13 @@ func newDocsMachine(t *testing.T) *docsMachine {
 	m := &docsMachine{stack: t.TempDir(), dir: t.TempDir()}
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("MAKEIT_DIR", m.stack)
+	// The shipped .mcp.json has no docs server (the command goes in Task 3), so sync a copy that does.
+	if err := os.CopyFS(filepath.Join(m.stack, "catalog"), os.DirFS("../../internal/catalog/data/files")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(m.stack, "catalog", ".makeit-catalog.json"), `{"digest":"x"}`)
+	write(t, filepath.Join(m.stack, "catalog", "plugins", "makeit", ".mcp.json"),
+		`{"mcpServers":{"docs":{"command":"npx","args":["-y","@arabold/docs-mcp-server@3.4.1","--read-only"]}}}`)
 	write(t, filepath.Join(m.dir, "go.mod"), "module x\n\ngo 1.27.3\n\nrequire golang.org/x/term v0.47.0\n")
 	saved := docsRun
 	docsRun = func(_ context.Context, c execx.Cmd) (execx.Result, error) {

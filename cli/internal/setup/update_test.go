@@ -654,7 +654,7 @@ func converged(t *testing.T) *fakeMachine {
 	t.Helper()
 	m := newMachine(t)
 	m.deps = []string{"makeit@makeit", "superpowers@makeit", "ponytail@makeit", "chrome-devtools-mcp@makeit",
-		"docs-mcp-server@makeit", "deja-vu@makeit", "security-audit@makeit",
+		"deja-vu@makeit", "security-audit@makeit",
 		"typescript-lsp@claude-plugins-official", "pyright-lsp@claude-plugins-official", "rust-analyzer-lsp@claude-plugins-official", "gopls-lsp@claude-plugins-official"}
 	inner := m.run
 	m.env.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {

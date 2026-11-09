@@ -187,7 +187,7 @@ var Prereqs = []Prereq{
 		Pkgs: map[PM][]string{Brew: {"git"}, APT: {"git"}, DNF: {"git"}, APK: {"git"}, Pacman: {"git"}, WinGet: {"Git.Git"}},
 	},
 	{
-		ID: "node", Why: "the two MCP servers start with npx (chrome-devtools-mcp, docs-mcp-server)", Required: true, Bins: []string{"node"},
+		ID: "node", Why: "the MCP server starts with npx (chrome-devtools-mcp)", Required: true, Bins: []string{"node"},
 		Pkgs:   map[PM][]string{Brew: {"node"}, APT: {"nodejs", "npm"}, DNF: {"nodejs", "npm"}, APK: {"nodejs", "npm"}, Pacman: {"nodejs", "npm"}, WinGet: {"OpenJS.NodeJS.LTS"}},
 		Manual: "https://nodejs.org/en/download (22 or later)",
 	},

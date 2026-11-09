@@ -28,7 +28,7 @@
     },
     {
       "name": "makeit",
-      "description": "makeit's own plugin: hooks (handoff, docs index, reply checks, notifications), the /makeit:init and expand-contract skills, and two MCP servers with telemetry off (chrome-devtools, docs-mcp-server read-only).",
+      "description": "makeit's own plugin: hooks (handoff, docs index, reply checks, notifications), the /makeit:init and expand-contract skills, and one MCP server with telemetry off (chrome-devtools, isolated).",
       "version": "0.3.11",
       "license": "MIT",
       "source": "./plugins/makeit"
@@ -73,20 +73,6 @@
         "path": "skills",
         "ref": "chrome-devtools-mcp-v1.12.0",
         "sha": "af2834411a564d366f9cab63efb046d9084f4dba"
-      },
-      "skills": [
-        "./"
-      ]
-    },
-    {
-      "name": "docs-mcp-server",
-      "description": "arabold/docs-mcp-server 3.4.1: the docs-search and docs-manage skills only (skills/ has no plugin.json, so this entry is the manifest). The server itself runs from makeit, read-only, telemetry off. The skills call `npx @arabold/docs-mcp-server@latest`; the catalog keeps the server pin on the latest release, so both use the same store format. MIT.",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/arabold/docs-mcp-server.git",
-        "path": "skills",
-        "ref": "v3.4.1",
-        "sha": "4e35baa7e82c3ec447405c48a301c8a4185e715f"
       },
       "skills": [
         "./"
