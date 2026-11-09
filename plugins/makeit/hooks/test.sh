@@ -284,6 +284,15 @@ printf '{"hook_event_name":"PostToolUse","session_id":"k1","tool_name":"WebFetch
 expect "a lookup of vitest does not count for vit" 'vit 1.0.0' "$(nudge k1 "$np" Write "$np/tok/a.ts" 'import x from "vit";')"
 printf '{"hook_event_name":"PostToolUse","session_id":"k2","tool_name":"WebSearch","tool_input":{"query":"vit 1.0 changelog"}}' | PATH="$tmp/nobin" bash "$here/docs-mark.sh"
 expect_empty "a lookup naming vit counts for vit" "$(nudge k2 "$np" Write "$np/tok/a.ts" 'import x from "vit";')"
+# npm usage forms: require with both quotes, bare import, subpaths (scoped too)
+printf '{"dependencies":{"vit":"1.0.0","@sc/pk":"1.0.0"}}\n' >"$np/tok/package.json"; seed 'npm:@sc/pk@1.0.0' 2026-10-10
+i=0
+for form in 'const x = require("vit");' "const x = require('vit');" 'import "vit";' "import 'vit';" 'import x from "vit/sub/deep";' 'const x = require("@sc/pk/sub");' 'import "@sc/pk/sub";' 'import("vit")'; do
+  i=$((i + 1))
+  out=$(nudge "u$i" "$np" Write "$np/tok/a.ts" "$form")
+  expect "nudge matches the npm usage form: $form" '"permissionDecision":"deny"' "$out"
+done
+expect_empty "nudge does not match another package with the same prefix" "$(nudge u9 "$np" Write "$np/tok/a.ts" 'import x from "vit-extra"; require("vitest/x")')"
 # network: a fake curl answers per URL and logs its arguments
 mkdir -p "$tmp/netbin" "$np/net"
 for f in "$tmp"/nobin/*; do ln -sf "$(readlink "$f")" "$tmp/netbin/$(basename "$f")"; done

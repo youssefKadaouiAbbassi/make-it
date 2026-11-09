@@ -164,7 +164,7 @@ used() { # does this edit use the library?
   local eco=$1 n=$2 short=${2##*/} id
   case "$eco" in
     npm) [ "$base" = package.json ] && grep -q "\"$n\"" <<<"$text" && return 0
-         grep -qE "(from|require\(|import\() *['\"]$n(/[^'\"]*)?['\"]" <<<"$text" ;;
+         grep -qE "(^|[^A-Za-z0-9_])(from|require\(|import\(?) *['\"]$n(/[^'\"]*)?['\"]" <<<"$text" ;;
     go) grep -qF "\"$n\"" <<<"$text" || grep -qF "\"$n/" <<<"$text" ;;
     pypi) id=$(tr 'A-Z-' 'a-z_' <<<"$n")
           tr 'A-Z-' 'a-z_' <<<"$text" | grep -qE "^[[:space:]]*(import|from)[[:space:]]+$id([[:space:].,]|$)" ;;
