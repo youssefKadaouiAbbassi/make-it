@@ -14,6 +14,7 @@ var globalHistory = map[string][]string{
 		"sha256:9f90b2d4ffba6e47be42a8184e6d0702444957977761b097784a3f5b37a47bf2",
 		"sha256:ad16a350acf9c9948a2081c7b83d06ef7a8e1ff5eb8c7d87618b80f1b838e8c2",
 		"sha256:cf8c37b51d60466acdd8ac7ca2f95cf6ed731a1748563a858e365ff0d2a648b8",
+		"sha256:e8cd9c0999c988e5d19cadb1b83158d6e3ef7cc1f3a53c8482832197018eedf8",
 		"sha256:eadf4f4adbc9d7a014cf899aac399037bcbc318f95f13b54af0f422f3d0fd6de",
 	},
 	"templates/global/rules/github-actions.md": {
