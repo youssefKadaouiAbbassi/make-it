@@ -171,3 +171,28 @@ func TestSetupGuardsAskNothing(t *testing.T) {
 		})
 	}
 }
+
+// A settings.json that cannot be written leaves no key behind and no record for uninstall.
+func TestNotifyWriteFailureLeavesNoRecord(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a read-only directory")
+	}
+	claudeDir, stack := handInstalled(t, nil)
+	before := settingsText(t, claudeDir)
+	if err := os.Chmod(claudeDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(claudeDir, 0o755) })
+	terminal(t, "y\ny\n")
+	if code, _, errOut := call(t, noGather(t), "notify"); code != 1 {
+		t.Errorf("exit %d, stderr %q; want 1", code, errOut)
+	}
+	_ = os.Chmod(claudeDir, 0o755)
+	if settingsText(t, claudeDir) != before {
+		t.Error("settings.json changed")
+	}
+	st, _, _ := state.LoadState(filepath.Join(stack, "state.json"))
+	if len(st.NotifyKeys) != 0 || st.Notify != "" {
+		t.Errorf("state kept notify %q, keys %v after a failed write", st.Notify, st.NotifyKeys)
+	}
+}

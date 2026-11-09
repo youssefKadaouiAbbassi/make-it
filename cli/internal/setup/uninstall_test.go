@@ -660,11 +660,12 @@ func TestUninstallPurgeKeepsBinaryFiles(t *testing.T) {
 func notifyOn(t *testing.T, m *fakeMachine) {
 	t.Helper()
 	path := filepath.Join(m.env.Roots.Claude, "settings.json")
-	_, rec, err := notify.EnableNtfy(path, rand.Reader)
+	var rec, push settings.State
+	_, err := notify.EnableNtfy(path, rand.Reader, func(w settings.State) error { rec = w; return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	push, err := notify.EnablePush(path)
+	err = notify.EnablePush(path, func(w settings.State) error { push = w; return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

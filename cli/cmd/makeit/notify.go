@@ -80,31 +80,43 @@ func askNotify(u *ui.UI) error {
 		return err
 	}
 	settingsPath := filepath.Join(roots.Claude, "settings.json")
+	var added []string
 	if st.NotifyKeys == nil {
 		st.NotifyKeys = settings.State{}
 	}
-	// A record of an earlier write stays: its Original is what uninstall puts back.
-	remember := func(written settings.State) {
+	// The record is saved before settings.json is written, so a crash between the two leaves a
+	// record of a key that is not there, which uninstall skips. A failed write takes its record
+	// back out: a stale one would keep an Original that is no longer true.
+	record := func(written settings.State) error {
 		for k, r := range written {
 			if st.NotifyKeys[k] == nil {
 				st.NotifyKeys[k] = r
+				added = append(added, k)
 			}
 		}
+		return state.SaveState(statePath, st)
+	}
+	rollBack := func() {
+		for _, k := range added {
+			delete(st.NotifyKeys, k)
+		}
+		added = nil
+		_ = state.SaveState(statePath, st)
 	}
 	if ntfy {
-		topic, written, err := notify.EnableNtfy(settingsPath, rand.Reader)
+		topic, err := notify.EnableNtfy(settingsPath, rand.Reader, record)
 		if err != nil {
+			rollBack()
 			return err
 		}
-		remember(written)
+		added = nil
 		u.Ok("subscribe to https://ntfy.sh/%s in the ntfy app or a browser; the topic is the password, keep it private", topic)
 	}
 	if push {
-		written, err := notify.EnablePush(settingsPath)
-		if err != nil {
+		if err := notify.EnablePush(settingsPath, record); err != nil {
+			rollBack()
 			return err
 		}
-		remember(written)
 		u.Ok("Claude Code push is on: restart Claude Code to connect")
 	}
 	st.Notify = "asked"

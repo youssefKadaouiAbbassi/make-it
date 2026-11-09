@@ -18,11 +18,12 @@ import (
 
 // EnableNtfy writes env NTFY_TOPIC into settings.json and returns the topic in use: the one
 // already there, or a new "makeit-" + 20 random base32 characters (100 bits, so it cannot be
-// guessed). written holds the merge record of what makeit wrote, empty when the topic was kept.
-func EnableNtfy(settingsPath string, rand io.Reader) (topic string, written settings.State, err error) {
+// guessed). before gets the merge record of what is about to be written, before the file changes
+// (it is not called when the topic is kept); an error from it stops the write.
+func EnableNtfy(settingsPath string, rand io.Reader, before func(settings.State) error) (topic string, err error) {
 	buf := make([]byte, 13)
 	if _, err := io.ReadFull(rand, buf); err != nil {
-		return "", nil, err
+		return "", err
 	}
 	topic = "makeit-" + strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(buf))[:20]
 	env := jsonx.NewObject()
@@ -42,25 +43,24 @@ func EnableNtfy(settingsPath string, rand io.Reader) (topic string, written sett
 			}
 		}
 		return true
-	}, &written)
-	return topic, written, err
+	}, before)
+	return topic, err
 }
 
 // EnablePush sets remoteControlAtStartup, inputNeededNotifEnabled and agentPushNotifEnabled to
 // true in settings.json (Claude Code documents all three as settings.json keys; ~/.claude.json
-// only holds older values). written holds the merge records of the keys that changed.
-func EnablePush(settingsPath string) (written settings.State, err error) {
+// only holds older values). before is as for EnableNtfy.
+func EnablePush(settingsPath string, before func(settings.State) error) error {
 	want := jsonx.NewObject()
 	for _, k := range []string{"remoteControlAtStartup", "inputNeededNotifEnabled", "agentPushNotifEnabled"} {
 		want.Set(k, true)
 	}
-	err = update(settingsPath, want, func(*jsonx.Object) bool { return true }, &written)
-	return written, err
+	return update(settingsPath, want, func(*jsonx.Object) bool { return true }, before)
 }
 
 // update merges want into settings.json, taking the value over an existing one. Every other key
 // keeps its value and its place. A symlink is written through, so the link survives.
-func update(path string, want *jsonx.Object, wanted func(*jsonx.Object) bool, written *settings.State) error {
+func update(path string, want *jsonx.Object, wanted func(*jsonx.Object) bool, before func(settings.State) error) error {
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 		if path, err = filepath.EvalSymlinks(path); err != nil {
 			return fmt.Errorf("%s is a symlink to a missing file; fix the link first: %w", path, err)
@@ -91,18 +91,20 @@ func update(path string, want *jsonx.Object, wanted func(*jsonx.Object) bool, wr
 	if !res.Changed() {
 		return nil
 	}
+	written := settings.State{}
+	for _, c := range res.Changes {
+		if c.Action == settings.Set || c.Action == settings.ReAsserted {
+			written[c.Path] = res.State[c.Path]
+		}
+	}
+	if before != nil {
+		if err := before(written); err != nil {
+			return err
+		}
+	}
 	out, err := jsonx.Marshal(res.Settings)
 	if err != nil {
 		return err
 	}
-	if err := fsx.WriteAtomic(path, out, perm); err != nil {
-		return err
-	}
-	*written = settings.State{}
-	for _, c := range res.Changes {
-		if c.Action == settings.Set || c.Action == settings.ReAsserted {
-			(*written)[c.Path] = res.State[c.Path]
-		}
-	}
-	return nil
+	return fsx.WriteAtomic(path, out, perm)
 }
