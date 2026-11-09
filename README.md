@@ -138,10 +138,10 @@ The full guide, by task: [Getting the most out of it](docs/using.md).
 
 | Part | What it does |
 |---|---|
-| makeit plugin | session hooks (handoff, docs index, reply check, daily update), the `/makeit:init` skill |
+| makeit plugin | session hooks (handoff per branch, docs reminder, push check, reply check, notifications, daily update), the `/makeit:init` and `draft` skills |
 | [superpowers](https://github.com/obra/superpowers) | the working method: brainstorming, design, plans, test-driven development, debugging, review |
 | [ponytail](https://github.com/DietrichGebert/ponytail) | keeps changes small |
-| [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp), [docs-mcp-server](https://github.com/arabold/docs-mcp-server) | a browser to check web work, and search over your dependencies' docs |
+| [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) | a browser to check web work |
 | [deja-vu](https://github.com/vshulcz/deja-vu), [security-audit](https://github.com/cloudflare/security-audit-skill) | memory across sessions, and security review |
 | [four LSP plugins](https://github.com/anthropics/claude-plugins-official) | code intelligence for TypeScript, Python, Rust and Go |
 | [impeccable](https://github.com/pbakaus/impeccable) (web projects) | design skills for user interfaces |

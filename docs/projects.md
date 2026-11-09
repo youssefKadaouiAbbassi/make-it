@@ -1,8 +1,8 @@
 # Projects
 
 makeit sets each project up the same way: the files Claude reads at session start, check tasks
-wired to the project's real tools, commit hooks, CI, and an index of the docs of the project's
-dependencies. Afterwards a session in that project starts from what the last one left, runs the
+wired to the project's real tools, commit hooks, CI, and the routines Claude follows in
+the project. Afterwards a session in that project starts from what the last one left, runs the
 checks before calling work done, and reads the docs of the versions you actually use.
 
 There are two ways to run it:
@@ -35,7 +35,14 @@ Typing it is your consent: Claude runs `makeit init --yes --json`, then works th
 5. With a web frontend, add Playwright with axe and a `test:e2e` task. With an OpenAPI spec, add
    schemathesis to `check:api`.
 6. Write a run recipe, `.claude/skills/run-<project>/SKILL.md`, so Claude can start and use the
-   app. A project with nothing to start yet gets a `HANDOFF.md` item instead.
+   app. A project with nothing to start yet gets a `HANDOFF.md` item instead. From the same
+   recipe it writes `.claude/skills/verify/SKILL.md`, which Claude Code runs before each commit:
+   start what changed and use it like a person (browser at desktop and phone width, emulator,
+   or a call to the CLI or API). A `verify` skill you already have is kept.
+   It also writes a "Start of a task" and "End of a task" section into `CLAUDE.md` with the
+   project's real steps (ticket, branch, checks, deploy, handoff), asking for what it cannot
+   find, and asks which branches besides `main` and `master` deploy, writing a `git push` ask
+   rule for each into `.claude/settings.json`.
 7. Run `check:full` and fix what fails.
 8. Ask before the first commit. On a yes, a repository with no commits gets its first commit on
    the default branch; otherwise Claude commits on a new branch. On a no, nothing is committed.
@@ -109,17 +116,6 @@ skipped test, a silenced checker) or changes a watched file (a checker config, a
 workflow, the hook config, `CONSTRAINTS.md`) unless the PR description gives the reason in a line
 `floor-guard: <reason>`. When you do mean to change one of those, write that line; that is the
 whole ceremony.
-
-### Docs index
-
-init indexes the docs of each direct dependency at the version the project uses, for the `docs`
-MCP server, so Claude's answers about a library match the version you have. A library makeit
-cannot resolve, or one that takes too long, is listed and skipped, not failed. The index is
-rebuilt in the background when a manifest or lockfile changes. To run it yourself:
-
-```console
-$ makeit docs sync [dir]
-```
 
 ### GitHub rulesets
 

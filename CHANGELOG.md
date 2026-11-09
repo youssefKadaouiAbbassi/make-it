@@ -3,6 +3,61 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.4.0
+
+A review of a week of real sessions: fewer lost messages, fewer surprises, less noise. Needs
+Claude Code 2.1.319 or newer; setup and update bring it.
+
+Parallel work:
+
+- A second session on the same repository runs in its own worktree (`claude -w <name>`), and on
+  any branch other than the default one the handoff is its own file, `HANDOFF.<branch>.md`, so
+  sessions stop overwriting each other. Sessions can receive messages from one another.
+- The browser server runs in its own Chrome profile, so two sessions no longer fight over it.
+
+Asking first:
+
+- Merging through `gh api` asks, whatever the form of the call.
+- A `git push` that names no branch asks when it would push `main`, `master` or a deploy branch of
+  the project. `/makeit:init` asks which branches deploy and writes a rule for each.
+
+Notifications:
+
+- A notification reaches the desktop at once when Claude asks you something, needs a permission or
+  stops, and says when background tasks still run. It replaces the old ntfy-only script.
+- `makeit notify` (and setup's closing questions) set up your phone: an ntfy topic, and optionally
+  Claude Code's own push. makeit writes only its own keys to `~/.claude/settings.json` and never
+  opens `~/.claude.json`.
+- Long waits (CI, a deploy) run in the background instead of a foreground sleep.
+
+Less noise:
+
+- deja-vu keeps its session summary, search, PreCompact and SessionEnd, and loses the hooks that
+  added recall to every prompt and tool call; one line per prompt asks Claude to search when it
+  may touch something decided before. The skill-check reminder skips prompts under four words, and
+  the reply check leaves drafts for other people and `Sources:` sections alone.
+- The hooks of every bundled plugin are listed in [docs/hooks.md](docs/hooks.md), checked in CI.
+
+Docs on demand:
+
+- The docs index and `makeit docs` are gone, and so are docs-mcp-server and its server. When Claude
+  is about to use a library released after its training, the first such edit is stopped once with
+  the library, the version and where the docs live. `makeit update` removes the old index.
+
+Finishing work properly:
+
+- `/makeit:init` writes a `verify` skill from the project's run recipe (start what changed and use
+  it like a person) and a "Start of a task / End of a task" section with the project's real steps.
+  Rerun it on older projects to get both.
+- New `draft` skill for text someone else will read: plain, complete, in their language.
+- After a compaction Claude is pointed at the plan file and the open tasks; the todo tools are on.
+- A question or a small urgent fix skips the design and plan steps; subagents run at medium effort.
+
+Speed:
+
+- chrome-devtools-mcp runs from a local copy that makeit keeps current: a session starts it in
+  about 340 ms instead of 760 ms. The reply check reads the transcript only when needed.
+
 ## 0.3.11
 
 Docs:

@@ -1,6 +1,6 @@
 # Getting the most out of it
 
-makeit installs a working method, a brevity skill, a browser, a docs index, a memory and a set of
+makeit installs a working method, a brevity skill, a browser, docs on demand, a memory and a set of
 review tools. Most of them act on their own; a few are better when you call them. This page goes
 by what you want to do, and says what to say and what happens.
 
@@ -89,14 +89,14 @@ running app and cycle through variants. Run `/impeccable init` once per project:
 
 ## Look things up
 
-- **A library:** ask the question. "How does zod 4 handle optional fields?" Claude searches the
-  docs of the version your project uses, indexed by `makeit init` for [docs-mcp-server](https://github.com/arabold/docs-mcp-server) and kept current when a
-  manifest or lockfile changes. Nothing to type; if it answers from memory, say "search the
-  docs". `makeit docs sync` rebuilds the index by hand.
+- **A library:** ask the question. "How does zod 4 handle optional fields?" Claude fetches the
+  docs of the version your project uses when it is about to use a library newer than its training;
+  a hook stops the first edit that does so and names the library, the version and where its docs
+  live. Nothing to type; if it answers from memory, say "read the docs of the version we use".
 - **Your own past:** "what did we decide about the cache key?", "didn't we fix this before?",
   "which tools did we already try for this?". [deja-vu](https://github.com/vshulcz/deja-vu) searches your earlier Claude Code sessions
-  on this machine, and Claude is asked to do that on its own before re-debugging an error or
-  recommending a tool. At the end of a day, `/deja-vu:deja-reflect` reviews what was decided and
+  on this machine; every session starts with a short summary, and a one-line hint on each prompt
+  of four words or more asks Claude to search before re-debugging an error or recommending a tool. At the end of a day, `/deja-vu:deja-reflect` reviews what was decided and
   records the durable rules, so the next session starts with them.
 
 ## Answer in one keystroke
@@ -110,10 +110,18 @@ changes one pick; Claude shows the changed lines and asks again.
 If a reply ends on a question in prose instead, makeit's reply check has Claude ask again
 properly. You should not have to type a phrase Claude handed you.
 
+## Write for other people
+
+Ask Claude to draft a message, an e-mail or a comment and it uses the `draft` skill: plain text
+you can paste, complete, in the language of the thread you answer, with no file paths, code
+references or Markdown.
+
 ## Hand off between sessions
 
 `HANDOFF.md` is how one session talks to the next. Claude writes it when a session changed files
-and before a long conversation is compacted, under 30 lines: done, next, open, how to verify.
+and before a long conversation is compacted, under 30 lines: done, next, open, how to verify. On a
+branch other than the default (and in a worktree) the file is `HANDOFF.<branch>.md`, so parallel
+sessions do not overwrite each other; run the second session with `claude -w <name>`.
 Read it when you come back; edit it to redirect the next session ("Next: ship the CSV export,
 skip the PDF one"). When Claude stops a turn saying `HANDOFF.md` must be rewritten, let it.
 
@@ -148,6 +156,10 @@ Claude read the schema and run queries; the one write tool always asks first.
 Claude finishing a turn, asking you something, or waiting on a permission prompt shows a desktop
 notification at once (notify-send on Linux, osascript on macOS, a toast through powershell.exe on
 Windows), with the repository name and the event, nothing else. When a background task is still
-running the line says so. To get the same line on your phone, set `NTFY_TOPIC` (and optionally
-`NTFY_URL` and `NTFY_TOKEN`) in the `env` block of `~/.claude/settings.json` to an
-[ntfy](https://ntfy.sh) topic.
+running the line says so. To get the same line on your phone, run `makeit notify` (setup asks the
+same two questions at its end). It sets an [ntfy](https://ntfy.sh) topic in the `env` block of
+`~/.claude/settings.json`, a private random one that you subscribe to in the ntfy app, and
+optionally turns on Claude Code's own phone push (`remoteControlAtStartup`,
+`inputNeededNotifEnabled`, `agentPushNotifEnabled`, written to `~/.claude/settings.json` too;
+it needs a claude.ai login). With both on, the phone may show two notices for one event. Use your
+own server with `NTFY_URL` and `NTFY_TOKEN` in the same `env` block.
