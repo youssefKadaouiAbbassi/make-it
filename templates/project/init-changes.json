@@ -1,6 +1,6 @@
 {
   "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
-  "sources": "sha256:2deefbd63f924c396b5a34bb44d600c3a4d3f09a1c15a410ba282746848ae68e",
+  "sources": "sha256:3c37be62e99ef086e7e54c89847adb12bfaf378e0d1ef20658b6482abeb762b4",
   "changes": [
     {
       "version": "0.3.7",
@@ -36,7 +36,7 @@
       "version": "0.4.0",
       "id": "task-start-end",
       "files": ["CLAUDE.md"],
-      "prompt": "CLAUDE.md has the sections \"## Start of a task\" (read the ticket, branch from the default branch, baseline check:task) and \"## End of a task\" (check:task and /verify, check:full before a push, deploy, handoff: on a branch HANDOFF.<slug>.md, deleted in the merge), as in templates/project/CLAUDE.md. Place \"Start of a task\" before the Commands table and \"End of a task\" after it, as the template does; keep every section the file has and every value the user wrote."
+      "prompt": "CLAUDE.md has the sections \"## Start of a task\" (read the ticket, branch from the default branch, baseline check:task) and \"## End of a task\" (check:task and /verify, check:full before a push, deploy, handoff: on a branch HANDOFF.<slug>.md, deleted in the merge), as in templates/project/CLAUDE.md. Place \"Start of a task\" before the Commands table and \"End of a task\" after it, as the template does; keep every section the file has and every value the user wrote. The steps themselves come from the repository, not from the template: fill them with its ticket system, branch naming, checks and deploy as the repository shows them, and ask the user once for any it does not show; never copy the template's generic steps."
     }
   ]
 }

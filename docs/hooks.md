@@ -25,7 +25,7 @@ Sources:
 | makeit | PostToolUse | `WebFetch\|WebSearch` |  | `hooks/docs-mark.sh` | records: which libraries this session looked up (no output) |
 | makeit | PreCompact |  |  | `hooks/handoff.sh` | injects: a reminder to rewrite the handoff before the context is summarised |
 | makeit | Stop |  |  | `hooks/handoff.sh` | injects: once, a reminder to rewrite the handoff when files changed after it was written |
-| makeit | Stop |  |  | `hooks/options.sh` | blocks: once, a reply that ends by handing the user a question or a phrase to type in prose |
+| makeit | Stop |  |  | `hooks/options.sh` | injects: once, at the end of a reply that hands the user a question or a phrase to type in prose, a reminder where it belongs; the turn continues |
 | makeit | Stop |  |  | `hooks/notify.sh` | notifies: desktop and ntfy message when the agent finishes or needs the user |
 | makeit | PreToolUse | `Edit\|Write\|MultiEdit\|Bash` |  | `hooks/docs-nudge.sh` | blocks: once, an edit that uses a recent dependency nobody looked up |
 | makeit | PreToolUse | `Bash` | `Bash(git push*)` | `hooks/push.sh` | blocks: asks first for a push that names no branch from a deploy branch |

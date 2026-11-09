@@ -89,8 +89,9 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   full suite; if it is red, say so and ask whether to push anyway.
 - Commits: imperative mood, one logical change, never amend a pushed commit,
   never commit secrets. Do not push to the default branch unless told to.
-- Write `HANDOFF.md` before a context reset and at the end of a session that
-  changed files: what is done, what is next, what is open, how to verify.
+- Write `HANDOFF.md` (`HANDOFF.<branch>.md` on a branch) before a context reset and
+  at the end of a session that changed files: what is done, what is next, what
+  is open, how to verify.
 - Subagents for large, independent tracks only; parallel writers get their own
   worktree. Do not spawn subagents to double-check routine work.
 - A second session that writes code in the same repository runs in its own

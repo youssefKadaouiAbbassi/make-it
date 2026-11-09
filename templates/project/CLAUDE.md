@@ -7,8 +7,8 @@ sentence. Example for a tracker: "status and assignee at a glance first; scan
 speed over refinement."> Every UI or UX decision defers to it.
 
 Read `CONSTRAINTS.md` before writing code. Do not weaken it to make a change pass.
-Read `HANDOFF.md` at the start of a session; rewrite it (under 30 lines) before
-a context reset and at the end of a session that changed files.
+Read `HANDOFF.md` (`HANDOFF.<branch>.md` on a branch) at the start of a session; rewrite it
+(under 30 lines) before a context reset and at the end of a session that changed files.
 
 ## Start of a task
 

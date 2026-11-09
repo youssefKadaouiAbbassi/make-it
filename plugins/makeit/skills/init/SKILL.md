@@ -104,6 +104,10 @@ Then go on with step 2; the steps below still run, as on any init.
   both. Wire the language's coverage tool and a diff mutation tool; when one cannot be wired yet,
   keep its row as it is and add a HANDOFF item for it. floor-guard reads a removed row as a
   weakened constraint.
+- CLAUDE.md "Start of a task" and "End of a task": the template's steps are generic. Write each step
+  from what the repository shows: where tickets live (issue tracker, card board, the owner's
+  messages), its branch naming, the checks it runs, how it deploys. When the repository does not say,
+  ask once with AskUserQuestion and write the answer; never leave the template's generic step as it is.
 - HANDOFF.md: small numbered items, one action each.
 - Deploy branches: `main` and `master` always ask before a push. Ask once, with AskUserQuestion,
   which other branches deploy when pushed (a `production` or `release` branch, or none), and

@@ -25,9 +25,10 @@ Notifications:
 
 - A notification reaches the desktop at once when Claude asks you something, needs a permission or
   stops, and says when background tasks still run. It replaces the old ntfy-only script.
-- `makeit notify` (and setup's closing questions) set up your phone: an ntfy topic, and optionally
-  Claude Code's own push. makeit writes only its own keys to `~/.claude/settings.json` and never
-  opens `~/.claude.json`.
+- `makeit notify` sets up your phone, and so do setup's closing questions and, once, the first
+  interactive `makeit update` (`update --yes` and the daily run never ask): an ntfy topic, and
+  optionally Claude Code's own push (skipped when you use an API key; it needs a claude.ai login). makeit writes only its own keys to
+  `~/.claude/settings.json` and never opens `~/.claude.json`.
 - Long waits (CI, a deploy) run in the background instead of a foreground sleep.
 
 Less noise:
@@ -42,7 +43,12 @@ Docs on demand:
 
 - The docs index and `makeit docs` are gone, and so are docs-mcp-server and its server. When Claude
   is about to use a library released after its training, the first such edit is stopped once with
-  the library, the version and where the docs live. `makeit update` removes the old index.
+  the library, the version and where the docs live. `makeit update` removes the old index: its own
+  `docs` folder under the makeit folder, and docs-mcp-server's default store (`~/.local/share/docs-mcp-server`
+  on Linux, `~/Library/Application Support/docs-mcp-server` on macOS, `%LOCALAPPDATA%\docs-mcp-server\Data`
+  on Windows), but only when makeit's own docs record shows makeit ran the syncs that filled it. The
+  update reports what it removed and its size. `makeit update` also uninstalls the docs-mcp-server
+  plugin when makeit installed it; one you installed yourself stays, with the command to remove it.
 
 Finishing work properly:
 
@@ -56,7 +62,9 @@ Finishing work properly:
 Speed:
 
 - chrome-devtools-mcp runs from a local copy that makeit keeps current: a session starts it in
-  about 340 ms instead of 760 ms. The reply check reads the transcript only when needed.
+  about 340 ms instead of 760 ms. The reply check reads the transcript only when needed. The docs
+  check reads a project's lock file once per edit and spends at most 3 s on registry lookups, so
+  edits in a project with many dependencies are no longer slow.
 
 ## 0.3.11
 

@@ -33,7 +33,7 @@ what() { # $1 event, $2 normalised command
     hooks/skills.sh) echo "injects: a one-line skill-check reminder next to each prompt of two words or more" ;;
     hooks/docs-mark.sh) echo "records: which libraries this session looked up (no output)" ;;
     hooks/docs-nudge.sh) echo "blocks: once, an edit that uses a recent dependency nobody looked up" ;;
-    hooks/options.sh) echo "blocks: once, a reply that ends by handing the user a question or a phrase to type in prose" ;;
+    hooks/options.sh) echo "injects: once, at the end of a reply that hands the user a question or a phrase to type in prose, a reminder where it belongs; the turn continues" ;;
     hooks/notify.sh) echo "notifies: desktop and ntfy message when the agent finishes or needs the user" ;;
     hooks/push.sh) echo "blocks: asks first for a push that names no branch from a deploy branch" ;;
     "hooks/deja.sh hook-context") echo "injects: a digest of past sessions at session start; says once if the deja binary is missing" ;;
