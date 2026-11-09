@@ -126,3 +126,4 @@ flags.
 
 [Working with makeit every day](daily.md): what happens when you open a session, how Claude works
 on a task, how to answer it, and what to do when something goes wrong.
+[Getting the most out of it](using.md): what to say to each part makeit installed, by task.

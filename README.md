@@ -103,6 +103,25 @@ makeit works at three levels:
 [Working with makeit every day](docs/daily.md) walks through a full day: sessions, reviews,
 lookups, notifications, and what to do when something goes wrong.
 
+## How to use it well
+
+Most of what makeit installs acts on its own. This is what to say to get the rest:
+
+| You want to | Say or type |
+|---|---|
+| Build something new | "Let's build X." Answer the questions, approve the design, say "go". |
+| Fix a bug | Describe what you saw. Claude finds the cause first, then writes the failing test. |
+| A quick change without the questions | "Just dive in." |
+| Smaller or bolder changes | `/ponytail lite`, `/ponytail ultra`, or "stop ponytail" |
+| A review before merging | `/code-review` for bugs, `/ponytail-review` for what to cut, `/security-review` for holes |
+| See your web app the way Claude sees it | "Open the app and check the console", "run a Lighthouse audit", "screenshot the checkout at phone width" |
+| Better design, in web projects | `/impeccable critique the pricing cards`, `/impeccable polish` |
+| An answer from the right docs | Ask about the library; Claude searches the version your project uses. |
+| Remember what you decided | "What did we decide about X?" At the end of the day, `/deja-vu:deja-reflect`. |
+| Find out why a session went sideways | "Figure out what went wrong with superpowers in this session." |
+
+The full guide, by task: [Getting the most out of it](docs/using.md).
+
 ## Built to be trusted
 
 - Every change is shown as a plan first and asks once; `--dry-run` writes nothing.
@@ -163,6 +182,7 @@ see [SECURITY.md](SECURITY.md).
 
 [Getting started](docs/getting-started.md) ·
 [Every day](docs/daily.md) ·
+[Getting the most out of it](docs/using.md) ·
 [Commands](docs/commands.md) ·
 [What's included](docs/included.md) ·
 [Projects and /makeit:init](docs/projects.md) ·
