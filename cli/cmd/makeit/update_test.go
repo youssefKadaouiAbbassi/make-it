@@ -210,7 +210,7 @@ markets() {
 }
 drop() { grep -v -x -e "$2" "$S/$1" > "$S/$1.tmp" || true; mv "$S/$1.tmp" "$S/$1"; }
 case "$*" in
-  "--version") echo "2.1.312 (Claude Code)" ;;
+  "--version") echo "2.1.319 (Claude Code)" ;;
   "doctor") ;;
   "plugin list --json") plugins ;;
   "plugin marketplace list --json") markets ;;

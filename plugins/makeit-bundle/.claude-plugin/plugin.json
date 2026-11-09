@@ -1,6 +1,6 @@
 {
   "name": "makeit-bundle",
-  "version": "0.3.11",
+  "version": "0.4.0",
   "license": "MIT",
   "author": {
     "name": "makeit owners"
@@ -11,7 +11,6 @@
     "superpowers",
     "ponytail",
     "chrome-devtools-mcp",
-    "docs-mcp-server",
     "deja-vu",
     "security-audit",
     "typescript-lsp@claude-plugins-official",

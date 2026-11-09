@@ -29,9 +29,9 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit",
+        "matcher": "WebFetch|WebSearch",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs.sh\"", "timeout": 5, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs-mark.sh\"", "timeout": 5 }
         ]
       }
     ],
@@ -47,22 +47,36 @@
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/handoff.sh\"", "timeout": 5 },
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/options.sh\"", "timeout": 5 },
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/ntfy.sh\"", "timeout": 8, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/notify.sh\"", "timeout": 8, "async": true }
         ]
       }
     ],
     "PreToolUse": [
       {
+        "matcher": "Edit|Write|MultiEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs-nudge.sh\"", "timeout": 5 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "if": "Bash(git push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 },
+          { "type": "command", "if": "Bash(git -C * push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 },
+          { "type": "command", "if": "Bash(git -c * push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 }
+        ]
+      },
+      {
         "matcher": "AskUserQuestion|ExitPlanMode",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/ntfy.sh\"", "timeout": 8, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/notify.sh\"", "timeout": 8, "async": true }
         ]
       }
     ],
     "Notification": [
       {
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/ntfy.sh\"", "timeout": 8, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/notify.sh\"", "timeout": 8, "async": true }
         ]
       }
     ]

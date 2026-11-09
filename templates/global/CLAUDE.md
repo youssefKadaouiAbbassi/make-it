@@ -16,6 +16,8 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - Before something irreversible that was not named (force push, history
   rewrite, deleting data, sending a message, publishing), ask once. After a
   yes, do it without asking again.
+- A question or a small urgent fix skips the design and plan steps; tests and
+  checks still run.
 - When the work waits on the user's decision (a delete, a go-ahead, a choice
   no code, doc or default settles), ask with the AskUserQuestion tool, not in
   prose, except a decision that needs reading first (next bullet). The dialog
@@ -63,6 +65,8 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   simulator (`flutter run`, `adb`), with screenshots; a CLI or API by calling it. Ask first only
   when the test would write to production or shared data, send real messages, or cost money. If
   nothing here can run it, say so and say what the owner should check.
+- chrome-devtools for your own local pages, the Chrome extension for sites that
+  need the owner's login; stop and ask at a login, captcha or 2FA screen.
 
 ## Testing
 
@@ -85,10 +89,15 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   full suite; if it is red, say so and ask whether to push anyway.
 - Commits: imperative mood, one logical change, never amend a pushed commit,
   never commit secrets. Do not push to the default branch unless told to.
-- Write `HANDOFF.md` before a context reset and at the end of a session that
-  changed files: what is done, what is next, what is open, how to verify.
+- Write `HANDOFF.md` (`HANDOFF.<branch>.md` on a branch) before a context reset and
+  at the end of a session that changed files: what is done, what is next, what
+  is open, how to verify.
 - Subagents for large, independent tracks only; parallel writers get their own
   worktree. Do not spawn subagents to double-check routine work.
+- A second session that writes code in the same repository runs in its own
+  worktree (`claude -w <name>`).
+- A wait longer than a minute runs in the background or with Monitor, never a
+  foreground sleep.
 
 ## Communication
 

@@ -1,27 +1,20 @@
 #!/usr/bin/env bash
-# docs.sh: SessionStart and PostToolUse (Bash, Edit, Write, MultiEdit). Starts
-# `makeit docs sync --if-changed --quiet <cwd>` in the background, which indexes the project's
-# dependency docs when a manifest or lockfile changed (makeit holds its own lock, so a second
-# trigger exits at once). On SessionStart it also lists the direct dependencies (cwd and two levels
-# down; not the go directive: the standard library is not indexed) and tells the agent to search
-# them. Silent and exit 0 without makeit or jq; without python3, TOML manifests are skipped.
+# docs.sh: SessionStart. Lists the direct dependencies of the project (cwd and two levels down; not
+# the go directive: the standard library is not a dependency) and tells the agent to fetch the docs
+# of the version in use before it relies on their API. docs-nudge.sh enforces that per edit.
+# Silent and exit 0 without jq; without python3, TOML manifests are skipped.
 set -u
 input=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 event=$(jq -r '.hook_event_name // empty' <<<"$input")
 cwd=$(jq -r '.cwd // "."' <<<"$input")
 [ -d "$cwd" ] || exit 0
-case "$event" in SessionStart | PostToolUse) ;; *) exit 0 ;; esac
-# Detached: the session never waits for the sync.
-if command -v makeit >/dev/null 2>&1; then
-  (nohup makeit docs sync --if-changed --quiet "$cwd" </dev/null >/dev/null 2>&1 &)
-fi
 [ "$event" = SessionStart ] || exit 0
 
 deps=""
 add() { deps+="$1"$'\n'; }
 # A folder of repositories (outside git, with children holding their own .git directory): the
-# root and each repository, as makeit's index; never a worktree (.git is a file) or another folder.
+# root and each repository; never a worktree (.git is a file) or another folder.
 roots=("$cwd")
 depth=3
 if ! git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -79,6 +72,6 @@ list=$(printf '%s' "$deps" | head -n 40)
 note="Project dependencies (direct, from manifests):
 $list
 
-These are indexed by makeit; search them (search_docs or the docs-search skill) before you rely on their API."
+Before you rely on a dependency's API, fetch the docs of the version in use (its docs site, or the repository at that release tag)."
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}\n' "$(jq -Rs . <<<"$note")"
 exit 0

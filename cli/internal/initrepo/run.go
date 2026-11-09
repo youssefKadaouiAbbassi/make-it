@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"makeit/internal/catalog"
-	"makeit/internal/docs"
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
 	"makeit/internal/plan"
@@ -28,17 +27,15 @@ type Env struct {
 	Dir, Stack string
 	Catalog    catalog.Source
 	Req        catalog.Requires
-	// Run runs git and gh; Docs.Run runs docs-mcp-server.
+	// Run runs git and gh.
 	Run     execx.Runner
-	Docs    docs.Options
 	Present func(string) bool
 	Now     func() time.Time
 	// CatalogKind and CatalogResolved describe the catalog for the record.
 	CatalogKind, CatalogResolved string
 }
 
-// Options are init's flags. Offline skips the docs sync and refuses Rulesets: both need the
-// network.
+// Options are init's flags. Offline refuses Rulesets, which needs the network.
 type Options struct {
 	Update, Rulesets, Offline bool
 	// Applied is the init change version /makeit:init brought the project to (the report's
@@ -54,7 +51,6 @@ type Report struct {
 	Kept    []setup.Kept
 	Manual  []string
 	Notices []string
-	Docs    []string
 	// Changes are the init changes newer than the project's initVersion, Target the newest one
 	// (what --applied records once they are applied), Keep the differences the user kept.
 	Changes []Change
@@ -79,7 +75,6 @@ type run struct {
 	next    map[string]*state.RepoFile
 	kept    []setup.Kept
 	pending map[string][]byte
-	docs    []string
 	// manual is the hash of the run's manual steps ("" when there are none).
 	manual string
 	// bornAt is the newest init change, set on a first init, whose record starts there.
@@ -169,13 +164,13 @@ func Run(ctx context.Context, e Env, mode plan.Mode, confirm func([]plan.Outcome
 	}
 	r.reset()
 	rep.Plan = plan.Execute(ctx, steps, plan.Options{})
-	rep.Kept, rep.Docs = r.kept, r.docs
+	rep.Kept = r.kept
 	rep.Notices = append(seedRep.Notices, r.newerNotice()...)
 	return rep, nil
 }
 
 func (r *run) reset() {
-	r.next, r.kept, r.pending, r.docs, r.newer = map[string]*state.RepoFile{}, nil, map[string][]byte{}, nil, nil
+	r.next, r.kept, r.pending, r.newer = map[string]*state.RepoFile{}, nil, map[string][]byte{}, nil
 }
 
 // newerNotice says which unchanged files init wrote have a newer version, so a plain run does not
@@ -235,8 +230,8 @@ func resolved(path string) string {
 	}
 }
 
-// steps are, in order: git init when needed, the docs files, the merges, the other seeds, the
-// docs sync and the record.
+// steps are, in order: git init when needed, the docs files, the merges, the other seeds
+// and the record.
 func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 	var steps []plan.Step
 	if gitInit {
@@ -299,11 +294,6 @@ func (r *run) steps(gitInit bool) ([]plan.Step, SeedReport, error) {
 		steps = append(steps, r.seedStep(s))
 	}
 	steps = append(steps, drops...)
-	if r.opts.Offline {
-		rep.Notices = append(rep.Notices, "--offline: docs not synced")
-	} else {
-		steps = append(steps, r.docsStep())
-	}
 	steps = append(steps, r.recordStep())
 	if r.opts.Rulesets {
 		switch {
@@ -448,41 +438,6 @@ func (r *run) mergeStep(m MergeSeed) plan.Step {
 		}}
 }
 
-// docsStep indexes the dependencies' docs. It runs Detect again, after the merges, so the record
-// holds what this sync read; it is already done while no manifest changed since the last sync.
-func (r *run) docsStep() plan.Step {
-	return plan.Step{ID: "docs", Title: fmt.Sprintf("Index the docs of %d libraries (docs-mcp-server)", len(Libs(r.p))),
-		Already: func(context.Context) (bool, error) {
-			if len(Libs(r.p)) == 0 {
-				return true, nil
-			}
-			now, err := ManifestHashes(r.Dir)
-			if err != nil {
-				return false, err
-			}
-			rec := docs.LoadRecord(r.Stack, r.Dir)
-			return len(rec.Manifests) > 0 && !rec.Failed && reflect.DeepEqual(rec.Manifests, now), nil
-		},
-		Run: func(ctx context.Context) (string, error) {
-			// A sync the docs hook started may be running: two would write one index at once.
-			lock, err := fsx.Acquire(docs.LockPath(r.Stack), r.Now())
-			if err != nil {
-				return "docs not synced: " + err.Error(), plan.ErrSkip
-			}
-			defer lock.Release()
-			p, err := Detect(r.Dir)
-			if err != nil {
-				return "", err
-			}
-			rep := docs.Sync(ctx, Libs(p), r.Docs)
-			r.docs = rep.Lines()
-			if err := docs.SaveRecord(r.Stack, r.Dir, docs.Record{Dir: r.Dir, Manifests: p.Manifests, SyncedAt: r.Now().UTC(), Failed: rep.Failed()}); err != nil {
-				return "", err
-			}
-			return strings.Join(r.docs, "\n"), nil
-		}}
-}
-
 // recordStep writes .makeit.json when what the steps leave differs from the record on disk.
 // SaveRepo stamps the CLI version.
 func (r *run) recordStep() plan.Step {
@@ -515,19 +470,6 @@ func (r *run) recordStep() plan.Step {
 		Run: func(context.Context) (string, error) {
 			return "", state.SaveRepo(path, build())
 		}}
-}
-
-// Libs are a project's dependencies as docs libraries. The go directive is left out: it names the
-// standard library, whose pkg.go.dev page at depth 0 is only the package list.
-func Libs(p Project) []docs.Lib {
-	out := make([]docs.Lib, 0, len(p.Deps))
-	for _, d := range p.Deps {
-		if d.Ecosystem == "go" && d.Name == "go" {
-			continue
-		}
-		out = append(out, docs.Lib{Name: d.Name, Version: d.Version, Ecosystem: d.Ecosystem})
-	}
-	return out
 }
 
 func writeFile(path string, b []byte) error {
@@ -661,7 +603,7 @@ func gitTop(abs string) string {
 // detectOrEmpty is Detect, with a directory that does not exist yet giving an empty project.
 func detectOrEmpty(dir string) (Project, error) {
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-		return Project{Dir: dir, Manifests: map[string]string{}}, nil
+		return Project{Dir: dir}, nil
 	}
 	return Detect(dir)
 }

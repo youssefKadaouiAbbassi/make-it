@@ -67,6 +67,7 @@ s="$HOME/.claude/settings.json"; if [ -f "$s" ]; then left=$(jq -c -n --slurpfil
 test ! -e "$HOME/.claude/CLAUDE.md"
 if claude plugin marketplace list --json | grep -q "\"name\": \"makeit\""; then echo "the makeit marketplace is still there"; exit 1; fi
 test ! -e "$HOME/.makeit/catalog"
+test ! -e "$HOME/.makeit/mcp/chrome-devtools"
 makeit setup --yes
 EOS
 chmod 755 /tmp/upkeep.sh
@@ -197,14 +198,7 @@ initchain=$(cat <<'INITCHAIN'
 cat > /tmp/initchain.sh <<"EOS"
 set -e
 M=/usr/local/bin/makeit
-mkdir -p /tmp/initchain-bin
-cat > /tmp/initchain-bin/npx <<"NPX"
-#!/bin/sh
-echo "$*" >> /tmp/initchain-npx.log
-case "$*" in *" list --output json"*) echo "[]" ;; *) echo "Successfully scraped 1 pages" ;; esac
-NPX
-chmod 755 /tmp/initchain-bin/npx
-i() { PATH="/tmp/initchain-bin:$HOME/.local/bin:$PATH" "$M" "$@"; }
+i() { PATH="$HOME/.local/bin:$PATH" "$M" "$@"; }
 p=/tmp/initchain-proj
 mkdir -p "$p"
 cd "$p"
@@ -216,8 +210,7 @@ for f in CLAUDE.md CONSTRAINTS.md HANDOFF.md .gitignore .env.example .makeit.jso
   if [ ! -f "$p/$f" ]; then echo "init did not write $f"; cat /tmp/initchain-1.log; exit 1; fi
 done
 if ! grep -q '"check:full"' package.json; then echo "no check stubs"; cat package.json; exit 1; fi
-if ! grep -q "scrape golang.org/x/term https://pkg.go.dev/golang.org/x/term@v0.47.0 --version v0.47.0" /tmp/initchain-npx.log; then echo "no docs sync"; cat /tmp/initchain-npx.log; exit 1; fi
-echo "init writes the project files and indexes the docs: ok"
+echo "init writes the project files: ok"
 i init --yes --json > /tmp/initchain-2.json 2>/tmp/initchain-2.log || { cat /tmp/initchain-2.log /tmp/initchain-2.json; exit 1; }
 if grep -q '"status": "done"' /tmp/initchain-2.json; then echo "the second init changed something"; cat /tmp/initchain-2.json; exit 1; fi
 echo "a second init changes nothing: ok"
@@ -268,6 +261,28 @@ if command -v npm >/dev/null; then
   [ "$(printf '1. a\n2. b\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = joined ] || { echo "lists.mjs did not read joined"; exit 1; }
   [ "$(printf '1. a\n2. b\n\nPick:\n\n1. **Go** · recommended\n2. **Stop**\n' | node "$lists")" = options ] || { echo "lists.mjs did not read options"; exit 1; }
   echo "reply check through marked: ok"
+  # chrome-devtools-mcp is installed locally, and the shipped .mcp.json starts that copy (a PATH
+  # with node only, so npx could not have served it) and gets an initialize reply.
+  test -f "$HOME/.makeit/mcp/chrome-devtools/node_modules/chrome-devtools-mcp/package.json" || { echo "no local chrome-devtools-mcp"; exit 1; }
+  # The package's engines: ^20.19.0 || ^22.12.0 || >=23 (Ubuntu 24.04's apt node is 18, where npx fails too).
+  if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit((a===20&&b>=19)||(a===22&&b>=12)||a>=23?0:1)'; then
+    echo "chrome-devtools-mcp needs Node ^20.19 || ^22.12 || >=23, this is $(node -v): server start not checked"
+  else
+  nd=$(mktemp -d)
+  ln -s "$(command -v node)" "$nd/node"
+  PATH="$nd" node -e 'const j=require(process.argv[1]).mcpServers["chrome-devtools"];const c=require("child_process").spawn(j.command,j.args,{stdio:["pipe","pipe","inherit"],env:process.env});c.stdout.once("data",d=>{console.log(String(d));c.kill();process.exit(/"serverInfo"/.test(String(d))?0:1)});c.stdin.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"initialize",params:{protocolVersion:"2025-06-18",capabilities:{},clientInfo:{name:"t",version:"0"}}})+"\n");setTimeout(()=>process.exit(1),30000)' "$HOME/.makeit/catalog/plugins/makeit/.mcp.json" || { echo "the shipped .mcp.json did not start the local copy"; exit 1; }
+  echo "chrome-devtools-mcp from the local copy: ok"
+  fi
+  # A local copy that is not the pinned version is not run: npx is (a fake one here, as a marker).
+  wd=$(mktemp -d)
+  mkdir -p "$wd/stack/mcp" "$wd/bin"
+  cp -r "$HOME/.makeit/mcp/chrome-devtools" "$wd/stack/mcp/"
+  sed -i 's/"version": *"[0-9.]*"/"version": "0.0.1"/' "$wd/stack/mcp/chrome-devtools/node_modules/chrome-devtools-mcp/package.json"
+  printf '#!/bin/sh\necho FAKE-NPX "$@"\n' > "$wd/bin/npx"
+  chmod 755 "$wd/bin/npx"
+  out=$(MAKEIT_DIR="$wd/stack" PATH="$wd/bin:$PATH" node -e "$(node -p 'require(process.argv[1]).mcpServers["chrome-devtools"].args[1]' "$HOME/.makeit/catalog/plugins/makeit/.mcp.json")" chrome-devtools-mcp@1.2.3 --isolated)
+  [ "$out" = "FAKE-NPX -y chrome-devtools-mcp@1.2.3 --isolated" ] || { echo "a wrong-version local copy was not replaced by npx: $out"; exit 1; }
+  echo "wrong-version local copy falls back to npx: ok"
 fi
 EOS
 chmod 755 /tmp/toolcheck.sh

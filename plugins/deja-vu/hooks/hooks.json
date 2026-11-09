@@ -1,0 +1,16 @@
+{
+  "description": "Hint hook for makeit: one search nudge per prompt, no recall content (the upstream per-prompt and per-tool recall hooks are removed).",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/hint.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

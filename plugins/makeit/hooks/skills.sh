@@ -4,11 +4,19 @@
 # This puts a one-line reminder next to every prompt: check the skills, with the usual skill per
 # kind of work as examples. It does not re-invoke using-superpowers, whose text is already in
 # context.
+# One-token prompts get no reminder.
 # Exits 0 on every path it does not understand. Needs jq; without it it does nothing.
 set -u
 input=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
-[ "$(jq -r '.hook_event_name // empty' <<<"$input")" = "UserPromptSubmit" ] || exit 0
+# One jq call: the event on the first line, the prompt after it.
+{ read -r ev || true; prompt=$(cat); } < <(jq -r '.hook_event_name // "", .prompt // ""' <<<"$input")
+[ "$ev" = "UserPromptSubmit" ] || exit 0
+# A one-token prompt ("1", "a", "done") is a reply, not new work.
+set -f
+# shellcheck disable=SC2086
+set -- $prompt
+[ $# -ge 2 ] || exit 0
 note='Before your first tool call for a task, including a follow-up that starts new work ("go for it", "fix it") and including a deja recall or any other lookup, check whether a superpowers skill fits (the using-superpowers rules from session start apply) and invoke it with the Skill tool. Usual matches, as examples:
 - bug, failing test or unexpected behaviour: superpowers:systematic-debugging
 - new feature, new command or behaviour change: superpowers:brainstorming

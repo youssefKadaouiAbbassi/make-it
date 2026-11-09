@@ -13,7 +13,6 @@ import (
 	"makeit/internal/buildinfo"
 	"makeit/internal/catalog"
 	"makeit/internal/cli"
-	"makeit/internal/docs"
 	"makeit/internal/execx"
 	"makeit/internal/initrepo"
 	"makeit/internal/paths"
@@ -82,13 +81,12 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 			Kept       []setup.Kept      `json:"kept"`
 			Manual     []string          `json:"manual"`
 			Notices    []string          `json:"notices"`
-			Docs       []string          `json:"docs"`
 			Changes    []initrepo.Change `json:"changes"`
 			InitTarget string            `json:"initTarget,omitempty"`
 			Keep       []string          `json:"keep"`
 			Summary    string            `json:"summary"`
 			Error      string            `json:"error,omitempty"`
-		}{buildinfo.Version, rep.Plan.Outcomes, orEmpty(rep.Kept), orEmpty(rep.Manual), orEmpty(rep.Notices), orEmpty(rep.Docs),
+		}{buildinfo.Version, rep.Plan.Outcomes, orEmpty(rep.Kept), orEmpty(rep.Manual), orEmpty(rep.Notices),
 			orEmpty(rep.Changes), rep.Target, orEmpty(rep.Keep), rep.Plan.Summary(), errText(err)}
 		return emit(stdout, stderr, out, code)
 	}
@@ -109,9 +107,6 @@ func runInit(ctx context.Context, p cli.Parsed, stdout, stderr io.Writer) int {
 	}
 	for _, k := range rep.Kept {
 		fmt.Fprintf(stderr, "kept: %s: %s\n", k.Item, k.Reason)
-	}
-	for _, l := range rep.Docs {
-		fmt.Fprintf(stderr, "docs: %s\n", l)
 	}
 	for _, n := range rep.Notices {
 		fmt.Fprintln(stderr, n)
@@ -151,12 +146,7 @@ func initEnv(stack, dir string) (initrepo.Env, error) {
 	if err != nil {
 		return initrepo.Env{}, err
 	}
-	o, err := docsOptions(stack)
-	if err != nil {
-		// No docs server is known: every library is listed as not indexed, and init goes on.
-		o = docs.Options{Run: func(context.Context, execx.Cmd) (execx.Result, error) { return execx.Result{}, err }}
-	}
-	return initrepo.Env{Dir: dir, Stack: stack, Catalog: src, Req: req, Run: initRun, Docs: o,
+	return initrepo.Env{Dir: dir, Stack: stack, Catalog: src, Req: req, Run: initRun,
 		Present: func(name string) bool { _, ok := execx.LookPath(name); return ok },
 		Now:     time.Now, CatalogKind: kind, CatalogResolved: resolved}, nil
 }

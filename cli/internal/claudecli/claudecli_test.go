@@ -44,15 +44,15 @@ func fixture(t *testing.T, name string) string {
 }
 
 func TestVersionAndFloor(t *testing.T) {
-	c, _ := newCLI(map[string]execx.Result{"--version": {Stdout: "2.1.311 (Claude Code)\n"}})
+	c, _ := newCLI(map[string]execx.Result{"--version": {Stdout: "2.1.319 (Claude Code)\n"}})
 	v, err := c.Version(context.Background())
-	if err != nil || v != "2.1.311" {
+	if err != nil || v != "2.1.319" {
 		t.Fatalf("%q %v", v, err)
 	}
 	cases := []struct {
 		have string
 		ok   bool
-	}{{"2.1.287", true}, {"2.1.311", true}, {"2.2.0", true}, {"3.0", true}, {"2.1.286", false}, {"2.1.9", false}, {"1.99.999", false}}
+	}{{"2.1.319", true}, {"2.1.320", true}, {"2.2.0", true}, {"3.0", true}, {"2.1.318", false}, {"2.1.9", false}, {"1.99.999", false}}
 	for _, c := range cases {
 		err := CheckFloor(c.have, Floor)
 		if (err == nil) != c.ok || (err != nil && !errors.Is(err, ErrBelowFloor)) {

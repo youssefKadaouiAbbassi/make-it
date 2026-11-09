@@ -1,0 +1,14 @@
+{
+  "npm:vitest@5.1.0": {
+    "date": "2026-11-02",
+    "source": "https://registry.npmjs.org/vitest (time.5.1.0)"
+  },
+  "npm:execa@10.2.1": {
+    "date": "2026-10-23",
+    "source": "https://registry.npmjs.org/execa (time.10.2.1)"
+  },
+  "helm:traefik@42.3.1": {
+    "date": "2026-11-06",
+    "source": "https://traefik.github.io/charts/index.yaml (created)"
+  }
+}

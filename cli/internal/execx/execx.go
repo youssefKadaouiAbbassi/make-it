@@ -29,8 +29,8 @@ type Cmd struct {
 	// Inherit connects the terminal, for package managers and sudo that prompt the user.
 	Inherit bool
 	// FileStdout gives the child a temporary file as stdout instead of a pipe: a Node program
-	// that exits right after writing (docs-mcp-server list) loses what a pipe has not taken yet,
-	// everything past 64 KiB.
+	// that exits right after writing loses what a pipe has not taken yet, everything past
+	// 64 KiB.
 	FileStdout bool
 	Timeout    time.Duration
 }

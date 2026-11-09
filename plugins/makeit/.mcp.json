@@ -1,14 +1,17 @@
 {
   "mcpServers": {
     "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@1.12.0", "--no-performance-crux"],
-      "env": { "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1" }
-    },
-    "docs": {
-      "command": "npx",
-      "args": ["-y", "@arabold/docs-mcp-server@3.4.1", "--read-only"],
-      "env": { "DOCS_MCP_TELEMETRY": "false", "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1" }
+      "command": "node",
+      "args": [
+        "-e",
+        "const fs=require('fs'),path=require('path'),os=require('os'),cp=require('child_process'),url=require('url');const spec=process.argv[1],args=process.argv.slice(2);const dir=path.join(process.env.MAKEIT_DIR||path.join(os.homedir(),'.makeit'),'mcp','chrome-devtools','node_modules','chrome-devtools-mcp');const entry=path.join(dir,'build','src','bin','chrome-devtools-mcp.js');let ok=false;try{ok=fs.existsSync(entry)&&JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8')).version===spec.split('@').pop()}catch(e){}if(ok){process.argv=[process.execPath,entry].concat(args);import(url.pathToFileURL(entry).href).catch(function(e){console.error('makeit: local chrome-devtools-mcp failed to load ('+e.message+'), using npx');npx()})}else{npx()}function npx(){const c=cp.spawn('npx',['-y',spec].concat(args),{stdio:'inherit',shell:process.platform==='win32'});c.on('error',function(e){console.error('makeit: could not start npx ('+e.message+')');process.exit(1)});c.on('exit',function(code){process.exit(code===null?1:code)});['SIGTERM','SIGINT','SIGHUP'].forEach(function(s){process.on(s,function(){c.kill(s)})})}",
+        "chrome-devtools-mcp@1.12.0",
+        "--isolated",
+        "--no-performance-crux"
+      ],
+      "env": {
+        "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1"
+      }
     }
   }
 }

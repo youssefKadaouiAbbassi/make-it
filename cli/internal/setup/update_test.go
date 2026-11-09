@@ -5,13 +5,16 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"makeit/internal/catalog"
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
+	"makeit/internal/paths"
 	"makeit/internal/plan"
+	"makeit/internal/platform"
 	"makeit/internal/state"
 )
 
@@ -483,7 +486,7 @@ func TestSetupInstallsMissingBundleDeps(t *testing.T) {
 }
 
 func TestDropUndeclaredOwned(t *testing.T) {
-	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`,{"name":"old","source":"./plugins/old"},{"name":"kept","source":"./plugins/kept"}]`,
 		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"old@makeit","enabled":true},{"id":"kept@makeit","enabled":true}]`)
 	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb"),
 		"old@makeit": ownedAt(""), "kept@makeit": ownedAt("")}
@@ -501,6 +504,43 @@ func TestDropUndeclaredOwned(t *testing.T) {
 	}
 	if has(f.argvs(), "uninstall kept@makeit") || keptReason(e, "kept@makeit") != "another installed plugin still needs it" {
 		t.Errorf("kept@makeit: %v, kept %q", f.argvs(), keptReason(e, "kept@makeit"))
+	}
+}
+
+// A plugin makeit installed that the refreshed marketplace no longer lists is uninstalled
+// directly: `claude plugin prune --dry-run` names no orphans while a plugin fails to load.
+func TestDropOrphanOwnedUninstallsDirectly(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"docs-mcp-server@makeit","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb"), "docs-mcp-server@makeit": ownedAt("")}
+	f.answers["claude plugin prune --dry-run --scope user"] = text("Skipped - cannot determine orphans: a plugin failed to load\n")
+	f.answers["claude plugin uninstall docs-mcp-server@makeit --scope user --keep-data --json"] = text(`{"command":"uninstall","outcome":"ok"}`)
+	if _, err := step(t, e.pluginSteps(), "plugin.drop.docs-mcp-server@makeit").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !has(f.argvs(), "plugin uninstall docs-mcp-server@makeit") || has(f.argvs(), "plugin prune") {
+		t.Errorf("calls %v: want a direct uninstall and no prune", f.argvs())
+	}
+	if e.st.Plugins["docs-mcp-server@makeit"] != nil || len(e.gen.Manifest.Plugins.Uninstalled) != 1 {
+		t.Errorf("not dropped from state and generation: %+v", e.gen.Manifest.Plugins)
+	}
+}
+
+// A plugin the user installed from the makeit marketplace, no longer listed there, is not
+// updated and not removed: one kept line names the command.
+func TestAdoptedOrphanKeptNotUpdated(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"gone@makeit","version":"1.0.0","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb")}
+	s := step(t, e.pluginSteps(), "plugins.adopted")
+	if done, err := s.Already(context.Background()); !done || err != nil {
+		t.Errorf("already = %v, %v; an orphan is nothing to update", done, err)
+	}
+	if has(f.argvs(), "plugin update gone@makeit") || has(f.argvs(), "plugin uninstall") {
+		t.Errorf("calls %v", f.argvs())
+	}
+	if want := "no longer in the makeit marketplace; remove it with claude plugin uninstall gone@makeit"; keptReason(e, "gone@makeit") != want {
+		t.Errorf("kept %q, want %q", keptReason(e, "gone@makeit"), want)
 	}
 }
 
@@ -654,7 +694,7 @@ func converged(t *testing.T) *fakeMachine {
 	t.Helper()
 	m := newMachine(t)
 	m.deps = []string{"makeit@makeit", "superpowers@makeit", "ponytail@makeit", "chrome-devtools-mcp@makeit",
-		"docs-mcp-server@makeit", "deja-vu@makeit", "security-audit@makeit",
+		"deja-vu@makeit", "security-audit@makeit",
 		"typescript-lsp@claude-plugins-official", "pyright-lsp@claude-plugins-official", "rust-analyzer-lsp@claude-plugins-official", "gopls-lsp@claude-plugins-official"}
 	inner := m.run
 	m.env.Run = func(ctx context.Context, c execx.Cmd) (execx.Result, error) {
@@ -662,7 +702,7 @@ func converged(t *testing.T) *fakeMachine {
 			var rows []string
 			for _, p := range m.plugins {
 				row := `{"id":"` + p + `","enabled":true,"version":"1.0.0","scope":"user"`
-				if p == "makeit-bundle@makeit" || p == "makeit@makeit" {
+				if p == "makeit-bundle@makeit" || p == "makeit@makeit" || p == "deja-vu@makeit" {
 					row += `,"readFromFolder":"/x"`
 				}
 				rows = append(rows, row+"}")
@@ -799,5 +839,190 @@ func TestUpdateRecordsAdoptedPinMove(t *testing.T) {
 	}
 	if len(rep.Pins) != 1 || rep.Pins[0].ID != "makeit-bundle@makeit" {
 		t.Errorf("pins %+v, want the adopted plugin's move recorded", rep.Pins)
+	}
+}
+
+// The docs index of the removed docs command goes with the docs-mcp-server store its syncs filled:
+// only when makeit's lock or a record is in <stack>/docs, the proof that makeit ran the syncs.
+func TestUpdateRemovesDocsStore(t *testing.T) {
+	m := converged(t)
+	store := filepath.Join(m.env.Roots.Stack, "docs")
+	writeFile(t, filepath.Join(store, "lock"), "1\n")
+	server := filepath.Join(m.env.Roots.Home, ".local", "share", "docs-mcp-server")
+	writeFile(t, filepath.Join(server, "documents.db"), strings.Repeat("x", 3000))
+	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+	if err != nil {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	for _, d := range []string{store, server} {
+		if _, err := os.Stat(d); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s still there: %v", d, err)
+		}
+	}
+	if !slices.Contains(rep.Changes, state.Change{Kind: "remove", Item: "docs index"}) {
+		t.Errorf("changes %+v lack the docs index removal", rep.Changes)
+	}
+	if !slices.Contains(rep.Changes, state.Change{Kind: "remove", Item: "docs-mcp-server store", From: "2.9 KB", To: "removed"}) {
+		t.Errorf("changes %+v lack the docs-mcp-server store removal with its size", rep.Changes)
+	}
+}
+
+// Without makeit's own record the docs-mcp-server store is the user's: kept.
+func TestUpdateKeepsDocsServerStoreWithoutMakeitRecord(t *testing.T) {
+	m := converged(t)
+	server := filepath.Join(m.env.Roots.Home, ".local", "share", "docs-mcp-server", "documents.db")
+	writeFile(t, server, "mine")
+	for name, setup := range map[string]func(){
+		"no docs dir":      func() {},
+		"foreign docs dir": func() { writeFile(t, filepath.Join(m.env.Roots.Stack, "docs", "notes.md"), "n") },
+	} {
+		setup()
+		rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+		if err != nil {
+			t.Fatalf("%s: %v %s", name, err, rep.Plan.Summary())
+		}
+		if read(t, server) != "mine" {
+			t.Errorf("%s: the docs-mcp-server store was removed without makeit's record", name)
+		}
+	}
+}
+
+// A store that is a link, or one the user pointed DOCS_MCP_STORE_PATH away from, stays and is reported.
+func TestUpdateKeepsLinkedOrRedirectedDocsServerStore(t *testing.T) {
+	for name, prep := range map[string]func(m *fakeMachine, server string){
+		"link": func(m *fakeMachine, server string) {
+			target := filepath.Join(m.env.Roots.Home, "elsewhere")
+			writeFile(t, filepath.Join(target, "documents.db"), "mine")
+			if err := os.MkdirAll(filepath.Dir(server), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, server); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"env": func(m *fakeMachine, server string) {
+			writeFile(t, filepath.Join(server, "documents.db"), "mine")
+			m.env.Getenv = func(k string) string {
+				if k == "DOCS_MCP_STORE_PATH" {
+					return "/somewhere"
+				}
+				return ""
+			}
+		},
+		"settings env": func(m *fakeMachine, server string) {
+			writeFile(t, filepath.Join(server, "documents.db"), "mine")
+			writeFile(t, filepath.Join(m.env.Roots.Claude, "settings.json"), `{"env":{"DOCS_MCP_STORE_PATH":"/somewhere"}}`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := converged(t)
+			server := filepath.Join(m.env.Roots.Home, ".local", "share", "docs-mcp-server")
+			writeFile(t, filepath.Join(m.env.Roots.Stack, "docs", "lock"), "1\n")
+			prep(m, server)
+			rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+			if err != nil {
+				t.Fatalf("%v %s", err, rep.Plan.Summary())
+			}
+			if _, err := os.Lstat(server); err != nil {
+				t.Errorf("the store was removed: %v", err)
+			}
+			if r := keptReason(&env{kept: rep.Kept}, "docs-mcp-server store"); !strings.HasPrefix(r, "left in place: ") {
+				t.Errorf("kept %q", r)
+			}
+		})
+	}
+}
+
+// The store is where docs-mcp-server 3.4.1 puts it (env-paths data dir for "docs-mcp-server").
+func TestDocsServerStorePerPlatform(t *testing.T) {
+	home := filepath.Join("h", "u")
+	cases := []struct {
+		os   string
+		env  map[string]string
+		want string
+	}{
+		{"linux", nil, filepath.Join(home, ".local", "share", "docs-mcp-server")},
+		{"linux", map[string]string{"XDG_DATA_HOME": "/x/data"}, filepath.Join("/x/data", "docs-mcp-server")},
+		{"darwin", nil, filepath.Join(home, "Library", "Application Support", "docs-mcp-server")},
+		{"windows", nil, filepath.Join(home, "AppData", "Local", "docs-mcp-server", "Data")},
+		{"windows", map[string]string{"LOCALAPPDATA": `C:\L`}, filepath.Join(`C:\L`, "docs-mcp-server", "Data")},
+	}
+	for _, c := range cases {
+		e := Env{Roots: paths.Roots{Home: home}, Platform: platform.Platform{OS: c.os}, Getenv: func(k string) string { return c.env[k] }}
+		if got := docsServerStore(e); got != c.want {
+			t.Errorf("%s %v: %s, want %s", c.os, c.env, got, c.want)
+		}
+	}
+}
+
+func TestUpdateKeepsForeignDocsDir(t *testing.T) {
+	m := converged(t)
+	foreign := filepath.Join(m.env.Roots.Stack, "docs", "notes.md")
+	writeFile(t, foreign, "mine\n")
+	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+	if err != nil {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if read(t, foreign) != "mine\n" {
+		t.Error("a docs directory without makeit's lock was removed")
+	}
+	if slices.ContainsFunc(rep.Changes, func(c state.Change) bool { return c.Kind == "remove" }) {
+		t.Errorf("changes %+v", rep.Changes)
+	}
+}
+
+// A store with only a record (a sha256-named json) and no lock is still makeit's.
+func TestUpdateRemovesDocsStoreWithRecordOnly(t *testing.T) {
+	m := converged(t)
+	store := filepath.Join(m.env.Roots.Stack, "docs")
+	writeFile(t, filepath.Join(store, strings.Repeat("ab", 32)+".json"), "{}")
+	if _, err := Update(context.Background(), m.env, plan.Apply, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(store); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("record-only store still there: %v", err)
+	}
+}
+
+// A foreign docs directory is no work: a plan needs no consent and a dry run changes nothing.
+func TestUpdateForeignDocsDirNeedsNoConsent(t *testing.T) {
+	m := converged(t)
+	foreign := filepath.Join(m.env.Roots.Stack, "docs", "notes.md")
+	writeFile(t, foreign, "mine\n")
+	rep, err := Update(context.Background(), m.env, plan.NeedConsent, nil, nil)
+	if err != nil {
+		t.Fatalf("%v %s", err, rep.Plan.Summary())
+	}
+	if read(t, foreign) != "mine\n" || stepStatusOf(rep.Plan, "docs.store") != plan.Already {
+		t.Errorf("docs.store %q", stepStatusOf(rep.Plan, "docs.store"))
+	}
+}
+
+func stepStatusOf(r plan.Report, id string) plan.Status {
+	for _, o := range r.Outcomes {
+		if o.ID == id {
+			return o.Status
+		}
+	}
+	return ""
+}
+
+// An owned plugin whose marketplace entry moved from a pinned git-subdir to a relative path (deja-vu,
+// 0.4.0) still runs the old pin's files until plugin update runs.
+func TestOwnedMovesFromPinToRelativePath(t *testing.T) {
+	dv := `{"name":"deja-vu","version":"0.4.0","source":"./plugins/deja-vu"}`
+	e, f := pluginEnv(t, `["deja-vu"]`, `[`+bundleEntry+`,`+dv+`]`,
+		`[`+bundleRow+`,{"id":"deja-vu@makeit","version":"9ce7c980b9b8-0123abcd","enabled":true,"gitCommitSha":"9ce7c980b9b805c7c4a4f07ffea544a423690eda"}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "deja-vu@makeit": ownedAt("9ce7c980b9b805c7c4a4f07ffea544a423690eda")}
+	f.answers["claude plugin update deja-vu@makeit --scope user --json"] = text(updated)
+	s := step(t, e.pluginSteps(), "plugin.deja-vu@makeit")
+	if done, err := s.Already(context.Background()); done || err != nil {
+		t.Fatalf("already = %v, %v; the old pin's files are still installed", done, err)
+	}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !has(f.argvs(), "claude plugin update deja-vu@makeit --scope user --json") {
+		t.Errorf("deja-vu not updated: %v", f.argvs())
 	}
 }

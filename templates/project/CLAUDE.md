@@ -7,8 +7,14 @@ sentence. Example for a tracker: "status and assignee at a glance first; scan
 speed over refinement."> Every UI or UX decision defers to it.
 
 Read `CONSTRAINTS.md` before writing code. Do not weaken it to make a change pass.
-Read `HANDOFF.md` at the start of a session; rewrite it (under 30 lines) before
-a context reset and at the end of a session that changed files.
+Read `HANDOFF.md` (`HANDOFF.<branch>.md` on a branch) at the start of a session; rewrite it
+(under 30 lines) before a context reset and at the end of a session that changed files.
+
+## Start of a task
+
+1. Read the ticket (issue, card or the owner's message) in full; quote what it asks for.
+2. Branch from the default branch: `git switch -c <type>/<short-name>`. Never work on it.
+3. Run `check:task` once to know the baseline.
 
 ## Commands
 
@@ -21,6 +27,16 @@ a context reset and at the end of a session that changed files.
 | check:full | `<runner> check:full` (everything CI runs) |
 
 Run `check:task` before saying a task is done; `check:full` before a push.
+
+## End of a task
+
+1. `check:task` passes, and the app was started and the change exercised (the verify skill).
+2. `check:full` before a push.
+3. Deploy: push the branch and open the PR; a push to a deploy branch (`main`, `master`, or the
+   ones in `.claude/settings.json` ask rules) is the owner's call.
+4. Handoff: on a branch, write `HANDOFF.<slug>.md` (the branch name with characters outside
+   `A-Za-z0-9._-` as `-`); on the default branch, `HANDOFF.md`. Delete `HANDOFF.<slug>.md` in the
+   merge so it never reaches the default branch.
 
 ## Layout
 

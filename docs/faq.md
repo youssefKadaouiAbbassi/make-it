@@ -66,7 +66,7 @@ get it back, `makeit setup --reinstall <tool>`, naming the tool as the
   a new one is refused. The plugin set built into makeit is still applied.
 - `update` skips replacing makeit with a newer release, skips the check for one, and keeps every
   plugin at its current release.
-- `init` skips the docs index and refuses `--rulesets`. `docs sync` does nothing.
+- `init` refuses `--rulesets`.
 
 The programs makeit runs still use the network when they need it: package managers that install
 prerequisites, and Claude Code when it installs or updates plugins. `makeit doctor` makes no

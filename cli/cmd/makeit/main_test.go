@@ -83,7 +83,7 @@ func machine(t *testing.T, withClaude bool) doctor.Machine {
 	}
 	if withClaude {
 		f := fakeRunner{
-			"--version":                      {Stdout: "2.1.311 (Claude Code)\n"},
+			"--version":                      {Stdout: "2.1.319 (Claude Code)\n"},
 			"doctor":                         {},
 			"plugin marketplace list --json": {Stdout: `[{"name": "makeit", "source": "directory", "path": "/repo"}]`},
 			"plugin list --json":             {Stdout: embeddedPlugins(t)},
@@ -264,7 +264,7 @@ func TestDoctorJSON(t *testing.T) {
 func TestDoctorJSONHidesSecret(t *testing.T) {
 	m := machine(t, true)
 	dir := t.TempDir()
-	write(t, filepath.Join(dir, "makeit.json"), `{"schemaVersion": 1, "requires": {"claudeCode": {"hard": "2.1.287", "soft": "2.1.310"}},
+	write(t, filepath.Join(dir, "makeit.json"), `{"schemaVersion": 1, "requires": {"claudeCode": {"hard": "2.1.319", "soft": "2.1.319"}},
 		"marketplace": "makeit", "bundle": "makeit-bundle@makeit"}`)
 	write(t, filepath.Join(dir, "settings.baseline.json"), `{"env": {"API_KEY": "stack-s3cret", "NTFY_TOPIC": "stack-topic"}}`)
 	write(t, filepath.Join(dir, "plugins", "makeit-bundle", ".claude-plugin", "plugin.json"), `{"dependencies": []}`)
@@ -341,7 +341,7 @@ func TestEndToEnd(t *testing.T) {
 	// Builtins only: PATH holds nothing but this directory.
 	write(t, filepath.Join(bin, "claude"), `#!/bin/sh
 case "$*" in
-  "--version") echo "2.1.311 (Claude Code)" ;;
+  "--version") echo "2.1.319 (Claude Code)" ;;
   "doctor") ;;
   "plugin marketplace list --json") echo '[{"name": "makeit", "source": "directory", "path": "/repo"}]' ;;
   "plugin list --json") printf '%s\n' '`+embeddedPlugins(t)+`' ;;
@@ -380,5 +380,12 @@ esac
 	}
 	if after := tree(t, home); !slices.Equal(before, after) {
 		t.Errorf("doctor wrote under HOME:\nbefore %v\nafter  %v", before, after)
+	}
+}
+
+func TestDocsCommandIsGone(t *testing.T) {
+	code, _, errOut := run2(t, "docs", "sync")
+	if code != 2 || !strings.Contains(errOut, "unknown command 'docs'") {
+		t.Errorf("exit %d %q", code, errOut)
 	}
 }

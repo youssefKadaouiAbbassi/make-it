@@ -60,7 +60,7 @@ func TestRunCancelledIsNotATimeout(t *testing.T) {
 }
 
 // FileStdout gives the child a file as stdout, not a pipe: a Node program that exits right after
-// writing (docs-mcp-server list) loses everything past the 64 KiB pipe buffer, never a file's.
+// writing (a Node CLI listing its output) loses everything past the 64 KiB pipe buffer, never a file's.
 func TestRunFileStdout(t *testing.T) {
 	script := `if [ -p /dev/stdout ]; then echo pipe; else echo file; fi; head -c 200000 /dev/zero | tr '\0' x`
 	r, err := Run(context.Background(), Cmd{Argv: []string{"sh", "-c", script}, FileStdout: true})

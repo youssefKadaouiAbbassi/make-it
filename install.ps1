@@ -51,7 +51,8 @@
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
-    # Then setup, asking its one question in this console. MAKEIT_YES=1 sets up without asking;
+    # Then setup, which shows its plan and asks to apply it, then asks about phone notifications once,
+    # in this console. MAKEIT_YES=1 sets up without asking;
     # MAKEIT_NO_SETUP=1 installs makeit only.
     $installed = Join-Path $env:USERPROFILE '.local\bin\makeit.exe'
     if ($env:MAKEIT_NO_SETUP) { Write-Output 'next: makeit setup'; return }

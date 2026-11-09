@@ -1,16 +1,17 @@
 # Commands
 
-Every command and flag, as `makeit help` prints them in makeit 0.3.11. Run `makeit help <command>` for the same text in your terminal.
+Every command and flag, as `makeit help` prints them in makeit 0.4.0. Run `makeit help <command>` for the same text in your terminal.
 
 ```
-makeit 0.3.11: a tested Claude Code setup for serious coding.
+makeit 0.4.0: a tested Claude Code setup for serious coding.
 
 Usage: makeit [command] [flags]   (no command: status and what to do next)
 
 Commands:
   doctor                 check this machine against what makeit sets up; changes nothing
   help [command|exit-codes|environment] show help for a command or a topic
-  init [dir]             set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index
+  init [dir]             set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI
+  notify                 send notifications to your phone: ask again about ntfy and Claude Code's own push
   rollback               undo the last update that changed something
   setup                  set up this machine: prerequisites, Claude Code, the plugin set, settings and global files
   uninstall              remove what makeit put on this machine and nobody changed since
@@ -62,7 +63,7 @@ Flags for every command:
 ```
 Usage: makeit init [dir] [flags]
 
-set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index
+set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI
 
 Flags:
   --applied <version>                record that /makeit:init applied the listed init changes up to version (the initTarget init --json reports); writes only .makeit.json
@@ -224,6 +225,12 @@ Environment variables makeit reads:
   GOBIN               where doctor looks for gopls that go install put off PATH (then GOPATH/bin, then ~/go/bin)
   GOPATH              its first entry's bin is where doctor looks for gopls when GOBIN is not set
   CARGO_HOME          its bin is where doctor looks for rust-analyzer off PATH (default ~/.cargo/bin)
+  XDG_CACHE_HOME      where uninstall looks for the docs hook's date cache, makeit-docs (default ~/.cache)
+  XDG_DATA_HOME       where update looks for docs-mcp-server's old index to remove (default ~/.local/share; macOS and Windows use their own folders, LOCALAPPDATA on Windows)
+  LOCALAPPDATA        on Windows, where update looks for docs-mcp-server's old index to remove
+  ANTHROPIC_API_KEY   when set (or in settings.json env), makeit notify skips the Remote Control question: it needs a claude.ai login
+  NTFY_URL            the ntfy server in the subscribe line makeit notify prints (environment or settings.json env; default https://ntfy.sh)
+  DOCS_MCP_STORE_PATH when set (environment or settings.json env), update keeps docs-mcp-server's default index instead of removing it
   SSL_CERT_FILE       a CA bundle read first, before the system ones, for makeit's downloads
   SSL_CERT_DIR        a folder of CA certificates read after SSL_CERT_FILE
   NO_COLOR            when set, no colour

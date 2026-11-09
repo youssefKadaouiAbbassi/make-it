@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: draft
+description: Reply to a French-speaking client about a delayed deploy, after work in a repo. Pass = the final message is plain, complete, ready-to-paste French text with no Markdown, backticks, file paths, code references or emojis.
+runs: 3
+execution:
+  max_turns: 20
+  timeout_seconds: 600
+context:
+  scaffold_script: scaffold.sh

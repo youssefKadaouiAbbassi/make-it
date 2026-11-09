@@ -9,8 +9,7 @@ import (
 	"testing"
 )
 
-// initRepo is a git repository with a node and a Go manifest whose only library is a Go module,
-// so the docs step needs no network (pkg.go.dev URLs are built, not looked up).
+// initRepo is a git repository with a node and a Go manifest.
 func initRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -20,8 +19,15 @@ func initRepo(t *testing.T) string {
 	return dir
 }
 
+// initMachine gives init an empty home and stack.
+func initMachine(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("MAKEIT_DIR", t.TempDir())
+}
+
 func TestInitJSON(t *testing.T) {
-	m := newDocsMachine(t)
+	initMachine(t)
 	dir := initRepo(t)
 	code, out, errOut := run2(t, "init", "--json", "--yes", dir)
 	if code != 0 {
@@ -31,16 +37,13 @@ func TestInitJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("not one JSON object: %v\n%s", err, out)
 	}
-	for _, k := range []string{"version", "plan", "manual", "notices", "docs", "kept", "summary", "changes", "keep"} {
+	for _, k := range []string{"version", "plan", "manual", "notices", "kept", "summary", "changes", "keep"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("JSON lacks %q: %s", k, out)
 		}
 	}
-	if !strings.Contains(string(got["docs"]), "indexed golang.org/x/term v0.47.0") || strings.Contains(string(got["docs"]), "go 1.27.3") {
-		t.Errorf("docs %s", got["docs"])
-	}
-	if c := m.take(); len(c) != 2 || !strings.Contains(c[1], "scrape golang.org/x/term https://pkg.go.dev/golang.org/x/term@v0.47.0") {
-		t.Errorf("docs calls %q", c)
+	if _, ok := got["docs"]; ok {
+		t.Errorf("JSON still has docs: %s", out)
 	}
 	for _, f := range []string{"CLAUDE.md", "CONSTRAINTS.md", "HANDOFF.md", ".gitignore", ".makeit.json"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
@@ -62,14 +65,10 @@ func TestInitJSON(t *testing.T) {
 }
 
 func TestInitOffline(t *testing.T) {
-	m := newDocsMachine(t)
+	initMachine(t)
 	dir := initRepo(t)
-	code, out, errOut := run2(t, "init", "--json", "--yes", "--offline", dir)
-	if code != 0 || !strings.Contains(out, "--offline: docs not synced") {
+	if code, out, errOut := run2(t, "init", "--json", "--yes", "--offline", dir); code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
-	}
-	if c := m.take(); len(c) != 0 {
-		t.Errorf("--offline ran the docs server: %q", c)
 	}
 	if code, out, _ := run2(t, "init", "--json", "--yes", "--offline", "--rulesets", dir); code != 1 || !strings.Contains(out, "--rulesets needs the network; drop --offline") {
 		t.Errorf("--offline --rulesets: exit %d %s", code, out)
@@ -77,7 +76,7 @@ func TestInitOffline(t *testing.T) {
 }
 
 func TestInitConsentAndUsage(t *testing.T) {
-	newDocsMachine(t)
+	initMachine(t)
 	dir := initRepo(t)
 	if code, _, errOut := run2(t, "init", dir); code != 2 || !strings.Contains(errOut, "stdin is not a terminal") {
 		t.Errorf("no terminal, no --yes: exit %d %q", code, errOut)
@@ -101,7 +100,7 @@ func TestInitConsentAndUsage(t *testing.T) {
 // The manual block prints when the run changed something or its lines are new since the record; a
 // re-run with nothing to do points at it in one line; --dry-run always prints it.
 func TestInitManualOnce(t *testing.T) {
-	newDocsMachine(t)
+	initMachine(t)
 	dir := initRepo(t)
 	const block = "for /makeit:init to apply:"
 	if code, _, errOut := run2(t, "init", "--yes", dir); code != 0 || !strings.Contains(errOut, block) {
@@ -136,7 +135,7 @@ func TestInitManualOnce(t *testing.T) {
 }
 
 func TestInitApplied(t *testing.T) {
-	newDocsMachine(t)
+	initMachine(t)
 	dir := initRepo(t)
 	code, out, errOut := run2(t, "init", "--json", "--yes", dir)
 	var first struct{ InitTarget string }

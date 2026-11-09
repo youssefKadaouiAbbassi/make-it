@@ -2,11 +2,13 @@ package setup
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +19,7 @@ import (
 	"makeit/internal/claudecli"
 	"makeit/internal/execx"
 	"makeit/internal/jsonx"
+	"makeit/internal/notify"
 	"makeit/internal/plan"
 	"makeit/internal/settings"
 	"makeit/internal/state"
@@ -650,5 +653,101 @@ func TestUninstallPurgeKeepsBinaryFiles(t *testing.T) {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("%s: %v", p, err)
 		}
+	}
+}
+
+// notifyOn records what `makeit notify` wrote, as it does: the keys in settings.json and their records in state.
+func notifyOn(t *testing.T, m *fakeMachine) {
+	t.Helper()
+	path := filepath.Join(m.env.Roots.Claude, "settings.json")
+	var rec, push settings.State
+	_, err := notify.EnableNtfy(path, rand.Reader, func(w settings.State) error { rec = w; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = notify.EnablePush(path, func(w settings.State) error { push = w; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(m.env.Roots.Stack, "state.json")
+	st, _, err := state.LoadState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.NotifyKeys = settings.State{}
+	maps.Copy(st.NotifyKeys, rec)
+	maps.Copy(st.NotifyKeys, push)
+	if err := state.SaveState(statePath, st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUninstallRemovesNotifyKeys(t *testing.T) {
+	m := installed(t)
+	notifyOn(t, m)
+	uninstall(t, m, UninstallOptions{})
+	got := read(t, filepath.Join(m.env.Roots.Claude, "settings.json"))
+	for _, k := range []string{"NTFY_TOPIC", "remoteControlAtStartup", "inputNeededNotifEnabled", "agentPushNotifEnabled"} {
+		if strings.Contains(got, k) {
+			t.Errorf("%s still in settings.json: %s", k, got)
+		}
+	}
+}
+
+// The docs hook's release-date cache lives outside the stack and goes with makeit.
+func TestUninstallRemovesDocsDateCache(t *testing.T) {
+	for name, xdg := range map[string]string{"default": "", "XDG_CACHE_HOME": "xdg"} {
+		t.Run(name, func(t *testing.T) {
+			m := installed(t)
+			base := filepath.Join(m.env.Roots.Home, ".cache")
+			if xdg != "" {
+				base = filepath.Join(m.env.Roots.Home, xdg)
+				m.env.Getenv = func(k string) string {
+					if k == "XDG_CACHE_HOME" {
+						return base
+					}
+					return ""
+				}
+			}
+			writeFile(t, filepath.Join(base, "makeit-docs", "dates.tsv"), "npm:x@1\t2026-01-01\n")
+			writeFile(t, filepath.Join(base, "other", "keep"), "k")
+			uninstall(t, m, UninstallOptions{})
+			if _, err := os.Stat(filepath.Join(base, "makeit-docs")); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("makeit-docs cache still there: %v", err)
+			}
+			if read(t, filepath.Join(base, "other", "keep")) != "k" {
+				t.Error("another cache folder was touched")
+			}
+		})
+	}
+}
+
+func TestUninstallKeepsChangedNotifyKeys(t *testing.T) {
+	m := installed(t)
+	notifyOn(t, m)
+	live := settingsOf(t, m)
+	live.Set("remoteControlAtStartup", false)
+	env, _ := live.Get("env")
+	env.(*jsonx.Object).Set("NTFY_TOPIC", "my-own-topic")
+	saveSettings(t, m, live)
+	rep := uninstall(t, m, UninstallOptions{})
+	got := read(t, filepath.Join(m.env.Roots.Claude, "settings.json"))
+	if !strings.Contains(got, "my-own-topic") || !strings.Contains(got, `"remoteControlAtStartup": false`) {
+		t.Errorf("a changed value was removed: %s", got)
+	}
+	if strings.Contains(got, "agentPushNotifEnabled") {
+		t.Errorf("an unchanged key stayed: %s", got)
+	}
+	if reasonOf(rep, "/env/NTFY_TOPIC") == "" {
+		t.Errorf("the kept topic is not reported: %+v", rep.Kept)
+	}
+}
+
+func TestKeepSettingsNamesNotifyKeys(t *testing.T) {
+	m := installed(t)
+	notifyOn(t, m)
+	rep := uninstall(t, m, UninstallOptions{KeepSettings: true})
+	if r := reasonOf(rep, "settings"); !strings.Contains(r, "/env/NTFY_TOPIC") || !strings.Contains(r, "/agentPushNotifEnabled") {
+		t.Errorf("keep note %q does not list the notify keys", r)
 	}
 }

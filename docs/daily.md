@@ -13,11 +13,14 @@ conversation). Three things happen before you type anything:
   background. It moves makeit, Claude Code, the plugins and their tools to their newest releases
   and writes to `~/.makeit/update.log`. If something moved, the next session tells you in one
   line, for example `makeit updated: superpowers 7.0.1 → 7.0.2 · undo: makeit rollback`.
-- **Claude picks up where the last session stopped.** It reads the project's `HANDOFF.md`: what
-  is done, what is next, what is open. You do not need to re-explain yesterday's work.
+- **Claude picks up where the last session stopped.** It reads the project's handoff (`HANDOFF.md`, or
+  `HANDOFF.<branch>.md` on a feature branch or worktree): what is done, what is next, what is open. You do not need to re-explain yesterday's work.
 - **Claude knows your dependencies.** It gets the list of the project's direct dependencies and
-  a reminder to search their docs. The docs index is rebuilt in the background whenever a
-  manifest or lockfile changes, so the docs match the versions you actually use.
+  a reminder to fetch the docs of the version in use before relying on its API. When Claude
+  is about to use a library released after its training, it is stopped once and sent to read that
+  version's docs first. Nothing is indexed; the docs are read on demand.
+- **Claude can look back.** deja-vu gives it a short summary of earlier sessions in this project and
+  a search over all of them, plus one line per prompt that may touch something decided before.
 
 ## Giving Claude work
 
@@ -91,9 +94,15 @@ What to say to get the most out of each part, by task: [Getting the most out of 
 Just stop. When files changed, Claude rewrites `HANDOFF.md` before the turn ends, and again
 before Claude Code compacts a long conversation. Tomorrow's session starts from it.
 
-To be told when Claude finishes or needs you while you are away, set `NTFY_TOPIC` to an
-[ntfy](https://ntfy.sh) topic in the `env` block of `~/.claude/settings.json`. It sends only the
-repository name and the event.
+Finishing, asking you something and waiting for a permission each raise a desktop notification at
+once, with no idle delay. To get them on your phone while you are away, answer the two questions
+setup asks at its end, or ask them again with `makeit notify`: an [ntfy](https://ntfy.sh) topic
+(makeit makes a private one for you) and, optionally, Claude Code's own phone push. Only the
+repository name and the event are sent.
+
+Two sessions on the same repository: the second runs in its own worktree (`claude -w <name>`), and
+each branch keeps its own handoff file, so neither overwrites the other. A `git push` from `main`,
+`master` or a deploy branch without a branch name asks first.
 
 ## A new project, or an older one
 

@@ -26,6 +26,7 @@ import (
 // fakeMachine is a linux machine with every prerequisite, Claude Code 2.1.312 at /usr/bin/claude
 // and a claude that remembers the marketplaces and plugins it was asked to add.
 type fakeMachine struct {
+	t           *testing.T
 	env         Env
 	markets     []string
 	plugins     []string
@@ -45,7 +46,7 @@ type fakeMachine struct {
 func newMachine(t *testing.T) *fakeMachine {
 	t.Helper()
 	home := t.TempDir()
-	m := &fakeMachine{}
+	m := &fakeMachine{t: t}
 	m.env = Env{
 		Roots:    paths.Roots{Home: home, Claude: filepath.Join(home, ".claude"), Stack: filepath.Join(home, ".makeit")},
 		Platform: platform.Platform{OS: "linux", Arch: "amd64", PM: platform.APT},
@@ -81,8 +82,22 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 		return "[" + strings.Join(rows, ",") + "]"
 	}
 	switch {
+	case strings.HasPrefix(cmd, "npm install --prefix ") && len(c.Argv) == 7:
+		// The local chrome-devtools-mcp install: leaves the package.json npm would.
+		pkg, ver, _ := strings.Cut(c.Argv[6], "@")
+		path := filepath.Join(c.Argv[3], "node_modules", pkg, "package.json")
+		// Not t.Fatal: this runs off the test goroutine.
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			m.t.Error(err)
+			return execx.Result{Code: 1}, nil
+		}
+		if err := os.WriteFile(path, []byte(`{"version":"`+ver+`"}`), 0o644); err != nil {
+			m.t.Error(err)
+			return execx.Result{Code: 1}, nil
+		}
+		return execx.Result{}, nil
 	case cmd == "/usr/bin/claude --version":
-		return execx.Result{Stdout: "2.1.312 (Claude Code)\n"}, nil
+		return execx.Result{Stdout: "2.1.319 (Claude Code)\n"}, nil
 	case cmd == "/usr/bin/claude doctor":
 		return execx.Result{}, nil
 	case cmd == "/usr/bin/claude plugin marketplace list --json":
@@ -216,8 +231,8 @@ func TestSecondRunResumes(t *testing.T) {
 	second := apply(t, m)
 	for _, o := range second.Plan.Outcomes {
 		want := plan.Already
-		// bundle failed on the first run; settings and the global files come after it.
-		if o.ID == "bundle" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") || strings.HasPrefix(o.ID, "path.") {
+		// bundle failed on the first run; the local MCP install, settings and the global files come after it.
+		if o.ID == "bundle" || o.ID == "mcp.chrome-devtools" || o.ID == "settings" || strings.HasPrefix(o.ID, "global.") || strings.HasPrefix(o.ID, "path.") {
 			want = plan.Done
 		}
 		if o.Status != want {

@@ -4,7 +4,8 @@
 #   curl -fsSL https://github.com/<repo>/releases/download/v<version>/install.sh | sh
 # The copy attached to a release carries that release's version, repository and public key.
 # MAKEIT_VERSION installs another version; MAKEIT_RELEASES_URL replaces https://github.com.
-# Then it runs `makeit setup`, asking its one question on the terminal:
+# Then it runs `makeit setup`, which shows its plan and asks to apply it, then asks about phone
+# notifications once, on the terminal:
 #   ... | sh -s -- --yes        set up without asking (MAKEIT_YES=1)
 #   ... | sh -s -- --no-setup   install makeit only (MAKEIT_NO_SETUP=1)
 # Any other flag goes to setup as is (--offline, --catalog <src>, --dry-run).

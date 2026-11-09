@@ -88,6 +88,24 @@ echo "== changelog"
 v=$(python3 -c "import json; print(json.load(open('../.claude-plugin/marketplace.json'))['metadata']['version'])")
 if bash ../cli/scripts/release-notes.sh "$v" >/dev/null; then echo "ok CHANGELOG.md has $v"; else echo "FAIL changelog"; fail=1; fi
 
+# plugins/deja-vu is generated: regenerating at the UPSTREAM tag must reproduce it byte for byte.
+echo "== generated deja-vu plugin"
+dtag=$(sed -n 's/^tag //p' ../plugins/deja-vu/UPSTREAM 2>/dev/null)
+dt=$(mktemp -d "${TMPDIR:-/tmp}/deja-gen.XXXXXX")
+if [ -n "$dtag" ] && bash ../cli/scripts/gen-deja-plugin.sh "$dtag" "$dt/out" && diff -r ../plugins/deja-vu "$dt/out" >/dev/null \
+  && [ "$(cd ../plugins/deja-vu && find . -type f -printf '%m %p\n' | sort)" = "$(cd "$dt/out" && find . -type f -printf '%m %p\n' | sort)" ]; then echo "ok plugins/deja-vu matches a fresh generation at $dtag"
+else echo "FAIL plugins/deja-vu differs from gen-deja-plugin.sh at its UPSTREAM tag ($dtag)"; fail=1; fi
+/bin/rm -rf "$dt"
+# Every local plugin carries the catalog version: a change to a generated plugin must reach users.
+if python3 -I -c "
+import json,sys
+m=json.load(open('../.claude-plugin/marketplace.json')); v=m['metadata']['version']
+bad=[p['name'] for p in m['plugins'] if isinstance(p['source'],str) and p.get('version')!=v]
+print('local plugins off version',v,bad) if bad else None; sys.exit(1 if bad else 0)"; then echo "ok local plugin entries carry the catalog version"; else echo "FAIL local plugin version"; fail=1; fi
+if command -v claude >/dev/null 2>&1; then
+  if claude plugin validate ../plugins/deja-vu --strict >/dev/null 2>&1; then echo "ok claude plugin validate --strict deja-vu"; else echo "FAIL claude plugin validate deja-vu"; fail=1; fi
+fi
+
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
   zizmor --no-progress --min-severity low --persona auditor .github/workflows ../.github/workflows || fail=1
@@ -102,9 +120,27 @@ for d in . ..; do
   /bin/rm -rf "$t"
 done
 
+# docs/hooks.md is generated from every bundled plugin's hooks (external ones at their pinned sha).
+echo "== hooks doc"
+hd=$(mktemp -d "${TMPDIR:-/tmp}/hooks-doc.XXXXXX")
+if bash gen-hooks-doc.sh "$hd/hooks.md" && diff -u ../docs/hooks.md "$hd/hooks.md" >/dev/null; then echo "ok docs/hooks.md matches a fresh generation"
+else echo "FAIL docs/hooks.md differs from ci/gen-hooks-doc.sh output (bash ci/gen-hooks-doc.sh docs/hooks.md)"; fail=1; fi
+/bin/rm -rf "$hd"
+
 echo "== json"
 for f in rulesets/*.json renovate.json budget.json release-please-config.json .release-please-manifest.json; do
   python3 -c "import json,sys; json.load(open('$f'))" && echo "ok $f" || { echo "FAIL $f"; fail=1; }
 done
+
+echo "== global CLAUDE.md"
+g=../templates/global/CLAUDE.md
+for k in 'skips the design and plan steps' 'claude -w <name>' 'with Monitor, never a' 'foreground sleep' 'captcha or 2FA screen'; do
+  grep -qF -- "$k" "$g" && echo "ok $k" || { echo "FAIL $g lacks: $k"; fail=1; }
+done
+[ "$(wc -l < "$g")" -lt 200 ] && echo "ok under 200 lines" || { echo "FAIL $g is 200+ lines"; fail=1; }
+
+echo "== draft skill"
+sk=../plugins/makeit/skills/draft/SKILL.md
+if grep -q '^description: "Use when writing text another person will read' "$sk" && [ -f ../plugins/makeit/evals/draft/case.yaml ]; then echo "ok draft skill and eval case"; else echo "FAIL draft skill or eval case"; fail=1; fi
 
 [ "$fail" = 0 ] && echo "CI OK" || { echo "CI FAILURES"; exit 1; }

@@ -37,7 +37,7 @@ func handInstalled(t *testing.T, edit func(*jsonx.Object)) (claudeDir, stack str
 	write(t, filepath.Join(bin, "claude"), `#!/bin/sh
 echo "$*" >> "$CALLS"
 case "$*" in
-  "--version") echo "2.1.312 (Claude Code)" ;;
+  "--version") echo "2.1.319 (Claude Code)" ;;
   "doctor") ;;
   "plugin marketplace list --json") echo '[{"name":"makeit","source":"directory","path":"`+repo+`"},{"name":"claude-plugins-official","source":"github"}]' ;;
   "plugin list --json") echo '[{"id":"makeit-bundle@makeit","version":"3.10.0","scope":"user","enabled":true,"readFromFolder":"`+repo+`/plugins/makeit-bundle"},{"id":"superpowers@makeit","version":"7.0.1","scope":"user","enabled":true}]' ;;
@@ -150,7 +150,7 @@ func TestAdoptedMissingValues(t *testing.T) {
 	claudeDir, stack := handInstalled(t, func(o *jsonx.Object) {
 		o.Delete("cleanupPeriodDays")
 		env, _ := o.Get("env")
-		env.(*jsonx.Object).Delete("DOCS_MCP_TELEMETRY")
+		env.(*jsonx.Object).Delete("CLAUDE_CODE_ENABLE_TODO_TOOLS")
 		o.Set("model", "claude-sonnet-5-5")
 	})
 	settingsPath := filepath.Join(claudeDir, "settings.json")
@@ -182,8 +182,8 @@ func TestAdoptedMissingValues(t *testing.T) {
 	}
 	if env, _ := now.Get("env"); env == nil {
 		t.Error("env lost")
-	} else if v, _ := env.(*jsonx.Object).Get("DOCS_MCP_TELEMETRY"); v == nil {
-		t.Error("env.DOCS_MCP_TELEMETRY not added")
+	} else if v, _ := env.(*jsonx.Object).Get("CLAUDE_CODE_ENABLE_TODO_TOOLS"); v == nil {
+		t.Error("env.CLAUDE_CODE_ENABLE_TODO_TOOLS not added")
 	}
 	if !slices.Equal(globals, tree(t, filepath.Join(claudeDir, "rules"))) {
 		t.Error("global rules changed")

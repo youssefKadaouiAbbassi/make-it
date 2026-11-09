@@ -55,7 +55,7 @@ func write(t *testing.T, path, body string) {
 func fixtureCatalog(t *testing.T, baseline string) catalog.Dir {
 	t.Helper()
 	dir := t.TempDir()
-	write(t, filepath.Join(dir, "makeit.json"), `{"schemaVersion":1,"requires":{"claudeCode":{"hard":"2.1.287","soft":"2.1.310"}},
+	write(t, filepath.Join(dir, "makeit.json"), `{"schemaVersion":1,"requires":{"claudeCode":{"hard":"2.1.319","soft":"2.1.325"}},
 		"marketplace":"makeit","bundle":"makeit-bundle@makeit","projectBundle":"makeit-ui@makeit"}`)
 	write(t, filepath.Join(dir, "settings.baseline.json"), baseline)
 	write(t, filepath.Join(dir, "plugins", "makeit-bundle", ".claude-plugin", "plugin.json"),
@@ -78,7 +78,7 @@ const healthyPlugins = `[
 func healthy(t *testing.T) (Machine, *fakeRunner) {
 	t.Helper()
 	f := &fakeRunner{answers: map[string]answer{
-		"--version":                      text("2.1.311 (Claude Code)\n"),
+		"--version":                      text("2.1.325 (Claude Code)\n"),
 		"doctor":                         text(""),
 		"plugin marketplace list --json": text(`[{"name": "makeit", "source": "directory", "path": "/repo"}]`),
 		"plugin list --json":             text(healthyPlugins),
@@ -194,10 +194,10 @@ func TestClaudeVersion(t *testing.T) {
 		reply answer
 		level Level
 	}{
-		{"newer than tested", text("2.1.311 (Claude Code)\n"), OK},
-		{"exactly the tested version", text("2.1.310 (Claude Code)\n"), OK},
-		{"below the tested version", text("2.1.300 (Claude Code)\n"), Warn},
-		{"exactly the floor", text("2.1.287 (Claude Code)\n"), Warn},
+		{"newer than tested", text("2.1.326 (Claude Code)\n"), OK},
+		{"exactly the tested version", text("2.1.325 (Claude Code)\n"), OK},
+		{"below the tested version", text("2.1.322 (Claude Code)\n"), Warn},
+		{"exactly the floor", text("2.1.319 (Claude Code)\n"), Warn},
 		{"below the minimum version", text("2.1.200 (Claude Code)\n"), Error},
 		{"--version fails", func(execx.Cmd) execx.Result { return execx.Result{Code: 1, Stderr: "boom"} }, Error},
 	} {

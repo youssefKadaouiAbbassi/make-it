@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"makeit/internal/platform"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +17,7 @@ import (
 	"makeit/internal/fsx"
 	"makeit/internal/jsonx"
 	"makeit/internal/plan"
+	"makeit/internal/platform"
 	"makeit/internal/pluginrule"
 	"makeit/internal/settings"
 	"makeit/internal/state"
@@ -130,13 +131,18 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 	if opts.KeepSettings {
 		steps = append(steps, plan.Step{ID: "settings", Title: "Leave settings.json as it is (--keep-settings)",
 			Already: func(context.Context) (bool, error) {
-				if len(e.st.Settings.Paths) > 0 {
-					e.keep("settings", "now yours; makeit no longer tracks them")
+				if len(e.st.Settings.Paths) > 0 || len(e.st.NotifyKeys) > 0 {
+					reason := "now yours; makeit no longer tracks them"
+					if keys := slices.Sorted(maps.Keys(e.st.NotifyKeys)); len(keys) > 0 {
+						reason += "; makeit notify wrote " + strings.Join(keys, ", ")
+					}
+					e.keep("settings", reason)
 				}
 				return true, nil
 			}})
 	} else {
-		steps = append(steps, e.unSettingsStep())
+		// Before the merge records: a settings.json makeit created is removed only once empty.
+		steps = append(steps, e.unNotifyStep(), e.unSettingsStep())
 	}
 	keys := make([]string, 0, len(e.st.Files))
 	for k := range e.st.Files {
@@ -147,7 +153,7 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 		steps = append(steps, e.unFileStep(k))
 	}
 	steps = append(steps, e.toolSteps()...)
-	steps = append(steps, e.unDirsStep(), e.unCatalogStep(), e.unStateStep())
+	steps = append(steps, e.unDocsCacheStep(), e.unDirsStep(), e.unCatalogStep(), e.unMCPLocalStep(), e.unStateStep())
 	if opts.Purge {
 		steps = append(steps, plan.Step{ID: "purge",
 			Title: "Delete the data of the plugins makeit installed, and every backup in " + e.Roots.Stack + " (cannot be undone)",
@@ -357,6 +363,64 @@ func (e *env) settingsLeft() bool {
 	return err != nil || (found && (res.Changed() || e.settingsEmptied(res)))
 }
 
+// unNotifyStep takes out the settings.json keys makeit notify wrote that still hold what it wrote;
+// a key the user changed stays and is reported.
+func (e *env) unNotifyStep() plan.Step {
+	path := filepath.Join(e.Roots.Claude, "settings.json")
+	unmerge := func() (res settings.Result, dst string, found bool, err error) {
+		dst, _, err = landing(path, 0o600)
+		if err != nil {
+			return res, dst, false, err
+		}
+		data, found, err := fsx.ReadOptional(dst)
+		if err != nil || !found {
+			return res, dst, false, err
+		}
+		live, err := jsonx.DecodeObject(data)
+		if err != nil {
+			return res, dst, true, fmt.Errorf("%s is not valid JSON, fix it first: %w", path, err)
+		}
+		return settings.Unmerge(live, e.st.NotifyKeys), dst, true, nil
+	}
+	keepTheirs := func(changes []settings.Change) {
+		for _, c := range changes {
+			if c.Action == settings.KeptTheirs {
+				e.keep(c.Path, "changed since makeit notify set it")
+			}
+		}
+	}
+	return plan.Step{ID: "notify", Title: "Take the keys makeit notify wrote out of " + path,
+		Already: func(context.Context) (bool, error) {
+			if len(e.st.NotifyKeys) == 0 {
+				return true, nil
+			}
+			res, _, found, err := unmerge()
+			if err != nil {
+				return false, err
+			}
+			keepTheirs(res.Changes)
+			return !found || !res.Changed(), nil
+		},
+		Run: func(context.Context) (string, error) {
+			res, dst, found, err := unmerge()
+			if err != nil {
+				return "", err
+			}
+			keepTheirs(res.Changes)
+			if found && res.Changed() {
+				data, err := jsonx.Marshal(res.Settings)
+				if err != nil {
+					return "", err
+				}
+				if err := e.write("notify", dst, data, 0o600); err != nil {
+					return "", err
+				}
+			}
+			e.st.NotifyKeys = nil
+			return "", nil
+		}}
+}
+
 // unSettingsStep takes makeit's values out of settings.json with the merge records: a value still
 // equal to what makeit wrote returns to what was there before, and a value the user changed stays.
 // The declaration of claude-plugins-official stays. With Claude Code, the result is validated before
@@ -529,6 +593,22 @@ func (e *env) unDirsStep() plan.Step {
 			}
 			return strings.Join(removed, ", "), nil
 		}}
+}
+
+// unDocsCacheStep removes the docs hook's release-date cache, which lives under the user's cache
+// folder (the hook's own rule: $XDG_CACHE_HOME, else ~/.cache).
+func (e *env) unDocsCacheStep() plan.Step {
+	base := e.Roots.Home + "/.cache"
+	if e.Getenv != nil && e.Getenv("XDG_CACHE_HOME") != "" {
+		base = e.Getenv("XDG_CACHE_HOME")
+	}
+	dir := filepath.Join(base, "makeit-docs")
+	return plan.Step{ID: "docscache", Title: "Remove the docs hook's release-date cache " + dir,
+		Already: func(context.Context) (bool, error) {
+			_, err := os.Lstat(dir)
+			return errors.Is(err, fs.ErrNotExist), nil
+		},
+		Run: func(context.Context) (string, error) { return "", os.RemoveAll(dir) }}
 }
 
 // unCatalogStep removes makeit's copy of the catalog once no marketplace points at it.

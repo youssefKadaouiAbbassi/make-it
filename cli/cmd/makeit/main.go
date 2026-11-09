@@ -33,17 +33,15 @@ var catalogFlags = []cli.Flag{
 
 // commands lists only what this build has, so usage never names a command that does not exist.
 var commands = []cli.Command{
-	{Name: "docs", Hidden: true, Args: "sync [dir]", Summary: "index the docs of a project's dependencies for the docs MCP server", Flags: []cli.Flag{
-		{Name: "if-changed", Help: "only when a manifest or lockfile changed since the last sync (the hooks use it)"},
-	}},
 	{Name: "doctor", Summary: "check this machine against what makeit sets up; changes nothing"},
 	{Name: "help", Args: "[command|exit-codes|environment]", Summary: "show help for a command or a topic"},
-	{Name: "init", Args: "[dir]", Summary: "set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI and its docs index", Flags: []cli.Flag{
+	{Name: "init", Args: "[dir]", Summary: "set up a project: CLAUDE.md and its docs, check tasks, hooks, settings, CI", Flags: []cli.Flag{
 		{Name: "update", Help: "also update files init wrote earlier that nobody changed since"},
 		{Name: "rulesets", Help: "also send makeit's GitHub rulesets to the repository (needs gh and a GitHub remote)"},
 		{Name: "applied", Value: "version", Help: "record that /makeit:init applied the listed init changes up to version (the initTarget init --json reports); writes only .makeit.json"},
 		{Name: "keep", Value: "line", Help: "with --applied: a difference from the current way the user kept, never raised again"},
 	}},
+	{Name: "notify", Summary: "send notifications to your phone: ask again about ntfy and Claude Code's own push"},
 	{Name: "rollback", Summary: "undo the last update that changed something", Modifies: true},
 	// self install is what install.sh and install.ps1 run; update and rollback replaced the rest.
 	{Name: "self", Hidden: true, Args: "install", Summary: "install this makeit binary", Flags: []cli.Flag{
@@ -179,6 +177,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 			return runUninstall(ctx, p, args, stdout, stderr)
 		}
 		return runSetup(ctx, p, args, stdout, stderr)
+	case "notify":
+		if len(p.Positionals) > 0 {
+			fmt.Fprintf(stderr, "%s: notify takes no arguments\n", prog)
+			return 2
+		}
+		return runNotify(p, stderr)
 	case "self":
 		return runSelf(ctx, p, stdout, stderr)
 	case "rollback":
@@ -187,8 +191,6 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, gather fu
 			return 2
 		}
 		return runRollback(ctx, p, stdout, stderr)
-	case "docs":
-		return runDocs(ctx, p, stdout, stderr)
 	case "init":
 		return runInit(ctx, p, stdout, stderr)
 	case "version":

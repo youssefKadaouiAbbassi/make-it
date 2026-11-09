@@ -77,6 +77,15 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 			return stackUpdate(ctx, e, mode, confirm, args)
 		},
 		notice: func(context.Context) string { return notice },
+		finish: func(u *ui.UI) {
+			// The daily run, --yes and a dry run take no questions.
+			if auto || p.Bool["yes"] || p.Bool["dry-run"] {
+				return
+			}
+			if err := askNotifyOnce(u); err != nil {
+				fmt.Fprintf(stderr, "%s: %v\n", prog, err)
+			}
+		},
 		after: func(w io.Writer, rep setup.Report, live bool) {
 			if auto {
 				if err := finishAuto(stack, allChanges(moved, rep), rep.Undoable); err != nil {
