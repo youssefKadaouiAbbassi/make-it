@@ -125,4 +125,8 @@ for f in rulesets/*.json renovate.json budget.json release-please-config.json .r
   python3 -c "import json,sys; json.load(open('$f'))" && echo "ok $f" || { echo "FAIL $f"; fail=1; }
 done
 
+echo "== draft skill"
+sk=../plugins/makeit/skills/draft/SKILL.md
+if grep -q '^description: "Use when writing text another person will read' "$sk" && [ -f ../plugins/makeit/evals/draft/case.yaml ]; then echo "ok draft skill and eval case"; else echo "FAIL draft skill or eval case"; fail=1; fi
+
 [ "$fail" = 0 ] && echo "CI OK" || { echo "CI FAILURES"; exit 1; }

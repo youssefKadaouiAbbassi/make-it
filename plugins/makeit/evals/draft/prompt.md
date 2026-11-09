@@ -1,0 +1,1 @@
+Mme Laurent, our client, wrote the mail in client-mail.txt. We finished fixing the invoice export in this repo today, but the deploy has to wait until Thursday. Write her the reply to send. Do not ask questions and do not edit any file.
