@@ -9,7 +9,7 @@ by what you want to do, and says what to say and what happens.
 Say what you want in plain words: "Let's build an export of invoices to CSV." Do not start with
 code or with a plan of your own.
 
-1. **Claude asks before building** (superpowers' brainstorming). It asks what the feature is for
+1. **Claude asks before building** ([superpowers](https://github.com/obra/superpowers)' brainstorming). It asks what the feature is for
    and who uses it, one question at a time, and plays back what it understood. Answer in your own
    words; it is finding out what you want, not offering a menu.
 2. **It lays out two or three ways to build it** and recommends one. Pick.
@@ -36,7 +36,7 @@ the cause, say so: "find the cause first".
 
 ## Keep changes small
 
-ponytail is on in every session at level `full`: the smallest change that fully solves the task,
+[ponytail](https://github.com/DietrichGebert/ponytail) is on in every session at level `full`: the smallest change that fully solves the task,
 nothing nobody asked for, and a last line naming what it skipped and any risk. Change the level
 for a task:
 
@@ -57,8 +57,9 @@ Four reviews, each for a different question:
 | Is this change correct? (bugs, high confidence first) | `/code-review` (add `high` or `max` for a deeper pass) |
 | Is every line needed, is it safe under load, is risky code tested? | `/ponytail-review` |
 | Does the pending change open a security hole? | `/security-review` |
-| Is the whole codebase sound? (ranked: bugs, security, load, debt) | `/ponytail-audit`, or "run a security audit of this codebase" for the security-audit skill |
+| Is the whole codebase sound? (ranked: bugs, security, load, debt) | `/ponytail-audit`, or "run a security audit of this codebase" for the [security-audit](https://github.com/cloudflare/security-audit-skill) skill |
 
+`/code-review`, `/security-review` and `/simplify` are [Claude Code](https://code.claude.com/docs/en/overview)'s own commands.
 After a plan, superpowers runs its own whole-branch review before offering the merge. `/simplify`
 cleans the changed code without hunting bugs. `/ponytail-debt` lists the shortcuts Claude marked
 with `shortcut:` comments, so a deferral does not become permanent.
@@ -71,14 +72,14 @@ A plugin's commands can also be typed with their plugin name, for example
 Ask, in words: "open the app and check the console", "take a screenshot of the checkout at phone
 width", "run a Lighthouse audit on the landing page", "why is the largest contentful paint slow",
 "check this page for accessibility problems", "is there a memory leak when I open and close the
-modal twenty times". Claude drives an installed Chrome through chrome-devtools-mcp: it reads the
+modal twenty times". Claude drives an installed Chrome through [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp): it reads the
 console and the network, emulates devices, records traces. The global rule already asks Claude
 to open a web change in the browser before calling it done; the run recipe `/makeit:init` wrote
 (`.claude/skills/run-<project>/SKILL.md`) tells it how to start the app.
 
 ## Design, in web projects
 
-In a project with a web frontend, `/makeit:init` turned on `makeit-ui`, which brings impeccable.
+In a project with a web frontend, `/makeit:init` turned on `makeit-ui`, which brings [impeccable](https://github.com/pbakaus/impeccable).
 Its commands take a target: `/impeccable critique the pricing cards` gives a scored review of
 what to fix first, `/impeccable audit` a technical report (accessibility, performance, theming,
 responsive), `/impeccable polish` the pass before shipping, `/impeccable bolder` or `quieter`
@@ -89,11 +90,11 @@ running app and cycle through variants. Run `/impeccable init` once per project:
 ## Look things up
 
 - **A library:** ask the question. "How does zod 4 handle optional fields?" Claude searches the
-  docs of the version your project uses, indexed by `makeit init` and kept current when a
+  docs of the version your project uses, indexed by `makeit init` for [docs-mcp-server](https://github.com/arabold/docs-mcp-server) and kept current when a
   manifest or lockfile changes. Nothing to type; if it answers from memory, say "search the
   docs". `makeit docs sync` rebuilds the index by hand.
 - **Your own past:** "what did we decide about the cache key?", "didn't we fix this before?",
-  "which tools did we already try for this?". deja-vu searches your earlier Claude Code sessions
+  "which tools did we already try for this?". [deja-vu](https://github.com/vshulcz/deja-vu) searches your earlier Claude Code sessions
   on this machine, and Claude is asked to do that on its own before re-debugging an error or
   recommending a tool. At the end of a day, `/deja-vu:deja-reflect` reviews what was decided and
   records the durable rules, so the next session starts with them.
@@ -127,8 +128,8 @@ before you call something done and `check:full` before a push, the same as Claud
 ## Change a database schema
 
 Ask for the change: "rename `user.name` to `user.full_name`". For a rename, drop, retype or
-split that live code reads, Claude follows the expand-contract skill: additive changes first, the
-destructive step last and alone, backfills in batches. In a project with a database, DBHub lets
+split that live code reads, Claude follows the [expand-contract](../plugins/makeit/skills/expand-contract/SKILL.md) skill: additive changes first, the
+destructive step last and alone, backfills in batches. In a project with a database, [DBHub](https://github.com/bytebase/dbhub) lets
 Claude read the schema and run queries; the one write tool always asks first.
 
 ## When something feels off

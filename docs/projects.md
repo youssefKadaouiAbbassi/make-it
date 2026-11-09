@@ -91,7 +91,7 @@ When init finds more, it adds:
 |---|---|
 | a web frontend | `makeit-ui` (the impeccable design skills) enabled in `.claude/settings.json`; a browser check in `CLAUDE.md`'s "How to verify a change" |
 | an OpenAPI spec | a `check:api` task: Redocly lint, and oasdiff against the default branch for breaking changes (oasdiff runs in Docker) |
-| a database | the DBHub MCP server in `.mcp.json`, so Claude can query it: a `.dbhub.toml` with no secret in it, `DBHUB_DSN=` in `.env.example`, and a `check:drift` task. Set `DBHUB_DSN` in the shell that starts `claude` or in `.env`, and start `claude` from the project root. Reads are free; the one write tool asks first |
+| a database | the [DBHub](https://github.com/bytebase/dbhub) MCP server in `.mcp.json`, so Claude can query it: a `.dbhub.toml` with no secret in it, `DBHUB_DSN=` in `.env.example`, and a `check:drift` task. Set `DBHUB_DSN` in the shell that starts `claude` or in `.env`, and start `claude` from the project root. Reads are free; the one write tool asks first |
 | calls to a model API | `TYPED-DECISIONS.md`: the rule that every place the app asks a model for a decision gets a typed schema the library validates and retries, with the library to use per stack |
 | a mobile app | a Mobile section in `CLAUDE.md` |
 

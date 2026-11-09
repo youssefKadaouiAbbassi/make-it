@@ -19,14 +19,14 @@ not here.
 
 | plugin | what it does in a session | why it is in |
 |---|---|---|
-| makeit | the hooks, MCP servers and skills described below: handoffs between sessions, the docs index, the reply check, `/makeit:init` | makeit's own; its own test suite |
-| superpowers | how Claude works: it asks before building something new, writes a design and a plan, builds test-first, debugs from the root cause, reviews before merging | on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost |
-| ponytail | the smallest change that solves the task, no code nobody asked for; each reply ends with what was skipped | the cheapest and fastest option on the UI tasks; chosen over Caveman |
-| chrome-devtools-mcp | Claude opens your web app in Chrome, reads the console and the network, takes screenshots, runs Lighthouse | the only browser tool with traces, Lighthouse and device emulation |
-| docs-mcp-server | Claude searches the docs of your dependencies at the versions your project uses, instead of answering from memory | agents never searched docs on their own (0 calls in 6 runs), so makeit indexes them and reminds Claude |
-| deja-vu | Claude searches your past Claude Code sessions on this machine: decisions, fixes, things you already tried | recalled an earlier decision every time, never without it |
-| security-audit | a full security audit of a codebase when you ask for one, beside Claude Code's `/security-review` | not measured |
-| typescript-lsp, pyright-lsp, rust-analyzer-lsp, gopls-lsp | code intelligence (definitions, references, errors) for TypeScript, Python, Rust and Go; from Anthropic's `claude-plugins-official` marketplace | not measured |
+| [makeit](../plugins/makeit) | the hooks, MCP servers and skills described below: handoffs between sessions, the docs index, the reply check, `/makeit:init` | makeit's own; its own test suite |
+| [superpowers](https://github.com/obra/superpowers) | how Claude works: it asks before building something new, writes a design and a plan, builds test-first, debugs from the root cause, reviews before merging | on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost |
+| [ponytail](https://github.com/DietrichGebert/ponytail) | the smallest change that solves the task, no code nobody asked for; each reply ends with what was skipped | the cheapest and fastest option on the UI tasks; chosen over Caveman |
+| [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) | Claude opens your web app in Chrome, reads the console and the network, takes screenshots, runs Lighthouse | the only browser tool with traces, Lighthouse and device emulation |
+| [docs-mcp-server](https://github.com/arabold/docs-mcp-server) | Claude searches the docs of your dependencies at the versions your project uses, instead of answering from memory | agents never searched docs on their own (0 calls in 6 runs), so makeit indexes them and reminds Claude |
+| [deja-vu](https://github.com/vshulcz/deja-vu) | Claude searches your past Claude Code sessions on this machine: decisions, fixes, things you already tried | recalled an earlier decision every time, never without it |
+| [security-audit](https://github.com/cloudflare/security-audit-skill) | a full security audit of a codebase when you ask for one, beside Claude Code's `/security-review` | not measured |
+| typescript-lsp, pyright-lsp, rust-analyzer-lsp, gopls-lsp | code intelligence (definitions, references, errors) for TypeScript, Python, Rust and Go; from Anthropic's [`claude-plugins-official`](https://github.com/anthropics/claude-plugins-official) marketplace | not measured |
 
 The versions makeit was tested with are pinned in the plugin set
 (`~/.makeit/catalog/.claude-plugin/marketplace.json`), but nothing is held there: every setup,
@@ -36,7 +36,7 @@ which has no releases, to the newest commit. `claude plugin list` shows what you
 on `PATH`; setup installs those ([Tools](#tools-on-path)).
 
 One more bundle is turned on per project, not per machine: `makeit-ui`, which installs
-**impeccable**, design skills for user interfaces (it won every blind comparison against seven
+**[impeccable](https://github.com/pbakaus/impeccable)**, design skills for user interfaces (it won every blind comparison against seven
 other design skills). `makeit init` enables it in a project's `.claude/settings.json` when it
 finds a web frontend.
 
@@ -134,18 +134,18 @@ release on every update.
 |---|---|---|
 | CA certificates | your package manager (Linux only) | TLS for makeit, git and Claude Code's plugin installs |
 | git | your package manager | every repository, the HANDOFF hook, the commit hooks |
-| Node.js | your package manager | the two MCP servers start with `npx` |
-| jq | your package manager | the hooks read Claude Code's JSON with it |
-| gh | your package manager | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
-| Chrome | Homebrew, winget, or Google's own `.deb`/`.rpm` on apt or dnf (x86-64); left to you elsewhere | chrome-devtools-mcp drives an installed Chrome (Chrome or Chrome for Testing, not Chromium) |
-| prek | Homebrew, winget, or the newest release binary from github.com/j178/prek | runs the commit hooks in `.pre-commit-config.yaml` |
-| deja | Homebrew, or the newest release binary from github.com/vshulcz/deja-vu | the search binary of the deja-vu plugin |
-| grype | Homebrew, winget, or the newest release binary from github.com/anchore/grype | the vulnerability scan, locally and in the CI checks |
-| typescript-language-server | Homebrew, or `npm install -g --prefix ~/.local` | the typescript-lsp plugin |
-| pyright | Homebrew, or `npm install -g --prefix ~/.local` | the pyright-lsp plugin |
-| marked | `npm install -g --prefix ~/.local` | the reply check numbers lists the way Claude Code shows them |
-| rust-analyzer | only when `cargo` or `rustup` is on `PATH`: Homebrew, apk, dnf, or `rustup component add` | the rust-analyzer-lsp plugin |
-| gopls | only when `go` is on `PATH`: Homebrew, apt, apk, or `go install` into `~/.local/bin` | the gopls-lsp plugin |
+| [Node.js](https://nodejs.org/) | your package manager | the two MCP servers start with `npx` |
+| [jq](https://jqlang.github.io/jq/) | your package manager | the hooks read Claude Code's JSON with it |
+| [gh](https://cli.github.com/) | your package manager | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
+| [Chrome](https://www.google.com/chrome/) | Homebrew, winget, or Google's own `.deb`/`.rpm` on apt or dnf (x86-64); left to you elsewhere | chrome-devtools-mcp drives an installed Chrome (Chrome or Chrome for Testing, not Chromium) |
+| [prek](https://github.com/j178/prek) | Homebrew, winget, or the newest release binary from github.com/j178/prek | runs the commit hooks in `.pre-commit-config.yaml` |
+| [deja](https://github.com/vshulcz/deja-vu) | Homebrew, or the newest release binary from github.com/vshulcz/deja-vu | the search binary of the deja-vu plugin |
+| [grype](https://github.com/anchore/grype) | Homebrew, winget, or the newest release binary from github.com/anchore/grype | the vulnerability scan, locally and in the CI checks |
+| [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server) | Homebrew, or `npm install -g --prefix ~/.local` | the typescript-lsp plugin |
+| [pyright](https://github.com/microsoft/pyright) | Homebrew, or `npm install -g --prefix ~/.local` | the pyright-lsp plugin |
+| [marked](https://github.com/markedjs/marked) | `npm install -g --prefix ~/.local` | the reply check numbers lists the way Claude Code shows them |
+| [rust-analyzer](https://rust-analyzer.github.io/) | only when `cargo` or `rustup` is on `PATH`: Homebrew, apk, dnf, or `rustup component add` | the rust-analyzer-lsp plugin |
+| [gopls](https://pkg.go.dev/golang.org/x/tools/gopls) | only when `go` is on `PATH`: Homebrew, apt, apk, or `go install` into `~/.local/bin` | the gopls-lsp plugin |
 
 A tool you remove afterwards stays removed; `makeit setup --reinstall <tool>` brings it back. A
 tool with no route on your machine (Chrome where neither your package manager nor Google ships
