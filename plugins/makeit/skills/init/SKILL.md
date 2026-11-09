@@ -105,6 +105,12 @@ Then go on with step 2; the steps below still run, as on any init.
   keep its row as it is and add a HANDOFF item for it. floor-guard reads a removed row as a
   weakened constraint.
 - HANDOFF.md: small numbered items, one action each.
+- Deploy branches: `main` and `master` always ask before a push. Ask once, with AskUserQuestion,
+  which other branches deploy when pushed (a `production` or `release` branch, or none), and
+  record the answer: for each branch `<b>`, add the two rules `Bash(git push * <b>)` and
+  `Bash(git push *:<b>)` to `permissions.ask` in `.claude/settings.json` (create the file when
+  missing, keep every other key and rule, add no rule twice). Never in `settings.local.json`:
+  the file is committed so the whole team asks.
 
 ## 3. Wire the check tasks
 
@@ -149,6 +155,11 @@ work. The name must start with `run-`: a skill named exactly `run` would replace
 built-in run skill, which finds this recipe by its description.
 
 If nothing can be started yet (a fresh project), write no recipe; add a HANDOFF item instead.
+
+Also write `.claude/skills/verify/SKILL.md` from `templates/project/verify-skill.md` (in the
+makeit plugin set, `~/.makeit/catalog`), every `<...>` filled with the commands of the recipe
+you just wrote and ran; Claude Code runs a skill named `verify` before commits. When that file
+already exists, keep it as it is and say so in the report. With no recipe, write no verify skill.
 
 ## 7. Run check:full
 

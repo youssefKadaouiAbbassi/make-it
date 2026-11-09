@@ -1,6 +1,6 @@
 {
   "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
-  "sources": "sha256:1fded9f5a9a9ed250e027e7852add0180df9116631fdca242d7f15642a8bc8b9",
+  "sources": "sha256:2deefbd63f924c396b5a34bb44d600c3a4d3f09a1c15a410ba282746848ae68e",
   "changes": [
     {
       "version": "0.3.7",
@@ -19,6 +19,24 @@
       "id": "makefile-target-per-tool",
       "files": ["Makefile"],
       "prompt": "When the check tasks live in a Makefile, each tool has its own target (one command per recipe) and each check task depends on those targets, so `make -k check:full` runs every check and reports every failure; a recipe that runs several tools stops at its first failing line. Split such a recipe into one target per tool with the same commands. Not a Makefile: nothing to do."
+    },
+    {
+      "version": "0.4.0",
+      "id": "deploy-ask-rules",
+      "files": [".claude/settings.json"],
+      "prompt": "Every branch that deploys when pushed has two ask rules in permissions.ask of .claude/settings.json: `Bash(git push * <branch>)` and `Bash(git push *:<branch>)`. main and master are covered by the global rules. Ask the user once which other branches deploy (a production or release branch, or none) and add the rules for those; keep every other key and rule, and add no rule twice. Branches that already have both rules need nothing."
+    },
+    {
+      "version": "0.4.0",
+      "id": "verify-skill",
+      "files": [".claude/skills/verify/SKILL.md"],
+      "prompt": "The project has a skill named verify at .claude/skills/verify/SKILL.md that runs check:task, starts the app, exercises the change and reports the output (templates/project/verify-skill.md in the plugin set, filled from the run recipe .claude/skills/run-<project>/SKILL.md, each <...> replaced by a command you ran and saw work). When the file exists, keep it as it is. With no run recipe, write none: the review's gap list says why."
+    },
+    {
+      "version": "0.4.0",
+      "id": "task-start-end",
+      "files": ["CLAUDE.md"],
+      "prompt": "CLAUDE.md has the sections \"## Start of a task\" (read the ticket, branch from the default branch, baseline check:task) and \"## End of a task\" (check:task and /verify, check:full before a push, deploy, handoff: on a branch HANDOFF.<slug>.md, deleted in the merge), as in templates/project/CLAUDE.md. Place \"Start of a task\" before the Commands table and \"End of a task\" after it, as the template does; keep every section the file has and every value the user wrote."
     }
   ]
 }

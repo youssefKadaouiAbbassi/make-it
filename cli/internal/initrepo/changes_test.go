@@ -319,3 +319,23 @@ func TestRunAppliedSymlinkedRecord(t *testing.T) {
 		t.Error("--applied replaced the link or wrote its target")
 	}
 }
+
+// The setup review's three init changes: deploy ask rules, the verify skill, the task section.
+func TestChangesSetupReview(t *testing.T) {
+	_, all, err := LoadChanges(catalog.Dir(filepath.Join("..", "..", "..")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := map[string]string{}
+	for _, c := range all {
+		at[c.ID] = c.Version
+		if c.Version == "0.4.0" && (c.Prompt == "" || len(c.Files) == 0) {
+			t.Errorf("init change %q lacks a prompt or files", c.ID)
+		}
+	}
+	for _, id := range []string{"deploy-ask-rules", "verify-skill", "task-start-end"} {
+		if at[id] != "0.4.0" {
+			t.Errorf("init change %q at %q, want 0.4.0", id, at[id])
+		}
+	}
+}
