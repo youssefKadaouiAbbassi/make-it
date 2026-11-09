@@ -33,9 +33,6 @@ printf '{"hook_event_name":"Stop","cwd":"/x/repo","background_tasks":[{"id":"a"}
 expect "notify Stop with two background tasks (array), ntfy" "still running: 2" "$(cat "$tmp/curl.log")"
 expect "notify Stop with two background tasks (array), desktop" "still running: 2" "$(cat "$tmp/ns.log")"
 reset_logs
-printf '{"hook_event_name":"Stop","cwd":"/x/repo","background_tasks":3}' | run_notify
-expect "notify Stop with a background task count" "still running: 3" "$(cat "$tmp/ns.log")"
-reset_logs
 printf '{"hook_event_name":"Stop","cwd":"/x/repo","background_tasks":[]}' | run_notify
 case "$(cat "$tmp/ns.log")" in *running*) bad "notify empty background_tasks said running" ;; *) ok "notify empty background_tasks is plain done" ;; esac
 reset_logs
@@ -78,6 +75,31 @@ mkdir -p "$tmp/bare"; for b in bash cat basename jq tr; do ln -sf "$(command -v 
 out=$(printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | PATH="$tmp/bare" bash "$here/notify.sh" 2>&1; echo "rc=$?")
 expect "notify with no notifier and no topic exits 0 silently" "rc=0" "$out"
 [ "$out" = "rc=0" ] && ok "notify with no notifier and no topic prints nothing" || bad "notify bare printed [$out]"
+# Desktop fallbacks: only the tools the hook needs plus one fake notifier.
+for n in osascript powershell.exe; do
+  mkdir -p "$tmp/d-$n"; for b in bash cat basename jq tr; do ln -sf "$(command -v $b)" "$tmp/d-$n/$b"; done
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/%s.log"\n' "$tmp" "$n" >"$tmp/d-$n/$n"; chmod +x "$tmp/d-$n/$n"
+  : >"$tmp/$n.log"
+  printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | PATH="$tmp/d-$n" bash "$here/notify.sh"
+  expect "notify falls back to $n: message" "done" "$(cat "$tmp/$n.log")"
+  expect "notify falls back to $n: title" "claude - repo" "$(cat "$tmp/$n.log")"
+done
+: >"$tmp/powershell.exe.log"
+printf '{"hook_event_name":"Stop","cwd":"/x/it'"'"'s$(touch %s/pwned)"}' "$tmp" | PATH="$tmp/d-powershell.exe" bash "$here/notify.sh"
+bad_nodes=$(grep -o "CreateTextNode('[^']*')" "$tmp/powershell.exe.log" | sed "s/CreateTextNode('//; s/')$//" | grep -v '^[A-Za-z0-9 :,._-]*$')
+nodes=$(grep -o "CreateTextNode('[^']*')" "$tmp/powershell.exe.log" | wc -l | tr -d ' ')
+[ -z "$bad_nodes" ] && [ "$nodes" = 2 ] && [ ! -e "$tmp/pwned" ] && ok "notify powershell text holds only plain characters" || bad "notify powershell hostile text: [$bad_nodes] nodes=$nodes"
+reset_logs
+printf '{"hook_event_name":"Stop","cwd":"/x/repo","stop_hook_active":true}' | run_notify
+[ ! -s "$tmp/curl.log" ] && [ ! -s "$tmp/ns.log" ] && ok "notify is quiet on a re-fired Stop" || bad "notify re-fired Stop notified"
+long=$(printf 'x%.0s' $(seq 1 300))
+printf '{"hook_event_name":"PreToolUse","cwd":"/x/repo","tool_name":"%s"}' "$long" | run_notify
+sent=$(sed 's/.* -d \(.*\) https:.*/\1/' "$tmp/curl.log")
+[ "${#sent}" = 200 ] && ok "notify truncates the message to 200 characters" || bad "notify message length ${#sent}"
+reset_logs
+printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | NTFY_TOKEN=abc run_notify
+expect "notify with a token still notifies the desktop" "done" "$(cat "$tmp/ns.log")"
+expect "notify with a token sends the bearer header" "Authorization: Bearer abc" "$(cat "$tmp/curl.log")"
 mkdir -p "$tmp/nojq"; for b in bash cat basename head; do ln -sf "$(command -v $b)" "$tmp/nojq/$b"; done
 out=$(printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | PATH="$tmp/nojq" NTFY_TOPIC=t bash "$here/notify.sh" 2>&1; echo "rc=$?")
 expect "notify without jq exits 0" "rc=0" "$out"
