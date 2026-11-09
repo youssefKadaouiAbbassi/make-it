@@ -872,3 +872,23 @@ func stepStatusOf(r plan.Report, id string) plan.Status {
 	}
 	return ""
 }
+
+// An owned plugin whose marketplace entry moved from a pinned git-subdir to a relative path (deja-vu,
+// 0.4.0) still runs the old pin's files until plugin update runs.
+func TestOwnedMovesFromPinToRelativePath(t *testing.T) {
+	dv := `{"name":"deja-vu","version":"0.4.0","source":"./plugins/deja-vu"}`
+	e, f := pluginEnv(t, `["deja-vu"]`, `[`+bundleEntry+`,`+dv+`]`,
+		`[`+bundleRow+`,{"id":"deja-vu@makeit","version":"9ce7c980b9b8-0123abcd","enabled":true,"gitCommitSha":"9ce7c980b9b805c7c4a4f07ffea544a423690eda"}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "deja-vu@makeit": ownedAt("9ce7c980b9b805c7c4a4f07ffea544a423690eda")}
+	f.answers["claude plugin update deja-vu@makeit --scope user --json"] = text(updated)
+	s := step(t, e.pluginSteps(), "plugin.deja-vu@makeit")
+	if done, err := s.Already(context.Background()); done || err != nil {
+		t.Fatalf("already = %v, %v; the old pin's files are still installed", done, err)
+	}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !has(f.argvs(), "claude plugin update deja-vu@makeit --scope user --json") {
+		t.Errorf("deja-vu not updated: %v", f.argvs())
+	}
+}

@@ -1,3 +1,5 @@
+> makeit variant of deja-vu v0.24.1: keeps the session summary, PreCompact, SessionEnd, the MCP server, skills and /deja; the per-prompt and per-tool recall hooks described below are removed and replaced by one search hint.
+
 # deja for Claude Code
 
 The plugin bundle Claude Code, Qwen and OpenClaw install from

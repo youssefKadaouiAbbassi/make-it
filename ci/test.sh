@@ -92,9 +92,19 @@ if bash ../cli/scripts/release-notes.sh "$v" >/dev/null; then echo "ok CHANGELOG
 echo "== generated deja-vu plugin"
 dtag=$(sed -n 's/^tag //p' ../plugins/deja-vu/UPSTREAM 2>/dev/null)
 dt=$(mktemp -d "${TMPDIR:-/tmp}/deja-gen.XXXXXX")
-if [ -n "$dtag" ] && bash ../cli/scripts/gen-deja-plugin.sh "$dtag" "$dt/out" && diff -r ../plugins/deja-vu "$dt/out" >/dev/null; then echo "ok plugins/deja-vu matches a fresh generation at $dtag"
+if [ -n "$dtag" ] && bash ../cli/scripts/gen-deja-plugin.sh "$dtag" "$dt/out" && diff -r ../plugins/deja-vu "$dt/out" >/dev/null \
+  && [ "$(cd ../plugins/deja-vu && find . -type f -printf '%m %p\n' | sort)" = "$(cd "$dt/out" && find . -type f -printf '%m %p\n' | sort)" ]; then echo "ok plugins/deja-vu matches a fresh generation at $dtag"
 else echo "FAIL plugins/deja-vu differs from gen-deja-plugin.sh at its UPSTREAM tag ($dtag)"; fail=1; fi
 /bin/rm -rf "$dt"
+# Every local plugin carries the catalog version: a change to a generated plugin must reach users.
+if python3 -I -c "
+import json,sys
+m=json.load(open('../.claude-plugin/marketplace.json')); v=m['metadata']['version']
+bad=[p['name'] for p in m['plugins'] if isinstance(p['source'],str) and p.get('version')!=v]
+print('local plugins off version',v,bad) if bad else None; sys.exit(1 if bad else 0)"; then echo "ok local plugin entries carry the catalog version"; else echo "FAIL local plugin version"; fail=1; fi
+if command -v claude >/dev/null 2>&1; then
+  if claude plugin validate ../plugins/deja-vu --strict >/dev/null 2>&1; then echo "ok claude plugin validate --strict deja-vu"; else echo "FAIL claude plugin validate deja-vu"; fail=1; fi
+fi
 
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
