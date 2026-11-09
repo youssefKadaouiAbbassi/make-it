@@ -73,7 +73,7 @@ func TestSyncFreshUpdateAndInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	if runtime.GOOS != "windows" {
-		st, err := os.Stat(filepath.Join(dir, "plugins", "makeit", "hooks", "ntfy.sh"))
+		st, err := os.Stat(filepath.Join(dir, "plugins", "makeit", "hooks", "notify.sh"))
 		if err != nil || st.Mode().Perm()&0o111 == 0 {
 			t.Fatalf("executable bit lost: %v %v", st, err)
 		}

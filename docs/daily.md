@@ -91,9 +91,10 @@ What to say to get the most out of each part, by task: [Getting the most out of 
 Just stop. When files changed, Claude rewrites `HANDOFF.md` before the turn ends, and again
 before Claude Code compacts a long conversation. Tomorrow's session starts from it.
 
-To be told when Claude finishes or needs you while you are away, set `NTFY_TOPIC` to an
-[ntfy](https://ntfy.sh) topic in the `env` block of `~/.claude/settings.json`. It sends only the
-repository name and the event.
+Finishing, asking you something and waiting for a permission each raise a desktop notification at
+once. To get them on your phone while you are away, set `NTFY_TOPIC` to an
+[ntfy](https://ntfy.sh) topic in the `env` block of `~/.claude/settings.json`. Only the
+repository name and the event are sent.
 
 ## A new project, or an older one
 

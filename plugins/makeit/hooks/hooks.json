@@ -47,7 +47,7 @@
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/handoff.sh\"", "timeout": 5 },
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/options.sh\"", "timeout": 5 },
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/ntfy.sh\"", "timeout": 8, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/notify.sh\"", "timeout": 8, "async": true }
         ]
       }
     ],
@@ -69,14 +69,14 @@
       {
         "matcher": "AskUserQuestion|ExitPlanMode",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/ntfy.sh\"", "timeout": 8, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/notify.sh\"", "timeout": 8, "async": true }
         ]
       }
     ],
     "Notification": [
       {
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/ntfy.sh\"", "timeout": 8, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/notify.sh\"", "timeout": 8, "async": true }
         ]
       }
     ]

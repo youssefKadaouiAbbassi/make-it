@@ -14,47 +14,73 @@ expect_empty() { [ -z "$2" ] && ok "$1" || bad "$1: expected no output, got [$2]
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/hooks-test.XXXXXX")
 trap '/bin/rm -rf "$tmp"' EXIT
 
-# --- ntfy.sh: fake curl records the call ---------------------------------------------------
+# --- notify.sh: fake notify-send and curl record the calls ----------------------------------
 unset NTFY_TOPIC NTFY_URL NTFY_TOKEN
 export XDG_STATE_HOME="$tmp/state"
 mkdir -p "$tmp/bin"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/curl.log"\n' "$tmp" >"$tmp/bin/curl"; chmod +x "$tmp/bin/curl"
-run_ntfy() { PATH="$tmp/bin:$PATH" NTFY_TOPIC="${NTFY_TOPIC-t0pic}" NTFY_URL="${NTFY_URL-https://ntfy.example}" NTFY_TOKEN="${NTFY_TOKEN-}" bash "$here/ntfy.sh"; }
-: >"$tmp/curl.log"
-printf '{"hook_event_name":"Stop","cwd":"/home/u/proj","session_id":"s"}' | run_ntfy; rc=$?
-[ "$rc" = 0 ] && ok "ntfy Stop exits 0" || bad "ntfy Stop exit $rc"
-expect "ntfy Stop posts done" "-d done https://ntfy.example/t0pic" "$(cat "$tmp/curl.log")"
-expect "ntfy title is repo name" "Title: claude - proj" "$(cat "$tmp/curl.log")"
-: >"$tmp/curl.log"
-# macOS ships bash 3.2, where an empty array under set -u is an error: with no token, ntfy must
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/ns.log"\n' "$tmp" >"$tmp/bin/notify-send"; chmod +x "$tmp/bin/notify-send"
+run_notify() { PATH="$tmp/bin:$PATH" NTFY_TOPIC="${NTFY_TOPIC-t0pic}" NTFY_URL="${NTFY_URL-https://ntfy.example}" NTFY_TOKEN="${NTFY_TOKEN-}" bash "$here/notify.sh"; }
+reset_logs() { : >"$tmp/curl.log"; : >"$tmp/ns.log"; }
+reset_logs
+printf '{"hook_event_name":"Stop","cwd":"/home/u/proj","session_id":"s"}' | run_notify; rc=$?
+[ "$rc" = 0 ] && ok "notify Stop exits 0" || bad "notify Stop exit $rc"
+expect "notify Stop posts done" "-d done https://ntfy.example/t0pic" "$(cat "$tmp/curl.log")"
+expect "notify title is repo name" "Title: claude - proj" "$(cat "$tmp/curl.log")"
+expect "notify Stop shows done on the desktop" "claude - proj done" "$(cat "$tmp/ns.log")"
+reset_logs
+printf '{"hook_event_name":"Stop","cwd":"/x/repo","background_tasks":[{"id":"a"},{"id":"b"}]}' | run_notify
+expect "notify Stop with two background tasks (array), ntfy" "still running: 2" "$(cat "$tmp/curl.log")"
+expect "notify Stop with two background tasks (array), desktop" "still running: 2" "$(cat "$tmp/ns.log")"
+reset_logs
+printf '{"hook_event_name":"Stop","cwd":"/x/repo","background_tasks":3}' | run_notify
+expect "notify Stop with a background task count" "still running: 3" "$(cat "$tmp/ns.log")"
+reset_logs
+printf '{"hook_event_name":"Stop","cwd":"/x/repo","background_tasks":[]}' | run_notify
+case "$(cat "$tmp/ns.log")" in *running*) bad "notify empty background_tasks said running" ;; *) ok "notify empty background_tasks is plain done" ;; esac
+reset_logs
+# macOS ships bash 3.2, where an empty array under set -u is an error: with no token, notify must
 # still post. Run there when docker can.
 if command -v docker >/dev/null && docker image inspect bash:3.2 >/dev/null 2>&1 || docker pull -q bash:3.2 >/dev/null 2>&1; then
-  : >"$tmp/curl.log"
   # 77: the image could not get jq (no network), so this is a skip, not a failure.
   printf '{"hook_event_name":"Stop","cwd":"/home/u/proj","session_id":"s"}' |
     docker run --rm -i -v "$here:/h:ro" -v "$tmp:$tmp" -e NTFY_TOPIC=t0pic -e NTFY_URL=https://ntfy.example bash:3.2 \
-      sh -c "apk add -q jq >/dev/null 2>&1 || exit 77; PATH=$tmp/bin:\$PATH bash /h/ntfy.sh"
-  if [ $? = 77 ]; then echo "SKIP  ntfy under bash 3.2: no jq in the image (offline)"; else
-    expect "ntfy under bash 3.2 with no token posts" "-d done https://ntfy.example/t0pic" "$(cat "$tmp/curl.log")"
+      sh -c "apk add -q jq >/dev/null 2>&1 || exit 77; PATH=$tmp/bin:\$PATH bash /h/notify.sh"
+  if [ $? = 77 ]; then echo "SKIP  notify under bash 3.2: no jq in the image (offline)"; else
+    expect "notify under bash 3.2 with no token posts" "-d done https://ntfy.example/t0pic" "$(cat "$tmp/curl.log")"
   fi
 else
-  echo "SKIP  ntfy under bash 3.2: no docker"
+  echo "SKIP  notify under bash 3.2: no docker"
 fi
-printf '{"hook_event_name":"PreToolUse","cwd":"/x/repo","tool_name":"AskUserQuestion","tool_input":{}}' | run_ntfy
-expect "ntfy PreToolUse names the tool" "needs you: AskUserQuestion" "$(cat "$tmp/curl.log")"
-: >"$tmp/curl.log"
-printf '{"hook_event_name":"Notification","cwd":"/x/repo","message":"Claude is waiting for your input","notification_type":"idle_prompt"}' | run_ntfy
-expect "ntfy Notification uses the message" "Claude is waiting for your input" "$(cat "$tmp/curl.log")"
-: >"$tmp/curl.log"
-NTFY_TOKEN=abc bash -c 'printf "{\"hook_event_name\":\"Stop\",\"cwd\":\"/x/repo\"}" | PATH="'"$tmp"'/bin:$PATH" NTFY_TOPIC=t NTFY_URL=https://n bash "'"$here"'/ntfy.sh"'
-expect "ntfy sends bearer token when set" "Authorization: Bearer abc" "$(cat "$tmp/curl.log")"
-: >"$tmp/curl.log"
-out=$(printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | NTFY_TOPIC= run_ntfy)
-[ ! -s "$tmp/curl.log" ] && ok "ntfy without topic sends nothing" || bad "ntfy without topic sent"
-expect_empty "ntfy prints nothing to stdout" "$out"
-mkdir -p "$tmp/nojq"; for b in bash cat basename head; do ln -s "$(command -v $b)" "$tmp/nojq/$b"; done
-out=$(printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | PATH="$tmp/nojq" NTFY_TOPIC=t bash "$here/ntfy.sh" 2>&1; echo "rc=$?")
-expect "ntfy without jq exits 0" "rc=0" "$out"
+reset_logs
+printf '{"hook_event_name":"PreToolUse","cwd":"/x/repo","tool_name":"AskUserQuestion","tool_input":{}}' | run_notify
+expect "notify PreToolUse names the tool, ntfy" "needs you: AskUserQuestion" "$(cat "$tmp/curl.log")"
+expect "notify PreToolUse names the tool, desktop" "needs you: AskUserQuestion" "$(cat "$tmp/ns.log")"
+reset_logs
+printf '{"hook_event_name":"Notification","cwd":"/x/repo","message":"Claude is waiting for your input","notification_type":"idle_prompt"}' | run_notify
+[ ! -s "$tmp/curl.log" ] && [ ! -s "$tmp/ns.log" ] && ok "notify ignores idle_prompt" || bad "notify idle_prompt notified"
+printf '{"hook_event_name":"Notification","cwd":"/x/repo","message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}' | run_notify
+expect "notify permission_prompt, ntfy" "needs permission" "$(cat "$tmp/curl.log")"
+expect "notify permission_prompt, desktop" "needs permission" "$(cat "$tmp/ns.log")"
+reset_logs
+NTFY_TOKEN=abc bash -c 'printf "{\"hook_event_name\":\"Stop\",\"cwd\":\"/x/repo\"}" | PATH="'"$tmp"'/bin:$PATH" NTFY_TOPIC=t NTFY_URL=https://n bash "'"$here"'/notify.sh"'
+expect "notify sends bearer token when set" "Authorization: Bearer abc" "$(cat "$tmp/curl.log")"
+reset_logs
+out=$(printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | NTFY_TOPIC= run_notify)
+[ ! -s "$tmp/curl.log" ] && ok "notify without topic posts nothing" || bad "notify without topic posted"
+expect "notify without topic still notifies the desktop" "done" "$(cat "$tmp/ns.log")"
+expect_empty "notify prints nothing to stdout" "$out"
+reset_logs
+out=$(printf '{"hook_event_name":"SessionStart","cwd":"/x/repo"}' | run_notify; echo "rc=$?")
+[ ! -s "$tmp/curl.log" ] && [ ! -s "$tmp/ns.log" ] && expect "notify ignores unknown events" "rc=0" "$out" || bad "notify unknown event notified"
+# No notifier and no topic: only the tools the hook needs, none of the fakes.
+mkdir -p "$tmp/bare"; for b in bash cat basename jq tr; do ln -sf "$(command -v $b)" "$tmp/bare/$b"; done
+out=$(printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | PATH="$tmp/bare" bash "$here/notify.sh" 2>&1; echo "rc=$?")
+expect "notify with no notifier and no topic exits 0 silently" "rc=0" "$out"
+[ "$out" = "rc=0" ] && ok "notify with no notifier and no topic prints nothing" || bad "notify bare printed [$out]"
+mkdir -p "$tmp/nojq"; for b in bash cat basename head; do ln -sf "$(command -v $b)" "$tmp/nojq/$b"; done
+out=$(printf '{"hook_event_name":"Stop","cwd":"/x/repo"}' | PATH="$tmp/nojq" NTFY_TOPIC=t bash "$here/notify.sh" 2>&1; echo "rc=$?")
+expect "notify without jq exits 0" "rc=0" "$out"
 
 # --- handoff.sh -----------------------------------------------------------------------------
 repo="$tmp/repo"; mkdir -p "$repo"; git -C "$repo" init -q; git -C "$repo" config user.email t@e; git -C "$repo" config user.name t

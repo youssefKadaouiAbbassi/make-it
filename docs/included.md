@@ -62,9 +62,9 @@ Hooks, by moment:
 - **When Claude stops:** three checks. If files changed and `HANDOFF.md` is older than them,
   Claude is told once to rewrite it. If the reply ends on a question in plain prose, Claude is
   told once to ask properly: a blocking decision in Claude Code's question dialog, suggestions as
-  numbered options ([how that looks](daily.md#answering-claude)). And, when you set `NTFY_TOPIC`,
-  a short line goes to your [ntfy](https://ntfy.sh) topic; the same when Claude asks you
-  something. It sends only the repository name and the event.
+  numbered options ([how that looks](daily.md#answering-claude)). And a notification goes to your
+  desktop, and to your [ntfy](https://ntfy.sh) topic when you set `NTFY_TOPIC`; the same when
+  Claude asks you something or waits for a permission. It sends only the repository name and the event.
 - **Before a long conversation is compacted:** Claude rewrites `HANDOFF.md` first, so nothing is
   lost in the summary.
 

@@ -145,6 +145,9 @@ Claude read the schema and run queries; the one write tool always asks first.
 
 ## Be told when Claude needs you
 
-Set `NTFY_TOPIC` (and optionally `NTFY_URL` and `NTFY_TOKEN`) in the `env` block of
-`~/.claude/settings.json` to an [ntfy](https://ntfy.sh) topic. When Claude finishes a turn or
-asks you something, your phone gets one line: the repository name and the event, nothing else.
+Claude finishing a turn, asking you something, or waiting on a permission prompt shows a desktop
+notification at once (notify-send on Linux, osascript on macOS, a toast through powershell.exe on
+Windows), with the repository name and the event, nothing else. When a background task is still
+running the line says so. To get the same line on your phone, set `NTFY_TOPIC` (and optionally
+`NTFY_URL` and `NTFY_TOKEN`) in the `env` block of `~/.claude/settings.json` to an
+[ntfy](https://ntfy.sh) topic.
