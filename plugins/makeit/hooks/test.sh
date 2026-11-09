@@ -596,4 +596,29 @@ else
   bad "init skill missing: $sk"
 fi
 
+
+# --- deja-vu plugin: hint.sh and the generated hook events --------------------------------------
+dv="$here/../../deja-vu"
+hint_events=$(jq -r '[.hooks // {} | keys[]] | sort | join(",")' "$dv/.claude-plugin/plugin.json" "$dv/hooks/hooks.json" 2>&1 | paste -sd' ' -)
+expect "deja-vu hook events: SessionStart, PreCompact, SessionEnd in the manifest, UserPromptSubmit in hooks.json" "PreCompact,SessionEnd,SessionStart UserPromptSubmit" "$hint_events"
+expect "deja-vu UserPromptSubmit runs hint.sh" "hooks/hint.sh" "$(jq -r '.hooks.UserPromptSubmit[].hooks[].command' "$dv/hooks/hooks.json" 2>&1)"
+expect_empty "deja-vu: no per-prompt or per-tool recall hook left" "$(grep -rlE 'hook-(prompt|tool|tool-after)' "$dv/.claude-plugin" "$dv/hooks/hooks.json" 2>/dev/null)"
+mkdir -p "$tmp/hintbin"; for b in sh cat tr sed wc printf; do p=$(command -v $b) && ln -sf "$p" "$tmp/hintbin/$b"; done
+hint_case() { # name expect(hint|silent) input
+  for mode in jq nojq; do
+    if [ $mode = jq ]; then out=$(printf '%s' "$3" | sh "$dv/hooks/hint.sh" 2>&1; echo "rc=$?"); else out=$(printf '%s' "$3" | PATH="$tmp/hintbin" sh "$dv/hooks/hint.sh" 2>&1; echo "rc=$?"); fi
+    case "$out" in *rc=0) ;; *) bad "deja hint $mode $1: exit [$out]"; continue ;; esac
+    out=${out%rc=0}; got=silent; [ -n "$out" ] && got=hint
+    [ "$got" = hint ] && ! printf '%s' "$out" | jq -e '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' >/dev/null 2>&1 && got=badjson
+    [ "$got" = "$2" ] && ok "deja hint $mode $1: $got" || bad "deja hint $mode $1: expected $2, got $got"
+  done
+}
+hint_case digit silent '{"session_id":"x","prompt":"2"}'
+hint_case letter silent '{"prompt":"a","cwd":"/x"}'
+hint_case three-words silent '{"prompt":"go do it"}'
+hint_case empty-prompt silent '{"prompt":""}'
+hint_case task hint '{"session_id":"x","prompt":"Fix the DNS record now please","cwd":"/x"}'
+hint_case escaped-quotes hint '{"prompt":"Set \"app\" back to the new IP now","cwd":"/x"}'
+hint_case multiline hint '{"prompt":"Deploy the\nParcelo integration today please"}'
+hint_case garbage hint 'not json at all'
 [ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }

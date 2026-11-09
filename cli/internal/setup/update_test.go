@@ -663,7 +663,7 @@ func converged(t *testing.T) *fakeMachine {
 			var rows []string
 			for _, p := range m.plugins {
 				row := `{"id":"` + p + `","enabled":true,"version":"1.0.0","scope":"user"`
-				if p == "makeit-bundle@makeit" || p == "makeit@makeit" {
+				if p == "makeit-bundle@makeit" || p == "makeit@makeit" || p == "deja-vu@makeit" {
 					row += `,"readFromFolder":"/x"`
 				}
 				rows = append(rows, row+"}")

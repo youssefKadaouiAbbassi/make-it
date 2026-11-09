@@ -1,0 +1,67 @@
+{
+  "name": "deja-vu",
+  "version": "0.24.0",
+  "description": "deja-vu memory for Claude Code: your own past sessions, from every coding agent on the machine, recalled before you ask.",
+  "author": {
+    "name": "vshulcz",
+    "url": "https://github.com/vshulcz"
+  },
+  "homepage": "https://vshulcz.github.io/deja-vu/guide/memory-for-claude-code.html",
+  "repository": "https://github.com/vshulcz/deja-vu",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "session-history",
+    "recall",
+    "context",
+    "claude-code",
+    "codex",
+    "cursor",
+    "copilot-cli"
+  ],
+  "skills": "./skills/",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/deja.sh hook-context",
+            "timeout": 10,
+            "statusMessage": "Recalling past sessions…"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/deja.sh hook-precompact",
+            "timeout": 10,
+            "statusMessage": "Saving this session to memory…"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/deja.sh hook-session-end",
+            "statusMessage": "Marking this session as ended…"
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "deja": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/mcp/deja-mcp.sh",
+      "args": []
+    }
+  }
+}

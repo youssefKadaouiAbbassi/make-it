@@ -88,6 +88,14 @@ echo "== changelog"
 v=$(python3 -c "import json; print(json.load(open('../.claude-plugin/marketplace.json'))['metadata']['version'])")
 if bash ../cli/scripts/release-notes.sh "$v" >/dev/null; then echo "ok CHANGELOG.md has $v"; else echo "FAIL changelog"; fail=1; fi
 
+# plugins/deja-vu is generated: regenerating at the UPSTREAM tag must reproduce it byte for byte.
+echo "== generated deja-vu plugin"
+dtag=$(sed -n 's/^tag //p' ../plugins/deja-vu/UPSTREAM 2>/dev/null)
+dt=$(mktemp -d "${TMPDIR:-/tmp}/deja-gen.XXXXXX")
+if [ -n "$dtag" ] && bash ../cli/scripts/gen-deja-plugin.sh "$dtag" "$dt/out" && diff -r ../plugins/deja-vu "$dt/out" >/dev/null; then echo "ok plugins/deja-vu matches a fresh generation at $dtag"
+else echo "FAIL plugins/deja-vu differs from gen-deja-plugin.sh at its UPSTREAM tag ($dtag)"; fail=1; fi
+/bin/rm -rf "$dt"
+
 echo "== zizmor (auditor)"
 if command -v zizmor >/dev/null 2>&1; then
   zizmor --no-progress --min-severity low --persona auditor .github/workflows ../.github/workflows || fail=1
