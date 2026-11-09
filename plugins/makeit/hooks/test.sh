@@ -134,6 +134,12 @@ expect "handoff unborn branch of any name uses HANDOFF.md" 'rewrite HANDOFF.md' 
 # A cwd with a space still finds the plan.
 sp="$tmp/a b"; mkdir -p "$sp/docs/superpowers/plans"; printf '# s\n' >"$sp/docs/superpowers/plans/s.md"
 expect "handoff compact finds a plan in a cwd with a space" 's.md' "$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"compact"}' "$sp" | bash "$here/handoff.sh")"
+# origin/HEAD decides: with develop as the default, main is a feature branch.
+od="$tmp/od"; mkdir -p "$od"; git -C "$od" init -q -b main; git -C "$od" -c user.email=t@e -c user.name=t commit -q --allow-empty -m i
+git -C "$od" update-ref refs/remotes/origin/develop HEAD; git -C "$od" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/develop
+expect "handoff origin/HEAD develop makes main a feature branch" 'HANDOFF.main.md' "$(printf '{"hook_event_name":"PreCompact","cwd":"%s"}' "$od" | bash "$here/handoff.sh")"
+git -C "$od" checkout -q -b develop
+expect "handoff origin/HEAD target is the default" 'rewrite HANDOFF.md' "$(printf '{"hook_event_name":"PreCompact","cwd":"%s"}' "$od" | { printf '# h\n' >"$od/HANDOFF.md"; bash "$here/handoff.sh"; })"
 
 # --- variant-ask.sh ---------------------------------------------------------------------------
 va() { printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"%s","tool_input":{"command":%s}}' "$repo" "$(printf '%s' "$1" | jq -Rs .)" | HOME="$tmp/home" CLAUDE_PROJECT_DIR="$repo" bash "$here/optional/variant-ask.sh"; }

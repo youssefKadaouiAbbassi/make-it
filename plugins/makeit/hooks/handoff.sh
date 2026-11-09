@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # handoff.sh: the handoff file across sessions. Default branch (or no git, or detached HEAD):
 #   HANDOFF.md; any other branch: HANDOFF.<slug>.md, slug = branch with chars outside A-Za-z0-9._-
-#   replaced by "-". Default branch = main or master, a branch with no commits, or the origin/HEAD target.
+#   replaced by "-". Default branch = the origin/HEAD target; without it main, master or a branch with no commits.
 #   SessionStart (startup|resume|clear|compact): print the handoff into context (a branch without
 #         its file reads HANDOFF.md); after compact also point at the active plan.
 #   PreCompact: tell the agent to rewrite the handoff before the context is summarised.
@@ -14,20 +14,19 @@ input=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 event=$(jq -r '.hook_event_name // empty' <<<"$input")
 cwd=$(jq -r '.cwd // "."' <<<"$input")
-# Sets name/f/onbranch. One git call on main/master; origin/HEAD and the unborn check only elsewhere.
+# Sets name/f/onbranch. origin/HEAD decides when present; else main/master and a branch with no commits are default.
 resolve() {
   name=HANDOFF.md; onbranch=0
   local br def
+  def=$(git -C "$cwd" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null); def=${def#origin/}
   br=$(git -C "$cwd" symbolic-ref --short -q HEAD 2>/dev/null)
-  case "$br" in
-    ""|main|master) ;;
-    *)
-      def=$(git -C "$cwd" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null); def=${def#origin/}
-      # No origin/HEAD: a branch with no commits yet is the default.
-      if [ "$br" != "$def" ] && { [ -n "$def" ] || git -C "$cwd" rev-parse --verify -q HEAD >/dev/null 2>&1; }; then
-        name="HANDOFF.$(printf '%s' "$br" | tr -c 'A-Za-z0-9._-' '-').md"; onbranch=1
-      fi ;;
-  esac
+  [ -n "$br" ] || { f="$cwd/$name"; return; }
+  if [ -n "$def" ]; then
+    [ "$br" = "$def" ] || onbranch=1
+  else
+    case "$br" in main|master) ;; *) git -C "$cwd" rev-parse --verify -q HEAD >/dev/null 2>&1 && onbranch=1 ;; esac
+  fi
+  [ "$onbranch" = 1 ] && name="HANDOFF.$(printf '%s' "$br" | tr -c 'A-Za-z0-9._-' '-').md"
   f="$cwd/$name"
 }
 sid=$(jq -r '.session_id // empty' <<<"$input" | tr -c 'A-Za-z0-9_-' '_')
