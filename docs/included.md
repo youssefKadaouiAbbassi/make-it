@@ -61,7 +61,7 @@ Hooks, by moment:
 - **With each prompt:** a one-line reminder to check the available skills, so the working method
   above is applied to continuations, not only to the first task, and, from the deja-vu plugin, one
   line asking Claude to search your past sessions when the prompt may touch something decided,
-  fixed or tried before. Prompts of fewer than four words get neither.
+  fixed or tried before. A one-word prompt gets no skill reminder, and one under four words no search line.
 - **Before an edit or a shell command:** when it uses a library whose locked version came out after
   the model's training or has no known date, and nothing this session looked up that library's docs,
   Claude is stopped once, told the library, the version and where its docs live; the retry always

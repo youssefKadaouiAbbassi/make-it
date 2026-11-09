@@ -34,7 +34,7 @@ Less noise:
 
 - deja-vu keeps its session summary, search, PreCompact and SessionEnd, and loses the hooks that
   added recall to every prompt and tool call; one line per prompt asks Claude to search when it
-  may touch something decided before. The skill-check reminder skips prompts under four words, and
+  may touch something decided before. The skill-check reminder skips one-word prompts, the search line prompts under four words, and
   the reply check leaves drafts for other people and `Sources:` sections alone.
 - The hooks of every bundled plugin are listed in [docs/hooks.md](docs/hooks.md), checked in CI.
 
