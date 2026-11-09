@@ -1,15 +1,18 @@
 package main
 
 import (
+	"cmp"
 	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"makeit/internal/cli"
 	"makeit/internal/fsx"
+	"makeit/internal/jsonx"
 	"makeit/internal/notify"
 	"makeit/internal/paths"
 	"makeit/internal/settings"
@@ -65,9 +68,15 @@ func askNotify(u *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	push, err := u.Confirm("Also use Claude Code's own phone push (connects sessions to Remote Control)?", false)
-	if err != nil {
-		return err
+	settingsPath := filepath.Join(roots.Claude, "settings.json")
+	live := readSettings(settingsPath)
+	cfg := func(name string) string { return cmp.Or(os.Getenv(name), settingsEnv(live, name)) }
+	// Remote Control needs a claude.ai login: an API key or key helper means there is none.
+	push := false
+	if cfg("ANTHROPIC_API_KEY") == "" && settingsString(live, "apiKeyHelper") == "" {
+		if push, err = u.Confirm("Also use Claude Code's own phone push, Remote Control (needs a claude.ai login)?", false); err != nil {
+			return err
+		}
 	}
 	lock, err := fsx.Acquire(filepath.Join(roots.Stack, "lock"), time.Now())
 	if err != nil {
@@ -79,7 +88,6 @@ func askNotify(u *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	settingsPath := filepath.Join(roots.Claude, "settings.json")
 	var added []string
 	if st.NotifyKeys == nil {
 		st.NotifyKeys = settings.State{}
@@ -110,7 +118,7 @@ func askNotify(u *ui.UI) error {
 			return err
 		}
 		added = nil
-		u.Ok("subscribe to https://ntfy.sh/%s in the ntfy app or a browser; the topic is the password, keep it private", topic)
+		u.Ok("subscribe to %s/%s in the ntfy app or a browser; the topic is the password, keep it private", strings.TrimRight(cmp.Or(cfg("NTFY_URL"), "https://ntfy.sh"), "/"), topic)
 	}
 	if push {
 		if err := notify.EnablePush(settingsPath, record); err != nil {
@@ -121,4 +129,33 @@ func askNotify(u *ui.UI) error {
 	}
 	st.Notify = "asked"
 	return state.SaveState(statePath, st)
+}
+
+// readSettings is settings.json as an object, nil when absent or unreadable.
+func readSettings(path string) *jsonx.Object {
+	data, found, err := fsx.ReadOptional(path)
+	if err != nil || !found {
+		return nil
+	}
+	o, _ := jsonx.DecodeObject(data)
+	return o
+}
+
+func settingsString(o *jsonx.Object, key string) string {
+	if o == nil {
+		return ""
+	}
+	v, _ := o.Get(key)
+	s, _ := v.(string)
+	return s
+}
+
+// settingsEnv is a value of settings.json's env block.
+func settingsEnv(o *jsonx.Object, name string) string {
+	if o == nil {
+		return ""
+	}
+	e, _ := o.Get("env")
+	eo, _ := e.(*jsonx.Object)
+	return settingsString(eo, name)
 }

@@ -214,3 +214,86 @@ func TestNotifyWriteFailureLeavesNoRecord(t *testing.T) {
 		t.Errorf("state kept notify %q, keys %v after a failed write", st.Notify, st.NotifyKeys)
 	}
 }
+
+// An interactive update asks the phone questions once, like setup; --yes and --auto never ask.
+func TestUpdateAsksPhoneQuestionsOnce(t *testing.T) {
+	claudeDir, stack := handInstalled(t, nil)
+	terminal(t, "y\ny\nn\n") // the plan question first
+	code, _, errOut := call(t, noGather(t), "update", "--offline")
+	if code != 0 || !strings.Contains(errOut, "through ntfy?") || !strings.Contains(errOut, "https://ntfy.sh/makeit-") {
+		t.Fatalf("exit %d, stderr %q", code, errOut)
+	}
+	if got := settingsText(t, claudeDir); !strings.Contains(got, `"NTFY_TOPIC": "makeit-`) {
+		t.Errorf("settings after y/n: %s", got)
+	}
+	if st, _, err := state.LoadState(filepath.Join(stack, "state.json")); err != nil || st.Notify != "asked" {
+		t.Errorf("state notify %q, %v", st.Notify, err)
+	}
+	terminal(t, "") // asked once: an empty input would fail a question
+	code, _, errOut = call(t, noGather(t), "update", "--offline")
+	if code != 0 || strings.Contains(errOut, "ntfy") || strings.Contains(errOut, "phone push") {
+		t.Errorf("second update: exit %d, stderr %q", code, errOut)
+	}
+}
+
+func TestUpdateYesAndAutoNeverAskPhoneQuestions(t *testing.T) {
+	for _, args := range [][]string{{"update", "--offline", "--yes"}, {"update", "--offline", "--auto"}} {
+		claudeDir, stack := handInstalled(t, nil)
+		terminal(t, "y\ny\ny\ny\n")
+		call(t, noGather(t), args...)
+		if got := settingsText(t, claudeDir); strings.Contains(got, "NTFY_TOPIC") {
+			t.Errorf("%v wrote a topic: %s", args, got)
+		}
+		if st, _, _ := state.LoadState(filepath.Join(stack, "state.json")); st.Notify != "" {
+			t.Errorf("%v recorded %q", args, st.Notify)
+		}
+	}
+}
+
+func TestNotifyAsksRemoteControlWithLoginNote(t *testing.T) {
+	handInstalled(t, nil)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	terminal(t, "y\nn\n")
+	_, _, errOut := call(t, noGather(t), "notify")
+	if !strings.Contains(errOut, "(needs a claude.ai login)") {
+		t.Errorf("stderr %q lacks the login note", errOut)
+	}
+}
+
+// Remote Control needs a claude.ai login: with an API key or apiKeyHelper (environment or
+// settings) the question is not asked.
+func TestNotifySkipsRemoteControlWithAPIKey(t *testing.T) {
+	for name, set := range map[string]func(t *testing.T, claudeDir string){
+		"env": func(t *testing.T, _ string) { t.Setenv("ANTHROPIC_API_KEY", "sk-x") },
+		"settings env": func(t *testing.T, d string) {
+			os.WriteFile(filepath.Join(d, "settings.json"), []byte(`{"env":{"ANTHROPIC_API_KEY":"sk-x"}}`), 0o600)
+		},
+		"apiKeyHelper": func(t *testing.T, d string) {
+			os.WriteFile(filepath.Join(d, "settings.json"), []byte(`{"apiKeyHelper":"/bin/key"}`), 0o600)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			claudeDir, _ := handInstalled(t, nil)
+			t.Setenv("ANTHROPIC_API_KEY", "")
+			set(t, claudeDir)
+			terminal(t, "y\n") // a second question would hit end of input and fail
+			code, _, errOut := call(t, noGather(t), "notify")
+			if code != 0 || strings.Contains(errOut, "Remote Control") {
+				t.Errorf("exit %d, stderr %q", code, errOut)
+			}
+			if got := settingsText(t, claudeDir); strings.Contains(got, "remoteControlAtStartup") || !strings.Contains(got, "NTFY_TOPIC") {
+				t.Errorf("settings %s", got)
+			}
+		})
+	}
+}
+
+func TestNotifySubscribeLineUsesNtfyURL(t *testing.T) {
+	handInstalled(t, nil)
+	t.Setenv("NTFY_URL", "https://ntfy.example/")
+	terminal(t, "y\nn\n")
+	_, _, errOut := call(t, noGather(t), "notify")
+	if !strings.Contains(errOut, "subscribe to https://ntfy.example/makeit-") {
+		t.Errorf("stderr %q", errOut)
+	}
+}
