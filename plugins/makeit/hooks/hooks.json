@@ -29,9 +29,9 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit",
+        "matcher": "WebFetch|WebSearch",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs.sh\"", "timeout": 5, "async": true }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs-mark.sh\"", "timeout": 5 }
         ]
       }
     ],
@@ -52,6 +52,12 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/docs-nudge.sh\"", "timeout": 5 }
+        ]
+      },
       {
         "matcher": "AskUserQuestion|ExitPlanMode",
         "hooks": [

@@ -146,6 +146,7 @@ mkdir -p "$tmp/mbin"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/makeit.log"\n' "$tmp" >"$tmp/mbin/makeit"; chmod +x "$tmp/mbin/makeit"
 nomakeit=/usr/bin:/bin # makeit is never installed there
 docs_hook() { PATH="$1" bash "$here/docs.sh"; }
+waitlog() { for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$tmp/makeit.log" ] && break; sleep 0.2; done; cat "$tmp/makeit.log" 2>/dev/null; : >"$tmp/makeit.log"; }
 ctx=$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$dp" | docs_hook "$tmp/mbin:$nomakeit" | jq -r '.hookSpecificOutput.additionalContext')
 sleep 0.3
 [ ! -s "$tmp/makeit.log" ] && ok "docs.sh never calls makeit" || bad "docs.sh called makeit: $(cat "$tmp/makeit.log")"
@@ -211,7 +212,7 @@ out=$(nudge s7 "$np" Write "$np/rs/main.rs" 'use newcrate::Thing;')
 expect "nudge covers a cargo dependency locked in Cargo.lock" 'newcrate 0.9.0 (Cargo.lock)' "$out"
 expect_empty "nudge ignores an edit that does not use a dependency" "$(nudge s8 "$np" Write "$np/src/a.ts" 'const x = 1;')"
 expect_empty "nudge silent without manifests" "$(nudge s9 "$tmp/empty" Write "$tmp/empty/a.ts" 'import { test } from "vitest";')"
-out=$(jq -n --arg c "$np" '{hook_event_name:"PreToolUse",session_id:"s10",cwd:$c,tool_name:"Write",tool_input:{file_path:"x/a.ts",content:"import \"vitest\""}}' | PATH="$tmp/nojq" bash "$here/docs-nudge.sh" 2>&1; echo "rc=$?")
+out=$(PATH="$tmp/nojq" bash "$here/docs-nudge.sh" <<<'{"tool_name":"Write","session_id":"s10","cwd":"x"}' 2>&1; echo "rc=$?")
 [ "$out" = "rc=0" ] && ok "nudge without jq: silent, exit 0" || bad "nudge without jq: [$out]"
 out=$(printf 'not json' | PATH="$tmp/nobin" bash "$here/docs-nudge.sh" 2>&1; echo "rc=$?")
 [ "$out" = "rc=0" ] && ok "nudge on unreadable input: silent, exit 0" || bad "nudge on unreadable input: [$out]"
