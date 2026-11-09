@@ -42,8 +42,9 @@ func (r *report) mcpLocal(m Machine) {
 		where = " (MAKEIT_DIR is set for makeit; the plugin reads it only from Claude Code's own environment, else it looks in ~/.makeit)"
 	}
 	have := mcplocal.Installed(m.StackDir)
-	if rng := mcplocal.Engines(m.StackDir); !mcplocal.Satisfies(m.NodeVersion, rng) {
-		r.add(id, g, Warn, mcplocal.Package+" needs node "+rng+", this is "+m.NodeVersion+": the browser server cannot start", "install a newer node, then makeit update")
+	// Only a copy at the pinned version is run, so only then does its node range matter.
+	if rng := mcplocal.Engines(m.StackDir); have == pin && !mcplocal.Satisfies(m.NodeVersion, rng) {
+		r.add(id, g, Warn, mcplocal.Package+" needs node "+rng+", this is "+m.NodeVersion+": the browser server cannot start"+where, "install a newer node, then makeit update")
 		return
 	}
 	switch have {

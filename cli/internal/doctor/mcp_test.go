@@ -97,3 +97,25 @@ func TestMCPLocalCheckMakeitDirNote(t *testing.T) {
 		t.Errorf("message %q does not say the plugin looks in ~/.makeit", got.Message)
 	}
 }
+
+// A wrong-version copy is never run, so its engines are irrelevant: the version is reported first.
+func TestMCPLocalCheckVersionBeforeNodeRange(t *testing.T) {
+	m := mcpMachine(t, "1.13.0", "")
+	write(t, filepath.Join(mcplocal.Dir(m.StackDir), "node_modules", mcplocal.Package, "package.json"),
+		`{"version":"1.12.0","engines":{"node":"^20.19.0"}}`)
+	m.NodeVersion = "v18.19.1"
+	if got := byID(t, Run(context.Background(), m), "mcp.chrome-devtools"); !strings.Contains(got.Message, "pins 1.13.0") {
+		t.Errorf("message %q, want the version mismatch, not the node range", got.Message)
+	}
+}
+
+func TestMCPLocalNodeRangeCarriesMakeitDirNote(t *testing.T) {
+	m := mcpMachine(t, "1.12.0", "")
+	write(t, filepath.Join(mcplocal.Dir(m.StackDir), "node_modules", mcplocal.Package, "package.json"),
+		`{"version":"1.12.0","engines":{"node":"^20.19.0"}}`)
+	m.NodeVersion = "v18.19.1"
+	m.Getenv = func(k string) string { return map[string]string{"MAKEIT_DIR": m.StackDir}[k] }
+	if got := byID(t, Run(context.Background(), m), "mcp.chrome-devtools"); !strings.Contains(got.Message, "~/.makeit") {
+		t.Errorf("message %q lacks the MAKEIT_DIR note", got.Message)
+	}
+}

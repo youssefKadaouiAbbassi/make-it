@@ -85,7 +85,16 @@ func (m *fakeMachine) run(_ context.Context, c execx.Cmd) (execx.Result, error) 
 	case strings.HasPrefix(cmd, "npm install --prefix ") && len(c.Argv) == 7:
 		// The local chrome-devtools-mcp install: leaves the package.json npm would.
 		pkg, ver, _ := strings.Cut(c.Argv[6], "@")
-		write(m.t, filepath.Join(c.Argv[3], "node_modules", pkg, "package.json"), `{"version":"`+ver+`"}`)
+		path := filepath.Join(c.Argv[3], "node_modules", pkg, "package.json")
+		// Not t.Fatal: this runs off the test goroutine.
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			m.t.Error(err)
+			return execx.Result{Code: 1}, nil
+		}
+		if err := os.WriteFile(path, []byte(`{"version":"`+ver+`"}`), 0o644); err != nil {
+			m.t.Error(err)
+			return execx.Result{Code: 1}, nil
+		}
 		return execx.Result{}, nil
 	case cmd == "/usr/bin/claude --version":
 		return execx.Result{Stdout: "2.1.319 (Claude Code)\n"}, nil
