@@ -491,6 +491,15 @@ git -C "$qrepo" checkout -q feat/y
 out=$(push 'git -C "'"$qrepo"'" push' "$qrepo"); expect_empty "push: git -C on feat/y is silent" "$out"
 git -C "$qrepo" checkout -q dev
 out=$(push 'git -C "'"$qrepo"'" push' "$qrepo"); expect "push: git -C on dev asks" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push origin 2>&1' "$qrepo"); expect "push: a 2>&1 redirect is dropped" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push 2>/dev/null' "$qrepo"); expect "push: a 2>file redirect is dropped" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push &>/dev/null' "$qrepo"); expect "push: a &>file redirect is dropped" '"permissionDecision":"ask"' "$out"
+out=$(push 'git push >out.log' "$qrepo"); expect "push: a >file redirect is dropped" '"permissionDecision":"ask"' "$out"
+out=$(push '(cd sub && git push)' "$qrepo"); expect "push: a subshell cd resolves" '"permissionDecision":"ask"' "$out"
+out=$(push "(cd $tmp/notgit && git push)" "$qrepo"); expect_empty "push: a subshell cd to a non-repo is silent" "$out"
+out=$(push '{ git push; }' "$qrepo"); expect "push: a brace group asks" '"permissionDecision":"ask"' "$out"
+out=$(push 'git -c core.x=1 push' "$qrepo"); expect "push: git -c k=v push asks" '"permissionDecision":"ask"' "$out"
+out=$(push 'git --git-dir=.git --no-pager push' "$qrepo"); expect "push: --git-dir= is skipped" '"permissionDecision":"ask"' "$out"
 out=$(printf '{"cwd":"%s","tool_input":{"command":"git push"}}' "$qrepo" | PATH="$tmp/nojq" bash "$here/push.sh" 2>&1; echo "rc=$?"); expect "push: without jq exits 0, no output" "rc=0" "$out"
 case "$out" in rc=0) ok "push: without jq prints nothing" ;; *) bad "push: without jq printed [$out]" ;; esac
 

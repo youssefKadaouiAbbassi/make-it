@@ -53,7 +53,7 @@ judge() {
 }
 set -f # the words below are never globbed
 dir=$cwd
-# ; | & and newline all end a command; quotes around a path are dropped.
+# ; | & and newline end a command; quotes, subshell parens and redirections are dropped.
 while IFS= read -r seg; do
   set -- $seg
   [ "$#" -gt 0 ] || continue
@@ -62,9 +62,17 @@ while IFS= read -r seg; do
   [ "$#" -gt 0 ] || continue
   shift
   gd=$dir
-  if [ "${1:-}" = -C ] && [ "$#" -ge 2 ]; then gd=$(absdir "$dir" "$2"); shift 2; fi
+  while [ "$#" -gt 0 ]; do # git's own options before the subcommand
+    case "$1" in
+      -C) [ "$#" -ge 2 ] || break; gd=$(absdir "$dir" "$2"); shift 2 ;;
+      -c) [ "$#" -ge 2 ] || break; shift 2 ;;
+      --git-dir=*|--work-tree=*|--no-pager|-P) shift ;;
+      *) break ;;
+    esac
+  done
   [ "${1:-}" = push ] || continue
   shift
   judge "$gd" "$@"
-done <<<"$(printf '%s' "$cmd" | tr -d "'\"" | tr ';|&' '\n\n\n')"
+done <<<"$(printf '%s' "$cmd" | tr -d "'\"(){}" |
+  sed -E 's/[0-9]*>&[0-9-]+//g; s/&>>?[^ ;|&]*//g; s/[0-9]*>>?[^ ;|&]*//g' | tr ';|&' '\n\n\n')"
 exit 0
