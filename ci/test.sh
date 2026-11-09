@@ -132,4 +132,8 @@ for k in 'skips the design and plan steps' 'claude -w <name>' 'with Monitor, nev
 done
 [ "$(wc -l < "$g")" -lt 200 ] && echo "ok under 200 lines" || { echo "FAIL $g is 200+ lines"; fail=1; }
 
+echo "== draft skill"
+sk=../plugins/makeit/skills/draft/SKILL.md
+if grep -q '^description: "Use when writing text another person will read' "$sk" && [ -f ../plugins/makeit/evals/draft/case.yaml ]; then echo "ok draft skill and eval case"; else echo "FAIL draft skill or eval case"; fail=1; fi
+
 [ "$fail" = 0 ] && echo "CI OK" || { echo "CI FAILURES"; exit 1; }
