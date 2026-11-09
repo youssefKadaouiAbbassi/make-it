@@ -450,6 +450,27 @@ for loc in C C.UTF-8; do
   fi
 done
 
+# --- push.sh: a bare push from a deploy branch asks ------------------------------------------------
+prepo="$tmp/prepo"; mkdir -p "$prepo/.claude"; git -C "$prepo" init -q -b dev; git -C "$prepo" config user.email t@e; git -C "$prepo" config user.name t
+git -C "$prepo" commit -q --allow-empty -m init
+printf '{"permissions":{"ask":["Bash(git push * dev)","Bash(git push *:dev)","Bash(git push * release)"]}}' >"$prepo/.claude/settings.json"
+push() { jq -n --arg c "$1" --arg d "$2" '{hook_event_name:"PreToolUse",tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' | bash "$here/push.sh"; }
+out=$(push 'git push' "$prepo"); expect "push: bare push on a ruled branch asks" '"permissionDecision":"ask"' "$out"
+expect "push: the reason names the branch" 'from dev' "$out"
+out=$(push 'git push -u origin' "$prepo"); expect "push: remote only, with a flag, asks" '"permissionDecision":"ask"' "$out"
+git -C "$prepo" checkout -q -b feat/x
+out=$(push 'git push' "$prepo"); expect_empty "push: bare push on feat/x is silent" "$out"
+git -C "$prepo" checkout -q dev
+out=$(push 'git push origin feat/x' "$prepo"); expect_empty "push: a named push is silent" "$out"
+out=$(push 'cd x && git push origin' "$prepo"); expect "push: chained bare push asks" '"permissionDecision":"ask"' "$out"
+git -C "$prepo" checkout -q -b main
+/bin/rm -rf "$prepo/.claude"
+out=$(push 'git push' "$prepo"); expect "push: main asks with no settings file" '"permissionDecision":"ask"' "$out"
+git -C "$prepo" checkout -q --detach
+out=$(push 'git push' "$prepo"); expect_empty "push: detached HEAD is silent" "$out"
+mkdir -p "$tmp/notgit"; out=$(push 'git push' "$tmp/notgit"); expect_empty "push: not a git repo is silent" "$out"
+out=$(printf 'not json' | bash "$here/push.sh"; echo "rc=$?"); expect "push: bad input exits 0" "rc=0" "$out"
+
 # --- skills/init/SKILL.md: the /makeit:init agent step (cli/INIT.md) ---------------------------
 sk="$here/../skills/init/SKILL.md"
 if [ -f "$sk" ]; then
