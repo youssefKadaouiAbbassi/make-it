@@ -168,7 +168,9 @@ func TestBaselineSetupReview(t *testing.T) {
 	var s struct {
 		CrossSessionInbound string            `json:"crossSessionInbound"`
 		Env                 map[string]string `json:"env"`
-		Permissions         struct{ Ask []string }
+		Permissions         struct {
+			Ask []string `json:"ask"`
+		} `json:"permissions"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		t.Fatal(err)

@@ -27,8 +27,8 @@ import (
 	"makeit/internal/execx"
 )
 
-// Floor is the lowest Claude Code that modifying commands accept: --json on the marketplace
-// verbs needs it (plugins cli-reference, marketplace add/remove/update).
+// Floor is the lowest Claude Code that modifying commands accept: maisecrets mod and the ask-rule fixes
+// need 2.1.319 (marketplace --json alone needed 2.1.287, plugins cli-reference).
 const Floor = "2.1.319"
 
 // CLI runs one claude binary.

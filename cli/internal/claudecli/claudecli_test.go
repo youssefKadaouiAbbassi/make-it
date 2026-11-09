@@ -44,9 +44,9 @@ func fixture(t *testing.T, name string) string {
 }
 
 func TestVersionAndFloor(t *testing.T) {
-	c, _ := newCLI(map[string]execx.Result{"--version": {Stdout: "2.1.311 (Claude Code)\n"}})
+	c, _ := newCLI(map[string]execx.Result{"--version": {Stdout: "2.1.319 (Claude Code)\n"}})
 	v, err := c.Version(context.Background())
-	if err != nil || v != "2.1.311" {
+	if err != nil || v != "2.1.319" {
 		t.Fatalf("%q %v", v, err)
 	}
 	cases := []struct {
