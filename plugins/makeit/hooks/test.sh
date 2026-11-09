@@ -85,10 +85,12 @@ for n in osascript powershell.exe; do
   expect "notify falls back to $n: title" "claude - repo" "$(cat "$tmp/$n.log")"
 done
 : >"$tmp/powershell.exe.log"
-printf '{"hook_event_name":"Stop","cwd":"/x/it'"'"'s$(touch %s/pwned)"}' "$tmp" | PATH="$tmp/d-powershell.exe" bash "$here/notify.sh"
+# Hostile text in both the message (tool_name) and the cwd basename, each with a quote and $( ).
+jq -n --arg t "it's \$(touch $tmp/pwned) 'x'" --arg c "$tmp/it's\$(x)" \
+  '{hook_event_name:"PreToolUse",tool_name:$t,cwd:$c}' | PATH="$tmp/d-powershell.exe" bash "$here/notify.sh"
 bad_nodes=$(grep -o "CreateTextNode('[^']*')" "$tmp/powershell.exe.log" | sed "s/CreateTextNode('//; s/')$//" | grep -v '^[A-Za-z0-9 :,._-]*$')
 nodes=$(grep -o "CreateTextNode('[^']*')" "$tmp/powershell.exe.log" | wc -l | tr -d ' ')
-[ -z "$bad_nodes" ] && [ "$nodes" = 2 ] && [ ! -e "$tmp/pwned" ] && ok "notify powershell text holds only plain characters" || bad "notify powershell hostile text: [$bad_nodes] nodes=$nodes"
+[ -z "$bad_nodes" ] && [ "$nodes" = 2 ] && [ ! -e "$tmp/pwned" ] && expect "notify powershell hostile cwd reaches the title" "CreateTextNode('claude - it_s__x_')" "$(cat "$tmp/powershell.exe.log")" && ok "notify powershell text holds only plain characters" || bad "notify powershell hostile text: [$bad_nodes] nodes=$nodes"
 reset_logs
 printf '{"hook_event_name":"Stop","cwd":"/x/repo","stop_hook_active":true}' | run_notify
 [ ! -s "$tmp/curl.log" ] && [ ! -s "$tmp/ns.log" ] && ok "notify is quiet on a re-fired Stop" || bad "notify re-fired Stop notified"
