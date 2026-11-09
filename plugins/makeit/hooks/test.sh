@@ -188,7 +188,7 @@ nudge() { # session cwd tool file text -> hook output
 }
 np="$tmp/nudgeproj"; mkdir -p "$np/src" "$np/cli" "$np/py" "$np/rs"
 printf '{"devDependencies":{"vitest":"^5.1.0","oldlib":"^1.0.0"}}\n' >"$np/package.json"
-printf '{"packages":{"node_modules/vitest":{"version":"5.1.0"},"node_modules/oldlib":{"version":"1.0.0"}}}\n' >"$np/package-lock.json"
+printf '{"packages":{"node_modules/vitest":{"version":"5.1.0","resolved":"https://registry.npmjs.org/vitest/-/vitest-5.1.0.tgz"},"node_modules/oldlib":{"version":"1.0.0","resolved":"https://registry.npmjs.org/oldlib/-/oldlib-1.0.0.tgz"}}}\n' >"$np/package-lock.json"
 printf 'module m\n\ngo 1.27\n\nrequire github.com/new/mod v1.4.0\n' >"$np/cli/go.mod"
 printf '[project]\nname = "p"\ndependencies = ["newpy>=2"]\n' >"$np/py/pyproject.toml"
 printf '[[package]]\nname = "newpy"\nversion = "2.0.0"\nsource = { registry = "https://pypi.org/simple" }\n' >"$np/py/uv.lock"
@@ -255,20 +255,19 @@ printf '[[package]]\nname = "poepy"\nversion = "1.5.0"\n\n[package.dependencies]
 printf '[project]\nname = "p"\ndependencies = ["onlypy>=4.0"]\n' >"$np/pyo/pyproject.toml"
 printf '[[package]]\nname = "p"\nversion = "0.1.0"\nsource = { editable = "." }\n\n[[package]]\nname = "privpy"\nversion = "1.0.0"\nsource = { registry = "https://pypi.corp.example/simple" }\n' >"$np/py2/uv.lock"
 seed pypi:newreq@3.0.0 2026-09-15; seed pypi:poepy@1.5.0 2026-09-15; seed pypi:privpoe@1.0.0 2026-09-15; seed pypi:onlypy@4.0 2026-09-15; seed pypi:privpy@1.0.0 2026-09-15
-expect "nudge covers requirements.txt" 'newreq 3.0.0 (requirements.txt)' "$(nudge p1 "$np" Write "$np/req/app.py" 'from newreq import x')"
+expect_empty "nudge does not look up requirements.txt without a lock" "$(nudge p1 "$np" Write "$np/req/app.py" 'from newreq import x')"
 out=$(nudge p2 "$np" Write "$np/poe/app.py" $'import poepy\nimport privpoe')
 expect "nudge covers poetry.lock" 'poepy 1.5.0 (poetry.lock)' "$out"
 case "$out" in *privpoe*) bad "nudge skips a poetry package from another source" ;; *) ok "nudge skips a poetry package from another source" ;; esac
 expect_empty "nudge skips a uv.lock package from another registry" "$(nudge p3 "$np" Write "$np/py2/app.py" 'import privpy')"
 expect_empty "nudge does not look up pyproject.toml alone (no lock, source unknown)" "$(nudge p4 "$np" Write "$np/pyo/app.py" 'import onlypy')"
-# cargo: Cargo.toml alone (path dependencies skipped), a Cargo.lock package without a registry source
+# cargo: Cargo.toml alone (no lookup), a Cargo.lock package without a registry source
 mkdir -p "$np/rso" "$np/rs2"
 printf '[package]\nname = "p"\n\n[dependencies]\nonlycrate = "1.2"\nlocalcrate = { path = "../x", version = "3.0" }\nwscrate.workspace = true\n' >"$np/rso/Cargo.toml"
 printf '[[package]]\nname = "privcrate"\nversion = "1.0.0"\n' >"$np/rs2/Cargo.lock"
 seed crates:onlycrate@1.2 2026-09-01; seed crates:localcrate@3.0 2026-09-01; seed crates:privcrate@1.0.0 2026-09-01
 out=$(nudge c1 "$np" Write "$np/rso/main.rs" $'use onlycrate::A;\nuse localcrate::B;\nuse wscrate::C;')
-expect "nudge covers Cargo.toml alone" 'onlycrate 1.2 (Cargo.toml)' "$out"
-case "$out" in *localcrate* | *wscrate*) bad "nudge skips path and workspace dependencies" ;; *) ok "nudge skips path and workspace dependencies" ;; esac
+expect_empty "nudge does not look up Cargo.toml without a Cargo.lock" "$out"
 expect_empty "nudge skips a Cargo.lock package without a registry source" "$(nudge c2 "$np" Write "$np/rs2/main.rs" 'use privcrate::A;')"
 # go: private modules (GOPRIVATE, a host without a dot) are never looked up or nudged
 mkdir -p "$np/gop"
@@ -298,6 +297,10 @@ expect_empty "a dot in a package name is not a wildcard" "$(nudge d2 "$np" Write
 # no lock, no lookup: the registry a package comes from cannot be told
 mkdir -p "$np/nolock" "$np/gor"
 printf '{"devDependencies":{"vitest":"^5.1.0"}}\n' >"$np/nolock/package.json"
+mkdir -p "$np/nolock2"
+printf '{"dependencies":{"vitest":"^5.1.0","execa":"^10.2.1"}}\n' >"$np/nolock2/package.json"
+printf '{"packages":{"node_modules/vitest":{"version":"5.1.0"}}}\n' >"$np/nolock2/package-lock.json"
+expect_empty "nudge does not look up a package missing from the lock or without resolved" "$(nudge nl2 "$np" Write "$np/nolock2/a.ts" $'import { test } from "vitest";\nimport { execa } from "execa";')"
 expect_empty "nudge does not look up package.json without a lock" "$(nudge nl1 "$np" Write "$np/nolock/a.ts" 'import { test } from "vitest";')"
 printf 'module m\n\nrequire (\n\tgithub.com/new/mod v1.4.0\n\tgithub.com/new/two v1.0.0\n\tgithub.com/new/three v1.0.0\n)\n\nreplace github.com/new/mod => ../mod\n\nreplace (\n\tgithub.com/new/two v1.0.0 => ../two\n)\n' >"$np/gor/go.mod"
 seed go:github.com/new/two@v1.0.0 2026-09-01; seed go:github.com/new/three@v1.0.0 2026-09-01

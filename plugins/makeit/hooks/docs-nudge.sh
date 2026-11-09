@@ -3,10 +3,11 @@
 # version was released after the model's training cutoff (or whose date is unknown), and nothing
 # this session looked that library up (see docs-mark.sh), deny the call once with a message telling
 # the agent to fetch that version's docs first. The second attempt always passes (no loops).
-# Manifests, nearest to the edited file up to the session cwd: package.json + package-lock.json (no lock,
-# no lookup; likewise a go.mod `replace` target and a pyproject.toml without uv.lock/poetry.lock),
-# go.mod, requirements.txt / pyproject.toml + uv.lock / poetry.lock, Cargo.toml + Cargo.lock,
-# Chart.yaml + Chart.lock, *.tf + .terraform.lock.hcl. Dates: release-dates.json beside this script,
+# Manifests, nearest to the edited file up to the session cwd: package.json + package-lock.json,
+# go.mod, uv.lock / poetry.lock, Cargo.lock, Chart.yaml + Chart.lock, *.tf + .terraform.lock.hcl.
+# Without a lock (or a lock entry resolved from the public registry) a dependency gets no lookup and
+# no nudge; likewise a go.mod `replace` target.
+# Dates: release-dates.json beside this script,
 # then a per-user cache, then one registry lookup (3 s cap, none after the first failure; a failure
 # is cached as "skip" for the day and never denies).
 # Only public registries are asked: a dependency from a private registry, GOPRIVATE, a path or a git
@@ -61,16 +62,14 @@ npm_libs() {
   gotoroot package.json
   [ -f package.json ] && [ -f package-lock.json ] || return # no lock: the registry cannot be told
   while IFS=$'\t' read -r n range; do
-    v=""
-    if [ -f package-lock.json ]; then
-      case "$(jq -r --arg n "$n" '.packages["node_modules/"+$n].resolved // empty' package-lock.json 2>/dev/null)" in
-        "" | https://registry.npmjs.org/*) ;;
-        *) continue ;;
-      esac
-      v=$(jq -r --arg n "$n" '.packages["node_modules/"+$n].version // empty' package-lock.json 2>/dev/null)
-    fi
+    # only a lock entry resolved from the public registry counts: anything else cannot be told
+    case "$(jq -r --arg n "$n" '.packages["node_modules/"+$n].resolved // empty' package-lock.json 2>/dev/null)" in
+      https://registry.npmjs.org/*) ;;
+      *) continue ;;
+    esac
+    v=$(jq -r --arg n "$n" '.packages["node_modules/"+$n].version // empty' package-lock.json 2>/dev/null)
     [ -n "$v" ] || v=$(sed 's/^[^0-9]*//' <<<"$range")
-    libs+=("npm|$n|$v|${v:+package-lock.json}")
+    libs+=("npm|$n|$v|package-lock.json")
   done < <(jq -r '(.dependencies // {}) + (.devDependencies // {}) | to_entries[] | "\(.key)\t\(.value)"' package.json 2>/dev/null)
 }
 go_libs() {
@@ -93,28 +92,17 @@ go_libs() {
     /^require [^(]/ && $0 !~ /\/\/ indirect/ { print $2 " " $3 }' go.mod)
 }
 py_libs() {
-  gotoroot uv.lock poetry.lock pyproject.toml requirements.txt
+  gotoroot uv.lock poetry.lock
   local lock=""
   [ -f uv.lock ] && lock=uv.lock
   [ -z "$lock" ] && [ -f poetry.lock ] && lock=poetry.lock
-  if [ -n "$lock" ]; then
-    while IFS=$'\t' read -r n v; do libs+=("pypi|$n|$v|$lock"); done < <(tomllock "$lock" "${lock%.lock}")
-  elif [ -f requirements.txt ] && ! grep -qE '^(-i|--(extra-)?index-url)' requirements.txt; then
-    while read -r n v; do libs+=("pypi|$n|$v|requirements.txt"); done < <(sed -n 's/^\([A-Za-z0-9_.-][A-Za-z0-9_.-]*\)[[:space:]]*[=~<>!]*[[:space:]]*\([0-9][^[:space:];,]*\).*$/\1 \2/p' requirements.txt)
-  fi
+  [ -n "$lock" ] || return # no lock: the index a package comes from cannot be told
+  while IFS=$'\t' read -r n v; do libs+=("pypi|$n|$v|$lock"); done < <(tomllock "$lock" "${lock%.lock}")
 }
 cargo_libs() {
-  gotoroot Cargo.lock Cargo.toml
-  if [ -f Cargo.lock ]; then
-    while IFS=$'\t' read -r n v; do libs+=("crates|$n|$v|Cargo.lock"); done < <(tomllock Cargo.lock cargo)
-  elif [ -f Cargo.toml ]; then
-    while read -r n v; do libs+=("crates|$n|$v|Cargo.toml"); done < <(awk '
-      /^\[/ { d = ($0 ~ /dependencies\]$/); next }
-      d && /^[A-Za-z0-9_-]+ *=/ && /"/ && $0 !~ /(path|git|registry|workspace) *=/ {
-        n = $1; v = $0
-        if (v ~ /version *= *"/) sub(/.*version *= *"/, "", v); else sub(/^[^"]*"/, "", v)
-        sub(/".*/, "", v); print n " " v }' Cargo.toml)
-  fi
+  gotoroot Cargo.lock
+  [ -f Cargo.lock ] || return # no lock: the registry a crate comes from cannot be told
+  while IFS=$'\t' read -r n v; do libs+=("crates|$n|$v|Cargo.lock"); done < <(tomllock Cargo.lock cargo)
 }
 chart_libs() {
   local src=Chart.yaml; [ -f Chart.lock ] && src=Chart.lock
