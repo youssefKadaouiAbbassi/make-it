@@ -887,6 +887,52 @@ func TestUpdateKeepsDocsServerStoreWithoutMakeitRecord(t *testing.T) {
 	}
 }
 
+// A store that is a link, or one the user pointed DOCS_MCP_STORE_PATH away from, stays and is reported.
+func TestUpdateKeepsLinkedOrRedirectedDocsServerStore(t *testing.T) {
+	for name, prep := range map[string]func(m *fakeMachine, server string){
+		"link": func(m *fakeMachine, server string) {
+			target := filepath.Join(m.env.Roots.Home, "elsewhere")
+			writeFile(t, filepath.Join(target, "documents.db"), "mine")
+			if err := os.MkdirAll(filepath.Dir(server), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, server); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"env": func(m *fakeMachine, server string) {
+			writeFile(t, filepath.Join(server, "documents.db"), "mine")
+			m.env.Getenv = func(k string) string {
+				if k == "DOCS_MCP_STORE_PATH" {
+					return "/somewhere"
+				}
+				return ""
+			}
+		},
+		"settings env": func(m *fakeMachine, server string) {
+			writeFile(t, filepath.Join(server, "documents.db"), "mine")
+			writeFile(t, filepath.Join(m.env.Roots.Claude, "settings.json"), `{"env":{"DOCS_MCP_STORE_PATH":"/somewhere"}}`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := converged(t)
+			server := filepath.Join(m.env.Roots.Home, ".local", "share", "docs-mcp-server")
+			writeFile(t, filepath.Join(m.env.Roots.Stack, "docs", "lock"), "1\n")
+			prep(m, server)
+			rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+			if err != nil {
+				t.Fatalf("%v %s", err, rep.Plan.Summary())
+			}
+			if _, err := os.Lstat(server); err != nil {
+				t.Errorf("the store was removed: %v", err)
+			}
+			if r := keptReason(&env{kept: rep.Kept}, "docs-mcp-server store"); !strings.HasPrefix(r, "left in place: ") {
+				t.Errorf("kept %q", r)
+			}
+		})
+	}
+}
+
 // The store is where docs-mcp-server 3.4.1 puts it (env-paths data dir for "docs-mcp-server").
 func TestDocsServerStorePerPlatform(t *testing.T) {
 	home := filepath.Join("h", "u")

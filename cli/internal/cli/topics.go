@@ -84,6 +84,7 @@ var Environment = []EnvVar{
 	{"LOCALAPPDATA", "on Windows, where update looks for docs-mcp-server's old index to remove"},
 	{"ANTHROPIC_API_KEY", "when set (or in settings.json env), makeit notify skips the Remote Control question: it needs a claude.ai login"},
 	{"NTFY_URL", "the ntfy server in the subscribe line makeit notify prints (environment or settings.json env; default https://ntfy.sh)"},
+	{"DOCS_MCP_STORE_PATH", "when set (environment or settings.json env), update keeps docs-mcp-server's default index instead of removing it"},
 	{"SSL_CERT_FILE", "a CA bundle read first, before the system ones, for makeit's downloads"},
 	{"SSL_CERT_DIR", "a folder of CA certificates read after SSL_CERT_FILE"},
 	{"NO_COLOR", "when set, no colour"},

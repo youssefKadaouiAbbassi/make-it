@@ -46,7 +46,8 @@ Docs on demand:
   the library, the version and where the docs live. `makeit update` removes the old index: its own
   `docs` folder under the makeit folder, and docs-mcp-server's default store (`~/.local/share/docs-mcp-server`
   on Linux, `~/Library/Application Support/docs-mcp-server` on macOS, `%LOCALAPPDATA%\docs-mcp-server\Data`
-  on Windows), but only when makeit's own docs record shows makeit ran the syncs that filled it. The
+  on Windows), but only when makeit's own docs record shows makeit ran the syncs that filled it. A store that is a
+  link, or any store when `DOCS_MCP_STORE_PATH` is set, stays and is reported. The
   update reports what it removed and its size. `makeit update` also uninstalls the docs-mcp-server
   plugin when makeit installed it; one you installed yourself stays, with the command to remove it.
 

@@ -15,6 +15,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/fsx"
+	"makeit/internal/jsonx"
 	"makeit/internal/plan"
 	"makeit/internal/pluginrule"
 	"makeit/internal/state"
@@ -82,12 +83,35 @@ func humanSize(n int64) string {
 	return fmt.Sprintf("%.1f %s", f, unit)
 }
 
+// docsStorePathSet reports whether DOCS_MCP_STORE_PATH is set, in the environment or settings.json's env.
+func (e *env) docsStorePathSet() bool {
+	if e.Getenv != nil && e.Getenv("DOCS_MCP_STORE_PATH") != "" {
+		return true
+	}
+	data, found, err := fsx.ReadOptional(filepath.Join(e.Roots.Claude, "settings.json"))
+	if err != nil || !found {
+		return false
+	}
+	live, err := jsonx.DecodeObject(data)
+	if err != nil {
+		return false
+	}
+	envObj, _ := live.Get("env")
+	eo, _ := envObj.(*jsonx.Object)
+	if eo == nil {
+		return false
+	}
+	v, _ := eo.Get("DOCS_MCP_STORE_PATH")
+	s, _ := v.(string)
+	return s != ""
+}
+
 // docsStoreStep removes that store on update, and with it docs-mcp-server's default store: the
 // lock or record in <stack>/docs is the proof that makeit ran the syncs that filled it.
 func (e *env) docsStoreStep() plan.Step {
 	title := "Remove " + filepath.Join(e.Roots.Stack, "docs") + " (the docs index, no longer used)"
 	server := docsServerStore(e.Env)
-	if fi, err := os.Lstat(server); err == nil && fi.IsDir() && isDocsStore(e.Roots.Stack) {
+	if fi, err := os.Lstat(server); err == nil && fi.IsDir() && !e.docsStorePathSet() && isDocsStore(e.Roots.Stack) {
 		title += " and " + server + " (the index its syncs filled)"
 	}
 	return plan.Step{ID: "docs.store", Title: title,
@@ -96,7 +120,15 @@ func (e *env) docsStoreStep() plan.Step {
 			if !isDocsStore(e.Roots.Stack) {
 				return "", nil
 			}
-			if fi, err := os.Lstat(server); err == nil && fi.IsDir() {
+			fi, lerr := os.Lstat(server)
+			switch {
+			case lerr != nil:
+			case fi.Mode()&os.ModeSymlink != 0:
+				e.keep("docs-mcp-server store", "left in place: "+server+" is a link")
+			case e.docsStorePathSet():
+				// The syncs wrote to that path, so the default folder was never theirs.
+				e.keep("docs-mcp-server store", "left in place: DOCS_MCP_STORE_PATH is set, so "+server+" is yours")
+			case fi.IsDir():
 				size := dirSize(server)
 				if err := os.RemoveAll(server); err != nil {
 					return "", err

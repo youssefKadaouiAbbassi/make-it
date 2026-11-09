@@ -167,7 +167,11 @@ esac
 [ ${#libs[@]} -gt 0 ] || exit 0
 
 netfail=""
-t0="" # SECONDS at the first registry lookup: the budget for this call is 3 s from then
+t0="" # clock at the first registry lookup: the budget for this call runs from then
+# Milliseconds with bash 5's EPOCHREALTIME. Older bash (macOS 3.2) counts whole seconds, off by up
+# to one, so its budget is 2 s and the total stays under 3 s.
+now_ms() { if [ -n "${EPOCHREALTIME:-}" ]; then local t=${EPOCHREALTIME/[.,]/}; echo $((t / 1000)); else echo $((SECONDS * 1000)); fi; }
+budget=3000; [ -n "${EPOCHREALTIME:-}" ] || budget=2000
 today=$(date +%F)
 # eco name version [repo] -> $rd: YYYY-MM-DD, "skip" (no answer: no nudge) or empty (the registry
 # has no date). Sets netfail in this shell, so it is called without a subshell.
@@ -176,13 +180,13 @@ release_date() {
   rd_get "$@"
 }
 rd_get() {
-  local key="$1:$2@$3" d="" url body left f=".published_at"
+  local key="$1:$2@$3" d="" url body left now f=".published_at"
   d=$(jq -r --arg k "$key" '.[$k].date // empty' "$here/release-dates.json" 2>/dev/null)
   [ -z "$d" ] && [ -f "$cache" ] && d=$(awk -F'\t' -v k="$key" '$1 == k { r = $2 } END { print r }' "$cache")
   case "$d" in "skip:$today") rd=skip; return ;; skip:*) d="" ;; esac
   [ -n "$d" ] && { rd=${d:0:10}; return; }
-  t0=${t0:-$SECONDS}
-  left=$((3 - (SECONDS - t0)))
+  now=$(now_ms); t0=${t0:-$now}
+  left=$((budget - (now - t0)))
   if [ -n "$netfail" ] || [ "$left" -le 0 ] || ! command -v curl >/dev/null 2>&1; then rd=skip; return; fi
   case "$1" in
     npm) url="https://registry.npmjs.org/$2"; f='.time[$v] // empty' ;;
@@ -193,7 +197,7 @@ rd_get() {
     tofu) url="https://api.github.com/repos/${2%%/*}/terraform-provider-${2##*/}/releases/tags/v$3" ;;
   esac
   # --proto: https only, also across redirects and for a chart repository named by a manifest
-  if body=$(curl -fsSL --compressed -m "$left" --proto =https --proto-redir =https -A makeit-docs-nudge "$url" 2>/dev/null); then
+  if body=$(curl -fsSL --compressed -m "$((left / 1000)).$(printf %03d $((left % 1000)))" --proto =https --proto-redir =https -A makeit-docs-nudge "$url" 2>/dev/null); then
     if [ "$1" = helm ]; then
       d=$(awk -v n="  $2:" -v v="$3" '$0 == n { f = 1; next } f && /^  [^ -]/ { f = 0 }
         f && /created:/ { c = $2 } f && $1 == "version:" && $2 == v { print c; exit }' <<<"$body" | tr -d '"')

@@ -486,6 +486,13 @@ printf '#!/bin/bash\nprintf "%%s\\n" "$*" >>"%s/slow.log"\nsleep 3\necho "{\\"ti
 NPATH="$tmp/slowbin" nudge bud1 "$np" Write "$np/budget/a.ts" $'import a from "b1";\nimport b from "b2";\nimport c from "b3";' >/dev/null
 [ "$(grep -c . "$tmp/slow.log")" = 1 ] && ok "registry lookups stop after the time budget (1 of 3 ran)" || bad "registry budget: $(grep -c . "$tmp/slow.log") lookups"
 expect "the first lookup gets the whole 3 s" '-m 3' "$(sed -n 1p "$tmp/slow.log")"
+# milliseconds: two 2 s lookups leave the second one 1 s minus the overhead, never a whole second or more
+if [ -n "${EPOCHREALTIME:-}" ]; then
+  : >"$tmp/slow.log"; sed -i 's/sleep 3/sleep 2/' "$tmp/slowbin/curl"
+  NPATH="$tmp/slowbin" nudge bud2 "$np" Write "$np/budget/a.ts" $'import a from "b1";\nimport b from "b2";\nimport c from "b3";' >/dev/null
+  [ "$(grep -c . "$tmp/slow.log")" = 2 ] && ok "the budget is counted in milliseconds (2 of 3 ran)" || bad "ms budget: $(grep -c . "$tmp/slow.log") lookups"
+  expect "the second lookup gets a fraction of a second" '-m 0.' "$(sed -n 2p "$tmp/slow.log")"
+fi
 expect "registry lookups ask for a compressed answer" '--compressed' "$(cat "$tmp/curl.log")"
 # M7: session folders older than 7 days are pruned on the next run
 mkdir -p "$tmp/makeit-docs/oldsess" "$tmp/makeit-docs/newsess"; touch -d '10 days ago' "$tmp/makeit-docs/oldsess"
