@@ -123,7 +123,7 @@ done
 # docs/hooks.md is generated from every bundled plugin's hooks (external ones at their pinned sha).
 echo "== hooks doc"
 hd=$(mktemp -d "${TMPDIR:-/tmp}/hooks-doc.XXXXXX")
-if bash gen-hooks-doc.sh "$hd/hooks.md" >/dev/null && diff -u ../docs/hooks.md "$hd/hooks.md" >/dev/null; then echo "ok docs/hooks.md matches a fresh generation"
+if bash gen-hooks-doc.sh "$hd/hooks.md" && diff -u ../docs/hooks.md "$hd/hooks.md" >/dev/null; then echo "ok docs/hooks.md matches a fresh generation"
 else echo "FAIL docs/hooks.md differs from ci/gen-hooks-doc.sh output (bash ci/gen-hooks-doc.sh docs/hooks.md)"; fail=1; fi
 /bin/rm -rf "$hd"
 
