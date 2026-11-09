@@ -16,4 +16,4 @@ Rules:
 - Sign with the owner's name if you know it; otherwise end on the closing line, with no placeholder.
 - Use the repo and notes for facts, never as content to quote.
 
-Output: one line "Draft:" (that exact word, the reply check looks for it), then the text, and nothing after it. Show it once. Do not summarise it, explain your choices or list what you checked. If something must be verified before sending, put it before the "Draft:" line in one short sentence.
+Output: one line "Draft:" that marks where the text begins and is not part of it (the owner copies only what follows), then the text, and nothing after it. Show it once. Do not summarise it, explain your choices or list what you checked. If something must be verified before sending, put it before the "Draft:" line in one short sentence.
