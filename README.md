@@ -5,13 +5,10 @@
   <img alt="makeit" src="docs/assets/logo-dark.svg#gh-dark-mode-only" width="300">
 </p>
 
-<p align="center">A tested Claude Code setup for serious coding.</p>
+<h3 align="center">Claude Code, set up the way the measurements say.</h3>
 
-makeit sets up Claude Code for real software work, the same way on every machine and every
-project, and keeps it current. It installs a plugin set where every core plugin was tested against
-Claude Code without it and against its alternatives (the losers were dropped), then sets each
-project up so Claude knows its rules, runs its checks, and remembers where the last session
-stopped. [What was tested](docs/included.md#the-plugins).
+<p align="center">Every plugin in makeit had to beat Claude Code without it, and its rivals, on the same tasks.<br>
+One command installs the winners on every machine and in every project, and keeps them current.</p>
 
 <p align="center">
   <a href="https://github.com/youssefKadaouiAbbassi/make-it/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/youssefKadaouiAbbassi/make-it?color=555"></a>
@@ -20,73 +17,117 @@ stopped. [What was tested](docs/included.md#the-plugins).
   <img alt="status: beta" src="https://img.shields.io/badge/status-beta-6e7681">
 </p>
 
-> makeit is in beta (0.x): commands and files may still change between versions.
+```sh
+curl -fsSL https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.sh | sh
+```
 
-## What it does
+<p align="center"><sub>macOS and Linux. Windows: <code>irm https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.ps1 | iex</code></sub></p>
+
+## Why makeit
+
+Most Claude Code setups are a list of plugins someone liked. Each one adds instructions to every
+session, and nobody checked whether the sessions got better.
+
+makeit was built the other way round. Each candidate ran against Claude Code without it, and
+against the alternatives, on the same tasks, and only the ones that changed the result stayed:
+
+- **A working method** ([superpowers](https://github.com/obra/superpowers)): Claude asks before
+  building something new, writes a design and a plan, builds test-first, debugs from the root
+  cause. On 29 hard tasks run twice it resolved **43 of 58** where plain Claude Code resolved 38,
+  at lower cost.
+- **Small changes** ([ponytail](https://github.com/DietrichGebert/ponytail)): the smallest change
+  that solves the task, nothing nobody asked for. The cheapest and fastest option on the UI
+  tasks; chosen over Caveman.
+- **Design that holds up** ([impeccable](https://github.com/pbakaus/impeccable), for web
+  projects): won every blind comparison against seven other design skills.
+- **Eyes, docs and memory**: a real Chrome to check web work, the docs of your dependencies at the
+  versions you use, and your own past sessions. Claude used each one when it had it, and guessed
+  when it didn't: with no index, it searched docs **0 times in 6 runs**.
+
+Caveman, Laya, hallmark and others were tested and left out. The full table, with each measurement:
+[What's included](docs/included.md#the-plugins).
+
+Then makeit makes the winners boring to run. One command puts the same setup on every machine.
+`/makeit:init` puts it in every project. Once a day it moves everything to the newest release,
+and `makeit rollback` undoes it. Releases are signed and cannot be changed after they are
+published.
+
+## What changes
+
+| Without makeit | With makeit |
+|---|---|
+| Every session starts from zero | Claude reads the last session's handoff first, and writes one when it stops |
+| "Done" means Claude stopped typing | "Done" means `check:task` passed, with the output in the reply |
+| A new feature starts with code | It starts with questions, a design you approve, and a plan |
+| A bug fix starts with a guess | It starts with the cause, and a test that fails without the fix |
+| Library answers come from memory | From the docs of the version your project uses |
+| Decisions arrive as a wall of prose | As a dialog or numbered choices; you answer with one keystroke |
+| Your setup drifts per machine and per project | One setup everywhere, updated daily, undone in one command |
+
+```
+ask → design → plan → build test-first → check → hand off → remember
+```
+
+## How it works
 
 makeit works at three levels:
 
 - **Your machine.** `makeit setup` installs Claude Code, the plugin set, the settings and the
   global rules every session follows: verify before saying "done", test edges and errors, keep
-  changes small, ask before anything irreversible.
+  changes small, ask before anything irreversible. It shows its plan and asks once:
+
+  ```console
+  $ makeit setup
+
+    ● Machine        4 changes
+    ● Claude Code    install Claude Code
+    ● Plugins        5 changes
+    ● Settings       merge makeit's settings into /home/u/.claude/settings.json
+    ● Files          7 changes
+
+    Apply this plan? Yes
+
+    ✓ Ready in 124s · 17 changed · 1 already
+      Open Claude Code to start.  undo: makeit rollback
+  ```
+
 - **Each project.** `/makeit:init` in Claude Code writes the files Claude reads at session start
   (`CLAUDE.md`, `CONSTRAINTS.md`, `HANDOFF.md`), wires `check:fast`, `check:task` and
   `check:full` to your real linter and tests, adds commit hooks and a CI workflow, and indexes the
-  docs of your dependencies at the versions you use.
-- **Every session.** Claude reads the handoff the last session left, searches your dependencies'
-  docs instead of guessing, runs the checks before calling work done, and asks you in one
-  keystroke when it needs a decision. Once a day makeit moves everything to its newest release;
-  `makeit rollback` undoes it.
-
-Every change makeit makes is shown as a plan first, a file you edited is never overwritten, and
-`makeit uninstall` removes what makeit added and you did not change.
-
-## Install
-
-macOS and Linux:
-
-```sh
-curl -fsSL https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.sh | sh
-```
-
-Windows (PowerShell):
-
-```powershell
-irm https://github.com/youssefKadaouiAbbassi/make-it/releases/latest/download/install.ps1 | iex
-```
-
-The installer checks the release's checksums (and its signature when
-[minisign](https://jedisct1.github.io/minisign/) is installed), then runs `makeit setup`, which
-shows its plan and asks once:
-
-```console
-$ makeit setup
-
-  ● Machine        4 changes
-  ● Claude Code    install Claude Code
-  ● Plugins        5 changes
-  ● Settings       merge makeit's settings into /home/u/.claude/settings.json
-  ● Files          7 changes
-
-  Apply this plan? Yes
-
-  ✓ Ready in 124s · 17 changed · 1 already
-    Open Claude Code to start.  undo: makeit rollback
-```
-
-## Start working
-
-1. Open Claude Code in a project and type `/makeit:init`. Claude sets the project up, runs its
-   checks, and asks before the first commit.
-2. Give Claude work in plain words. For something new it asks what you want, proposes a design and
-   a plan, then builds it test-first; for a bug it finds the cause first; either way it shows the
-   checks passing before it says "done".
-3. Answer with one keystroke: a dialog for decisions, a digit for the numbered suggestions at the
-   end of a reply.
-4. Stop whenever you like. Claude leaves a `HANDOFF.md`, and tomorrow's session starts from it.
+  docs of your dependencies. Claude fills in the project's facts, runs the checks, and asks before
+  the first commit.
+- **Every session.** Claude reads the handoff, searches your dependencies' docs instead of
+  guessing, runs the checks before calling work done, and asks you in one keystroke when it needs
+  a decision. Once a day makeit moves everything to its newest release.
 
 [Working with makeit every day](docs/daily.md) walks through a full day: sessions, reviews,
 lookups, notifications, and what to do when something goes wrong.
+
+## Built to be trusted
+
+- Every change is shown as a plan first and asks once; `--dry-run` writes nothing.
+- A file or setting you changed is never overwritten. makeit updates only what it wrote and you
+  never touched, and says what it kept.
+- Releases are signed with the maintainer's [minisign](https://jedisct1.github.io/minisign/) key
+  and are immutable once published; the installer checks the checksums, and the signature when
+  minisign is installed. The key is in [minisign.pub](minisign.pub) and in [Security](#security).
+- `makeit rollback` undoes the last update: files, plugin versions and makeit itself.
+- `makeit uninstall` removes what makeit added and you did not change.
+- Each release passes its own suite on Ubuntu, Debian, Fedora and Alpine before it ships.
+
+## What's inside
+
+| Part | What it does |
+|---|---|
+| makeit plugin | session hooks (handoff, docs index, reply check, daily update), the `/makeit:init` skill |
+| superpowers | the working method: brainstorming, design, plans, test-driven development, debugging, review |
+| ponytail | keeps changes small |
+| chrome-devtools-mcp, docs-mcp-server | a browser to check web work, and search over your dependencies' docs |
+| deja-vu, security-audit | memory across sessions, and security review |
+| four LSP plugins | code intelligence for TypeScript, Python, Rust and Go |
+| impeccable (web projects) | design skills for user interfaces |
+
+Each part, what it does in a session, and the measurement that kept it: [What's included](docs/included.md).
 
 ## Commands
 
@@ -104,24 +145,12 @@ Every command that changes something prints its plan first and asks once. `--dry
 plan and writes nothing, `--yes` applies it without asking, and `--json` prints one report.
 All commands and flags: [docs/commands.md](docs/commands.md).
 
-## What's included
-
-| Part | What it does |
-|---|---|
-| makeit plugin | session hooks (handoff, docs, reply checks), the `/makeit:init` skill |
-| superpowers | planning, test-driven development and review skills |
-| ponytail | keeps changes small |
-| chrome-devtools-mcp, docs-mcp-server | a browser to check web work, and search over your dependencies' docs |
-| deja-vu, security-audit | memory across sessions, and security review |
-| four LSP plugins | code intelligence for TypeScript, Python, Rust and Go |
-
-Each part, why it is there, and the optional tools: [docs/included.md](docs/included.md).
+> makeit is in beta (0.x): commands and files may still change between versions.
 
 ## Security
 
-Releases are signed with the maintainer's [minisign](https://jedisct1.github.io/minisign/) key.
-Published releases cannot be changed, and only the maintainer can create version tags. The release
-key, also in [minisign.pub](minisign.pub):
+Releases are signed with the maintainer's minisign key. Published releases cannot be changed, and
+only the maintainer can create version tags. The release key, also in [minisign.pub](minisign.pub):
 
 ```
 RWSX6Cc3XFkIxiPHeM4IZ4jBFnOnfiMOROpHoZkjxB3p39XW6qrkkp79
