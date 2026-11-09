@@ -694,6 +694,34 @@ func TestUninstallRemovesNotifyKeys(t *testing.T) {
 	}
 }
 
+// The docs hook's release-date cache lives outside the stack and goes with makeit.
+func TestUninstallRemovesDocsDateCache(t *testing.T) {
+	for name, xdg := range map[string]string{"default": "", "XDG_CACHE_HOME": "xdg"} {
+		t.Run(name, func(t *testing.T) {
+			m := installed(t)
+			base := filepath.Join(m.env.Roots.Home, ".cache")
+			if xdg != "" {
+				base = filepath.Join(m.env.Roots.Home, xdg)
+				m.env.Getenv = func(k string) string {
+					if k == "XDG_CACHE_HOME" {
+						return base
+					}
+					return ""
+				}
+			}
+			writeFile(t, filepath.Join(base, "makeit-docs", "dates.tsv"), "npm:x@1\t2026-01-01\n")
+			writeFile(t, filepath.Join(base, "other", "keep"), "k")
+			uninstall(t, m, UninstallOptions{})
+			if _, err := os.Stat(filepath.Join(base, "makeit-docs")); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("makeit-docs cache still there: %v", err)
+			}
+			if read(t, filepath.Join(base, "other", "keep")) != "k" {
+				t.Error("another cache folder was touched")
+			}
+		})
+	}
+}
+
 func TestUninstallKeepsChangedNotifyKeys(t *testing.T) {
 	m := installed(t)
 	notifyOn(t, m)

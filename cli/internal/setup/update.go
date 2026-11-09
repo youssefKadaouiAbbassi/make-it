@@ -36,21 +36,75 @@ func isDocsStore(stack string) bool {
 	return slices.ContainsFunc(names, func(n string) bool { return docsRecordName.MatchString(filepath.Base(n)) })
 }
 
-// removeDocsStore deletes that store; a directory that is not makeit's is kept.
-func removeDocsStore(stack string) (removed bool, err error) {
-	if !isDocsStore(stack) {
-		return false, nil
+// docsServerStore is the default store of docs-mcp-server 3.4.1 (env-paths data dir of
+// "docs-mcp-server", src store path code): where the removed `makeit docs` syncs put their index.
+func docsServerStore(e Env) string {
+	env := func(k string) string {
+		if e.Getenv == nil {
+			return ""
+		}
+		return e.Getenv(k)
 	}
-	return true, os.RemoveAll(filepath.Join(stack, "docs"))
+	home := e.Roots.Home
+	switch e.Platform.OS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "docs-mcp-server")
+	case "windows":
+		return filepath.Join(cmp.Or(env("LOCALAPPDATA"), filepath.Join(home, "AppData", "Local")), "docs-mcp-server", "Data")
+	}
+	return filepath.Join(cmp.Or(env("XDG_DATA_HOME"), filepath.Join(home, ".local", "share")), "docs-mcp-server")
 }
 
-// docsStoreStep removes that store on update.
+// dirSize is the bytes of the files under dir.
+func dirSize(dir string) (n int64) {
+	_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			if fi, err := d.Info(); err == nil {
+				n += fi.Size()
+			}
+		}
+		return nil
+	})
+	return n
+}
+
+func humanSize(n int64) string {
+	f, unit := float64(n), "B"
+	for _, u := range []string{"KB", "MB", "GB", "TB"} {
+		if f < 1024 {
+			break
+		}
+		f, unit = f/1024, u
+	}
+	if unit == "B" {
+		return fmt.Sprintf("%d B", n)
+	}
+	return fmt.Sprintf("%.1f %s", f, unit)
+}
+
+// docsStoreStep removes that store on update, and with it docs-mcp-server's default store: the
+// lock or record in <stack>/docs is the proof that makeit ran the syncs that filled it.
 func (e *env) docsStoreStep() plan.Step {
-	return plan.Step{ID: "docs.store", Title: "Remove " + filepath.Join(e.Roots.Stack, "docs") + " (the docs index, no longer used)",
+	title := "Remove " + filepath.Join(e.Roots.Stack, "docs") + " (the docs index, no longer used)"
+	server := docsServerStore(e.Env)
+	if fi, err := os.Lstat(server); err == nil && fi.IsDir() && isDocsStore(e.Roots.Stack) {
+		title += " and " + server + " (the index its syncs filled)"
+	}
+	return plan.Step{ID: "docs.store", Title: title,
 		Already: func(context.Context) (bool, error) { return !isDocsStore(e.Roots.Stack), nil },
 		Run: func(context.Context) (string, error) {
-			removed, err := removeDocsStore(e.Roots.Stack)
-			if removed && err == nil {
+			if !isDocsStore(e.Roots.Stack) {
+				return "", nil
+			}
+			if fi, err := os.Lstat(server); err == nil && fi.IsDir() {
+				size := dirSize(server)
+				if err := os.RemoveAll(server); err != nil {
+					return "", err
+				}
+				e.changes = append(e.changes, state.Change{Kind: "remove", Item: "docs-mcp-server store", From: humanSize(size), To: "removed"})
+			}
+			err := os.RemoveAll(filepath.Join(e.Roots.Stack, "docs"))
+			if err == nil {
 				e.changes = append(e.changes, state.Change{Kind: "remove", Item: "docs index"})
 			}
 			return "", err
@@ -480,6 +534,11 @@ func (e *env) adoptedIDs(in pluginrule.Inputs) []string {
 		if !strings.HasSuffix(p.ID, "@"+e.req.Marketplace) || e.owned(p.ID) {
 			continue
 		}
+		if e.orphan(in, p.ID) {
+			// shortcut: reported from this predicate, which every pass evaluates; move it if a pass ever skips it.
+			e.keep(p.ID, "no longer in the "+e.req.Marketplace+" marketplace; remove it with claude plugin uninstall "+p.ID)
+			continue
+		}
 		v := in.Classify(p.ID)
 		if v.Rule == pluginrule.InPlace {
 			continue
@@ -495,6 +554,18 @@ func (e *env) adoptedIDs(in pluginrule.Inputs) []string {
 		ids = append(ids, p.ID)
 	}
 	return ids
+}
+
+// orphan reports whether id is from the makeit marketplace and the refreshed marketplace no longer
+// lists it. A marketplace makeit cannot read lists nothing, so nothing is an orphan then.
+func (e *env) orphan(in pluginrule.Inputs, id string) bool {
+	name, market, _ := strings.Cut(id, "@")
+	entries, ok := in.Entries[market]
+	if !ok || market != e.req.Marketplace {
+		return false
+	}
+	_, listedThere := entries[name]
+	return !listedThere
 }
 
 // ownedCurrent reports whether a plugin makeit installed needs no update: it is gone, loads in
@@ -547,9 +618,9 @@ func (e *env) pluginWork(in pluginrule.Inputs) bool {
 	return false
 }
 
-// dropStep uninstalls a plugin makeit installed that the bundle no longer declares, when Claude
-// Code lists it as no longer needed (`claude plugin prune --dry-run`); one another plugin still
-// needs is kept.
+// dropStep uninstalls a plugin makeit installed that the bundle no longer declares: at once when
+// the marketplace no longer lists it, else when Claude Code lists it as no longer needed
+// (`claude plugin prune --dry-run`); one another plugin still needs is kept.
 func (e *env) dropStep(id string) plan.Step {
 	return plan.Step{ID: "plugin.drop." + id, Title: "Remove " + id + " (the bundle no longer declares it)",
 		Command: []string{"claude", "plugin", "uninstall", id, "--scope", "user", "--keep-data", "--json"},
@@ -568,13 +639,20 @@ func (e *env) dropStep(id string) plan.Step {
 			if e.claude == nil {
 				return "", errNoClaude
 			}
-			unneeded, err := e.claude.Unneeded(ctx)
+			in, err := e.gather(ctx)
 			if err != nil {
 				return "", err
 			}
-			if !slices.Contains(unneeded, id) {
-				e.keep(id, "another installed plugin still needs it")
-				return "", plan.ErrSkip
+			// Gone from the marketplace: uninstall it. prune names no orphans while a plugin fails to load.
+			if !e.orphan(in, id) {
+				unneeded, err := e.claude.Unneeded(ctx)
+				if err != nil {
+					return "", err
+				}
+				if !slices.Contains(unneeded, id) {
+					e.keep(id, "another installed plugin still needs it")
+					return "", plan.ErrSkip
+				}
 			}
 			if err := e.act(e.claude.Uninstall(ctx, id)); err != nil {
 				return "", err

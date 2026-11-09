@@ -153,7 +153,7 @@ func (e *env) uninstallSteps(opts UninstallOptions) []plan.Step {
 		steps = append(steps, e.unFileStep(k))
 	}
 	steps = append(steps, e.toolSteps()...)
-	steps = append(steps, e.unDirsStep(), e.unCatalogStep(), e.unMCPLocalStep(), e.unStateStep())
+	steps = append(steps, e.unDocsCacheStep(), e.unDirsStep(), e.unCatalogStep(), e.unMCPLocalStep(), e.unStateStep())
 	if opts.Purge {
 		steps = append(steps, plan.Step{ID: "purge",
 			Title: "Delete the data of the plugins makeit installed, and every backup in " + e.Roots.Stack + " (cannot be undone)",
@@ -593,6 +593,22 @@ func (e *env) unDirsStep() plan.Step {
 			}
 			return strings.Join(removed, ", "), nil
 		}}
+}
+
+// unDocsCacheStep removes the docs hook's release-date cache, which lives under the user's cache
+// folder (the hook's own rule: $XDG_CACHE_HOME, else ~/.cache).
+func (e *env) unDocsCacheStep() plan.Step {
+	base := e.Roots.Home + "/.cache"
+	if e.Getenv != nil && e.Getenv("XDG_CACHE_HOME") != "" {
+		base = e.Getenv("XDG_CACHE_HOME")
+	}
+	dir := filepath.Join(base, "makeit-docs")
+	return plan.Step{ID: "docscache", Title: "Remove the docs hook's release-date cache " + dir,
+		Already: func(context.Context) (bool, error) {
+			_, err := os.Lstat(dir)
+			return errors.Is(err, fs.ErrNotExist), nil
+		},
+		Run: func(context.Context) (string, error) { return "", os.RemoveAll(dir) }}
 }
 
 // unCatalogStep removes makeit's copy of the catalog once no marketplace points at it.

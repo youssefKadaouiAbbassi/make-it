@@ -12,7 +12,9 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/execx"
 	"makeit/internal/fsx"
+	"makeit/internal/paths"
 	"makeit/internal/plan"
+	"makeit/internal/platform"
 	"makeit/internal/state"
 )
 
@@ -484,7 +486,7 @@ func TestSetupInstallsMissingBundleDeps(t *testing.T) {
 }
 
 func TestDropUndeclaredOwned(t *testing.T) {
-	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`,{"name":"old","source":"./plugins/old"},{"name":"kept","source":"./plugins/kept"}]`,
 		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"old@makeit","enabled":true},{"id":"kept@makeit","enabled":true}]`)
 	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb"),
 		"old@makeit": ownedAt(""), "kept@makeit": ownedAt("")}
@@ -502,6 +504,43 @@ func TestDropUndeclaredOwned(t *testing.T) {
 	}
 	if has(f.argvs(), "uninstall kept@makeit") || keptReason(e, "kept@makeit") != "another installed plugin still needs it" {
 		t.Errorf("kept@makeit: %v, kept %q", f.argvs(), keptReason(e, "kept@makeit"))
+	}
+}
+
+// A plugin makeit installed that the refreshed marketplace no longer lists is uninstalled
+// directly: `claude plugin prune --dry-run` names no orphans while a plugin fails to load.
+func TestDropOrphanOwnedUninstallsDirectly(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"docs-mcp-server@makeit","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb"), "docs-mcp-server@makeit": ownedAt("")}
+	f.answers["claude plugin prune --dry-run --scope user"] = text("Skipped - cannot determine orphans: a plugin failed to load\n")
+	f.answers["claude plugin uninstall docs-mcp-server@makeit --scope user --keep-data --json"] = text(`{"command":"uninstall","outcome":"ok"}`)
+	if _, err := step(t, e.pluginSteps(), "plugin.drop.docs-mcp-server@makeit").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !has(f.argvs(), "plugin uninstall docs-mcp-server@makeit") || has(f.argvs(), "plugin prune") {
+		t.Errorf("calls %v: want a direct uninstall and no prune", f.argvs())
+	}
+	if e.st.Plugins["docs-mcp-server@makeit"] != nil || len(e.gen.Manifest.Plugins.Uninstalled) != 1 {
+		t.Errorf("not dropped from state and generation: %+v", e.gen.Manifest.Plugins)
+	}
+}
+
+// A plugin the user installed from the makeit marketplace, no longer listed there, is not
+// updated and not removed: one kept line names the command.
+func TestAdoptedOrphanKeptNotUpdated(t *testing.T) {
+	e, f := pluginEnv(t, `["superpowers"]`, `[`+bundleEntry+`,`+spEntry+`]`,
+		`[`+bundleRow+`,{"id":"superpowers@makeit","enabled":true},{"id":"gone@makeit","version":"1.0.0","enabled":true}]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": ownedAt(""), "superpowers@makeit": ownedAt("bbb")}
+	s := step(t, e.pluginSteps(), "plugins.adopted")
+	if done, err := s.Already(context.Background()); !done || err != nil {
+		t.Errorf("already = %v, %v; an orphan is nothing to update", done, err)
+	}
+	if has(f.argvs(), "plugin update gone@makeit") || has(f.argvs(), "plugin uninstall") {
+		t.Errorf("calls %v", f.argvs())
+	}
+	if want := "no longer in the makeit marketplace; remove it with claude plugin uninstall gone@makeit"; keptReason(e, "gone@makeit") != want {
+		t.Errorf("kept %q, want %q", keptReason(e, "gone@makeit"), want)
 	}
 }
 
@@ -803,21 +842,70 @@ func TestUpdateRecordsAdoptedPinMove(t *testing.T) {
 	}
 }
 
-// The docs index of the removed docs command goes: only when it holds makeit's lock or a record.
+// The docs index of the removed docs command goes with the docs-mcp-server store its syncs filled:
+// only when makeit's lock or a record is in <stack>/docs, the proof that makeit ran the syncs.
 func TestUpdateRemovesDocsStore(t *testing.T) {
 	m := converged(t)
 	store := filepath.Join(m.env.Roots.Stack, "docs")
 	writeFile(t, filepath.Join(store, "lock"), "1\n")
-	writeFile(t, filepath.Join(store, "documents.db"), "x")
+	server := filepath.Join(m.env.Roots.Home, ".local", "share", "docs-mcp-server")
+	writeFile(t, filepath.Join(server, "documents.db"), strings.Repeat("x", 3000))
 	rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
 	if err != nil {
 		t.Fatalf("%v %s", err, rep.Plan.Summary())
 	}
-	if _, err := os.Stat(store); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("docs store still there: %v", err)
+	for _, d := range []string{store, server} {
+		if _, err := os.Stat(d); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s still there: %v", d, err)
+		}
 	}
 	if !slices.Contains(rep.Changes, state.Change{Kind: "remove", Item: "docs index"}) {
 		t.Errorf("changes %+v lack the docs index removal", rep.Changes)
+	}
+	if !slices.Contains(rep.Changes, state.Change{Kind: "remove", Item: "docs-mcp-server store", From: "2.9 KB", To: "removed"}) {
+		t.Errorf("changes %+v lack the docs-mcp-server store removal with its size", rep.Changes)
+	}
+}
+
+// Without makeit's own record the docs-mcp-server store is the user's: kept.
+func TestUpdateKeepsDocsServerStoreWithoutMakeitRecord(t *testing.T) {
+	m := converged(t)
+	server := filepath.Join(m.env.Roots.Home, ".local", "share", "docs-mcp-server", "documents.db")
+	writeFile(t, server, "mine")
+	for name, setup := range map[string]func(){
+		"no docs dir":      func() {},
+		"foreign docs dir": func() { writeFile(t, filepath.Join(m.env.Roots.Stack, "docs", "notes.md"), "n") },
+	} {
+		setup()
+		rep, err := Update(context.Background(), m.env, plan.Apply, nil, nil)
+		if err != nil {
+			t.Fatalf("%s: %v %s", name, err, rep.Plan.Summary())
+		}
+		if read(t, server) != "mine" {
+			t.Errorf("%s: the docs-mcp-server store was removed without makeit's record", name)
+		}
+	}
+}
+
+// The store is where docs-mcp-server 3.4.1 puts it (env-paths data dir for "docs-mcp-server").
+func TestDocsServerStorePerPlatform(t *testing.T) {
+	home := filepath.Join("h", "u")
+	cases := []struct {
+		os   string
+		env  map[string]string
+		want string
+	}{
+		{"linux", nil, filepath.Join(home, ".local", "share", "docs-mcp-server")},
+		{"linux", map[string]string{"XDG_DATA_HOME": "/x/data"}, filepath.Join("/x/data", "docs-mcp-server")},
+		{"darwin", nil, filepath.Join(home, "Library", "Application Support", "docs-mcp-server")},
+		{"windows", nil, filepath.Join(home, "AppData", "Local", "docs-mcp-server", "Data")},
+		{"windows", map[string]string{"LOCALAPPDATA": `C:\L`}, filepath.Join(`C:\L`, "docs-mcp-server", "Data")},
+	}
+	for _, c := range cases {
+		e := Env{Roots: paths.Roots{Home: home}, Platform: platform.Platform{OS: c.os}, Getenv: func(k string) string { return c.env[k] }}
+		if got := docsServerStore(e); got != c.want {
+			t.Errorf("%s %v: %s, want %s", c.os, c.env, got, c.want)
+		}
 	}
 }
 
