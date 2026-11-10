@@ -53,6 +53,9 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 	m.CatalogDir = filepath.Join(roots.Stack, "catalog")
 	if st, _, err := state.LoadState(m.StatePath); err == nil {
 		m.CatalogRecord = st.Catalog
+		if rec := st.Prereqs["node"]; rec != nil && rec.InstalledBy == "makeit" && rec.Route == "nodedist" {
+			m.NodeDist, m.NodeLink = true, filepath.Join(roots.Home, ".local", "bin", "node")
+		}
 		if k := st.Catalog.Kind; k != "" && k != "embedded" && catalog.ReadMarker(m.CatalogDir).Digest != "" {
 			m.Catalog = catalog.Dir(m.CatalogDir)
 		}
@@ -66,6 +69,7 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 			m.Globals = append(m.Globals, f.Path)
 		}
 	}
+	m.NodePath, _ = execx.LookPath("node")
 	if res, err := execx.Run(ctx, execx.Cmd{Argv: []string{"node", "-v"}, Timeout: 5 * time.Second}); err == nil && res.Code == 0 {
 		m.NodeVersion = strings.TrimSpace(res.Stdout)
 	}
