@@ -9,6 +9,7 @@ raises the minor version.
   and that load from makeit's folder, when their version changed. In 0.4.0 they kept their old
   version until `claude plugin update`: deja-vu, moved to makeit's folder in 0.4.0, stayed at
   0.24.0 on those machines.
+- Update no longer prints a "loads in place" note for those plugins on every run.
 
 ## 0.4.0
 
