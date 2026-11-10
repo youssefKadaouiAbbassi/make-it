@@ -4,7 +4,7 @@ Goal: two global CLAUDE.md rules for UI changes, after the IGESA session hid the
 contact cards and only screenshotted the back office (m12 report in
 claude-code-build-stack-redteam/eval/setup-review/m12-interactive/REPORT.md).
 
-Branch v0.4.4 from main (132a244). Not committed yet when this was written.
+Branch v0.4.4 from main (132a244), commit 7140a84; gate green on it.
 
 Done:
 - templates/global/CLAUDE.md: Scope gains "A change to a screen that exists keeps its look";
@@ -13,7 +13,7 @@ Done:
 - CHANGELOG Unreleased entry. globalhistory_gen.go regenerated.
 - The earlier skills.sh reword branch was deleted (no measured effect, m12 arm C).
 
-Next: full gate green, commit the named files, then release 0.4.4 when the owner says (template
+Next: release 0.4.4 when the owner says (template
 change = release). Owner's ~/.claude/CLAUDE.md equals the 0.4.3 template, so update applies it.
 
 Open: the rules' effect is unmeasured (sealed replays have no emulator).
