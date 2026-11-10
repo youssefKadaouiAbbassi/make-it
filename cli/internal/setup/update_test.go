@@ -428,6 +428,48 @@ func TestAdoptedMakeitUpdatesOnly(t *testing.T) {
 	}
 }
 
+// An adopted plugin loaded in place keeps its old version until plugin update, like an owned one:
+// deja-vu moved from upstream 0.24.0 to the catalog folder at 0.4.0 and stayed at 0.24.0.
+func TestAdoptedInPlaceVersionMoved(t *testing.T) {
+	for _, c := range []struct {
+		folder string
+		want   bool // already
+	}{{"3.10.0", true}, {"0.4.0", false}, {"", true}} {
+		row := `{"id":"makeit-bundle@makeit","version":"3.10.0","enabled":true,"readFromFolder":"/c/plugins/makeit-bundle","folderVersion":"` + c.folder + `"}`
+		e, f := pluginEnv(t, `[]`, `[`+bundleEntry+`]`, `[`+row+`]`)
+		e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": {InstalledBy: "user"}}
+		f.answers["claude plugin update makeit-bundle@makeit --scope user --json"] = text(updated)
+		s := step(t, e.pluginSteps(), "plugins.adopted")
+		done, err := s.Already(context.Background())
+		if done != c.want || err != nil {
+			t.Errorf("folder %q: already = %v, %v, want %v", c.folder, done, err, c.want)
+			continue
+		}
+		if done {
+			continue
+		}
+		if _, err := s.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !has(f.argvs(), "claude plugin update makeit-bundle@makeit --scope user --json") {
+			t.Errorf("folder %q: not updated: %v", c.folder, f.argvs())
+		}
+	}
+}
+
+// makeit updates the plugins of its own marketplace, so the refresh adds no "loads in place" note.
+func TestRefreshNoInPlaceHintForOwnMarketplace(t *testing.T) {
+	row := `{"id":"makeit-bundle@makeit","version":"3.10.0","enabled":true,"readFromFolder":"/c/plugins/makeit-bundle","folderVersion":"3.10.0"}`
+	e, _ := pluginEnv(t, `[]`, `[`+bundleEntry+`]`, `[`+row+`]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": {InstalledBy: "user"}}
+	if _, err := step(t, e.pluginSteps(), "marketplace.refresh").Already(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.hints) != 0 {
+		t.Errorf("hints = %v, want none for a plugin makeit updates", e.hints)
+	}
+}
+
 func TestAdoptedOtherMarketplaceNoCommand(t *testing.T) {
 	e, f := pluginEnv(t, `["typescript-lsp@claude-plugins-official"]`, `[`+bundleEntry+`]`,
 		`[`+bundleRow+`,{"id":"typescript-lsp@claude-plugins-official","version":"1.0.0","enabled":true}]`)

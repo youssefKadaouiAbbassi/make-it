@@ -381,7 +381,7 @@ func (e *env) refreshStep() plan.Step {
 						continue
 					}
 					v := in.Classify(id)
-					if strings.HasSuffix(id, "@"+own) && v.Rule != pluginrule.InPlace {
+					if strings.HasSuffix(id, "@"+own) {
 						continue // makeit updates its version
 					}
 					e.hint(Hint{ID: id, Rule: string(v.Rule), Text: v.Text})
@@ -556,10 +556,16 @@ func (e *env) adoptedStep() plan.Step {
 		}}
 }
 
-// adoptedIDs are the listed plugins from the makeit marketplace that makeit did not install and
-// that do not load in place, except those known to be at their pin: the version shows it (the
-// 12-character commit Claude Code uses when the manifest pins no version), or makeit last updated
-// the plugin at that pin.
+// inPlaceCurrent reports whether a plugin loaded in place needs no update: its files load from the
+// folder, but Claude Code keeps the old version until plugin update.
+func inPlaceCurrent(p *claudecli.Plugin) bool {
+	return p == nil || p.FolderVersion == "" || p.FolderVersion == p.Version
+}
+
+// adoptedIDs are the listed plugins from the makeit marketplace that makeit did not install, except
+// those already current: loaded in place at their folder's version, or known to be at their pin
+// (the version shows it, the 12-character commit Claude Code uses when the manifest pins no
+// version, or makeit last updated the plugin at that pin).
 func (e *env) adoptedIDs(in pluginrule.Inputs) []string {
 	var ids []string
 	for _, p := range in.Plugins {
@@ -572,7 +578,7 @@ func (e *env) adoptedIDs(in pluginrule.Inputs) []string {
 			continue
 		}
 		v := in.Classify(p.ID)
-		if v.Rule == pluginrule.InPlace {
+		if v.Rule == pluginrule.InPlace && inPlaceCurrent(listed(in, p.ID)) {
 			continue
 		}
 		if v.Rule == pluginrule.Pinned {
@@ -608,9 +614,7 @@ func (e *env) ownedCurrent(in pluginrule.Inputs, id string) bool {
 	}
 	switch v := in.Classify(id); v.Rule {
 	case pluginrule.InPlace:
-		// Its files load from the folder, but Claude Code keeps the old version until plugin update.
-		p := listed(in, id)
-		return p.FolderVersion == "" || p.FolderVersion == p.Version
+		return inPlaceCurrent(listed(in, id))
 	case pluginrule.AutoUpdate:
 		return true
 	case pluginrule.Pinned:
