@@ -3,7 +3,7 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
-## Unreleased
+## 0.4.4
 
 - The global `CLAUDE.md` gains two rules for UI changes. A change to a screen that exists keeps
   its look: Claude reuses its components and fills them with the new data, and hiding or

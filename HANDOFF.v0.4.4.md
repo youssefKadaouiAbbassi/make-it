@@ -13,7 +13,7 @@ Done:
 - CHANGELOG Unreleased entry. globalhistory_gen.go regenerated.
 - The earlier skills.sh reword branch was deleted (no measured effect, m12 arm C).
 
-Next: release 0.4.4 when the owner says (template
+Next: owner chose release 0.4.4; versions bumped (uncommitted), gate running, then merge, public copy, tag, sign (template
 change = release). Owner's ~/.claude/CLAUDE.md equals the 0.4.3 template, so update applies it.
 
 Open: the rules' effect is unmeasured (sealed replays have no emulator).
