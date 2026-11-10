@@ -3,6 +3,13 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.4.1
+
+- `makeit update` now updates the plugins from the makeit marketplace that you installed yourself
+  and that load from makeit's folder, when their version changed. In 0.4.0 they kept their old
+  version until `claude plugin update`: deja-vu, moved to makeit's folder in 0.4.0, stayed at
+  0.24.0 on those machines.
+
 ## 0.4.0
 
 A review of a week of real sessions: fewer lost messages, fewer surprises, less noise. Needs
