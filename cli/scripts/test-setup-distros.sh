@@ -38,7 +38,7 @@ trap '/bin/rm -rf "$catsrc"' EXIT
 cp -r "$cli/internal/catalog/data/files/." "$catsrc/"
 chmod 755 "$catsrc"
 images=("$@")
-[ ${#images[@]} -gt 0 ] || images=(ubuntu:24.04 debian:trixie-slim fedora:latest alpine:3.23)
+[ ${#images[@]} -gt 0 ] || images=(ubuntu:24.04 debian:12 debian:trixie-slim fedora:latest alpine:3.23)
 
 # As the user, after setup: update, uninstall, check what is left, setup again.
 upkeep=$(cat <<'UPKEEP'
@@ -68,6 +68,8 @@ test ! -e "$HOME/.claude/CLAUDE.md"
 if claude plugin marketplace list --json | grep -q "\"name\": \"makeit\""; then echo "the makeit marketplace is still there"; exit 1; fi
 test ! -e "$HOME/.makeit/catalog"
 test ! -e "$HOME/.makeit/mcp/chrome-devtools"
+test ! -e "$HOME/.local/share/makeit/node"
+if [ -L "$HOME/.local/bin/node" ]; then echo "the node link is still there"; exit 1; fi
 makeit setup --yes
 EOS
 chmod 755 /tmp/upkeep.sh
@@ -264,15 +266,20 @@ if command -v npm >/dev/null; then
   # chrome-devtools-mcp is installed locally, and the shipped .mcp.json starts that copy (a PATH
   # with node only, so npx could not have served it) and gets an initialize reply.
   test -f "$HOME/.makeit/mcp/chrome-devtools/node_modules/chrome-devtools-mcp/package.json" || { echo "no local chrome-devtools-mcp"; exit 1; }
-  # The package's engines: ^20.19.0 || ^22.12.0 || >=23 (Ubuntu 24.04's apt node is 18, where npx fails too).
-  if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit((a===20&&b>=19)||(a===22&&b>=12)||a>=23?0:1)'; then
-    echo "chrome-devtools-mcp needs Node ^20.19 || ^22.12 || >=23, this is $(node -v): server start not checked"
-  else
+  # The package's engines: ^20.19.0 || ^22.12.0 || >=23. Ubuntu 24.04 (18.19) and Debian 12 (18.20) ship 18
+  # in their packages: there makeit installs the newest LTS from nodejs.org, so the server must start.
+  floor='const [a,b]=process.versions.node.split(".").map(Number);process.exit((a===20&&b>=19)||(a===22&&b>=12)||a>=23?0:1)'
+  node -e "$floor" || { echo "chrome-devtools-mcp needs Node ^20.19 || ^22.12 || >=23, this is $(node -v)"; exit 1; }
+  if [ -x /usr/bin/node ] && ! /usr/bin/node -e "$floor"; then
+    case "$(readlink -f "$(command -v node)")" in */.local/share/makeit/node/*) ;; *) echo "node is $(readlink -f "$(command -v node)"), not makeit's nodejs.org node"; exit 1 ;; esac
+    [ "$(readlink -f "$(command -v npm)" | grep -c '/.local/share/makeit/node/')" = 1 ] || { echo "npm is not makeit's"; exit 1; }
+    echo "node from nodejs.org over the package's $(/usr/bin/node -v): ok"
+  fi
+  echo "node $(node -v): ok"
   nd=$(mktemp -d)
   ln -s "$(command -v node)" "$nd/node"
   PATH="$nd" node -e 'const j=require(process.argv[1]).mcpServers["chrome-devtools"];const c=require("child_process").spawn(j.command,j.args,{stdio:["pipe","pipe","inherit"],env:process.env});c.stdout.once("data",d=>{console.log(String(d));c.kill();process.exit(/"serverInfo"/.test(String(d))?0:1)});c.stdin.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"initialize",params:{protocolVersion:"2025-06-18",capabilities:{},clientInfo:{name:"t",version:"0"}}})+"\n");setTimeout(()=>process.exit(1),30000)' "$HOME/.makeit/catalog/plugins/makeit/.mcp.json" || { echo "the shipped .mcp.json did not start the local copy"; exit 1; }
   echo "chrome-devtools-mcp from the local copy: ok"
-  fi
   # A local copy that is not the pinned version is not run: npx is (a fake one here, as a marker).
   wd=$(mktemp -d)
   mkdir -p "$wd/stack/mcp" "$wd/bin"
