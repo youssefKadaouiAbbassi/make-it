@@ -3,6 +3,18 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.4.2
+
+- On Linux, setup installs the newest Node LTS from nodejs.org when node is missing or older than
+  20.19 / 22.12 (the browser server, chrome-devtools-mcp, needs that; Ubuntu 24.04 and Debian 12
+  ship node 18, where it could not start). The checksum from nodejs.org is verified, node goes to
+  `~/.local/share/makeit/node/<version>` and `node`, `npm` and `npx` are linked into
+  `~/.local/bin`; your system node stays. Alpine, Homebrew and winget keep their own routes.
+- `makeit update` moves that node to the next LTS and keeps the previous version until the update
+  after; `makeit rollback` brings it back; `makeit uninstall` removes the folder and the links
+  that are makeit's.
+- `makeit doctor` warns when another node comes first on PATH than the one makeit installed.
+
 ## 0.4.1
 
 - `makeit update` now updates the plugins from the makeit marketplace that you installed yourself
