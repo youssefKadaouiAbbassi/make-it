@@ -457,6 +457,19 @@ func TestAdoptedInPlaceVersionMoved(t *testing.T) {
 	}
 }
 
+// makeit updates the plugins of its own marketplace, so the refresh adds no "loads in place" note.
+func TestRefreshNoInPlaceHintForOwnMarketplace(t *testing.T) {
+	row := `{"id":"makeit-bundle@makeit","version":"3.10.0","enabled":true,"readFromFolder":"/c/plugins/makeit-bundle","folderVersion":"3.10.0"}`
+	e, _ := pluginEnv(t, `[]`, `[`+bundleEntry+`]`, `[`+row+`]`)
+	e.st.Plugins = map[string]*state.Plugin{"makeit-bundle@makeit": {InstalledBy: "user"}}
+	if _, err := step(t, e.pluginSteps(), "marketplace.refresh").Already(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.hints) != 0 {
+		t.Errorf("hints = %v, want none for a plugin makeit updates", e.hints)
+	}
+}
+
 func TestAdoptedOtherMarketplaceNoCommand(t *testing.T) {
 	e, f := pluginEnv(t, `["typescript-lsp@claude-plugins-official"]`, `[`+bundleEntry+`]`,
 		`[`+bundleRow+`,{"id":"typescript-lsp@claude-plugins-official","version":"1.0.0","enabled":true}]`)

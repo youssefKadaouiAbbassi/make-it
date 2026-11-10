@@ -381,7 +381,7 @@ func (e *env) refreshStep() plan.Step {
 						continue
 					}
 					v := in.Classify(id)
-					if strings.HasSuffix(id, "@"+own) && v.Rule != pluginrule.InPlace {
+					if strings.HasSuffix(id, "@"+own) {
 						continue // makeit updates its version
 					}
 					e.hint(Hint{ID: id, Rule: string(v.Rule), Text: v.Text})
