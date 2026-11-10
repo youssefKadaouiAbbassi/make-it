@@ -109,8 +109,10 @@ type env struct {
 	releases     map[string]release
 	// nodeVer is the newest Node LTS, looked up once per run.
 	nodeOnce sync.Once
-	nodeVer  string
-	nodeErr  error
+	// nodeLinkHook is called when linking node begins; tests use it to see what exists by then.
+	nodeLinkHook func()
+	nodeVer      string
+	nodeErr      error
 	// needsYou are the tools with no install route here.
 	needsYou []NeedsYou
 	hints    []Hint

@@ -458,7 +458,7 @@ func TestNodeDistInstallsLibatomic(t *testing.T) {
 	e, f := nodeEnv(t, "")
 	nodeSite(t, e, false, "24.11.0")
 	withGen(t, e)
-	probe := filepath.Join(nodeDir(e), "24.11.0", "bin", "node") + " -v"
+	probe := filepath.Join(nodeDir(e), "24.11.0.tmp", "bin", "node") + " -v"
 	broken := true
 	f.answers[probe] = func(execx.Cmd) execx.Result {
 		if broken {
@@ -484,7 +484,7 @@ func TestNodeDistInstallsLibatomic(t *testing.T) {
 	e2, f2 := nodeEnv(t, "18.19.1")
 	nodeSite(t, e2, false, "24.11.0")
 	withGen(t, e2)
-	f2.answers[filepath.Join(nodeDir(e2), "24.11.0", "bin", "node")+" -v"] = func(execx.Cmd) execx.Result {
+	f2.answers[filepath.Join(nodeDir(e2), "24.11.0.tmp", "bin", "node")+" -v"] = func(execx.Cmd) execx.Result {
 		return execx.Result{Code: 127, Stderr: "libatomic.so.1 missing"}
 	}
 	if _, err := stepByID(t, e2, "prereq.node").Run(context.Background()); !errors.Is(err, plan.ErrSkip) || !slices.ContainsFunc(e2.kept, func(k Kept) bool { return strings.Contains(k.Reason, "libatomic") }) {
@@ -533,7 +533,7 @@ func TestNodeDistFailureFallsBack(t *testing.T) {
 }
 
 func libatomicBroken(f *fakeRunner, e *env) {
-	f.answers[filepath.Join(nodeDir(e), "24.11.0", "bin", "node")+" -v"] = func(execx.Cmd) execx.Result {
+	f.answers[filepath.Join(nodeDir(e), "24.11.0.tmp", "bin", "node")+" -v"] = func(execx.Cmd) execx.Result {
 		return execx.Result{Code: 127, Stderr: "libatomic.so.1: cannot open shared object file"}
 	}
 }
@@ -681,10 +681,83 @@ func TestNodePathFirstAtStart(t *testing.T) {
 	if p := os.Getenv("PATH"); !strings.HasPrefix(p, filepath.Join(e.Roots.Home, ".local", "bin")+string(filepath.ListSeparator)) {
 		t.Errorf("PATH %q", p)
 	}
+	// Already on PATH but behind /usr/bin: moved to the front.
+	bin := filepath.Join(e.Roots.Home, ".local", "bin")
+	t.Setenv("PATH", "/usr/bin"+string(filepath.ListSeparator)+bin+string(filepath.ListSeparator)+"/bin")
+	e.nodePathAtStart()
+	if p := os.Getenv("PATH"); p != strings.Join([]string{bin, "/usr/bin", "/bin"}, string(filepath.ListSeparator)) {
+		t.Errorf("PATH %q, want ~/.local/bin first and the rest in order", p)
+	}
 	t.Setenv("PATH", "/usr/bin")
 	e.st.Prereqs = nil
 	e.nodePathAtStart()
 	if p := os.Getenv("PATH"); p != "/usr/bin" {
 		t.Errorf("PATH %q changed without a nodedist record", p)
+	}
+}
+
+// The record exists before the links are touched, so a run cut off between the two does not leave
+// links makeit has no record of.
+func TestNodeRecordBeforeLinks(t *testing.T) {
+	e, _ := nodeEnv(t, "")
+	nodeSite(t, e, false, "24.11.0")
+	withGen(t, e)
+	var seen *state.Prereq
+	e.nodeLinkHook = func() {
+		if seen == nil && e.st.Prereqs["node"] != nil {
+			c := *e.st.Prereqs["node"]
+			seen = &c
+		}
+	}
+	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if seen == nil || seen.Route != "nodedist" || seen.Version != "24.11.0" {
+		t.Errorf("record when linking began: %+v", seen)
+	}
+}
+
+// The package fallback after a failed nodejs.org route leaves a note with the reason.
+func TestNodeFallbackNotesWhy(t *testing.T) {
+	e, _ := nodeEnv(t, "")
+	brokenSite(e)
+	withGen(t, e)
+	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(e.kept, func(k Kept) bool {
+		return k.Item == "node" && strings.Contains(k.Reason, "nodejs.org") && strings.Contains(k.Reason, "browser")
+	}) {
+		t.Errorf("kept %+v, want a note on why the node may be too old for the browser tool", e.kept)
+	}
+}
+
+// A --reinstall whose new node fails its check leaves the working node and its links as they were.
+func TestNodeReinstallFailureKeepsTheWorkingNode(t *testing.T) {
+	e, f := nodeEnv(t, "")
+	nodeSite(t, e, false, "24.11.0")
+	withGen(t, e)
+	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	e.Reinstall = []string{"node"}
+	e.Present = only("apt-get", "node", "git", "jq") // no sudo: no libatomic install
+	f.answers[filepath.Join(nodeDir(e), "24.11.0.tmp", "bin", "node")+" -v"] = func(execx.Cmd) execx.Result {
+		return execx.Result{Code: 127, Stderr: "libatomic.so.1: missing"}
+	}
+	withGen(t, e)
+	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); !errors.Is(err, plan.ErrSkip) {
+		t.Fatalf("err %v, want the working node kept", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(nodeDir(e), "24.11.0", "bin", "node")); string(b) != "node 24.11.0" {
+		t.Errorf("the working node is gone: %q", b)
+	}
+	for _, n := range nodeLinks {
+		if b, err := os.ReadFile(filepath.Join(e.Roots.Home, ".local", "bin", n)); err != nil || len(b) == 0 {
+			t.Errorf("link %s broken: %v", n, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(nodeDir(e), "24.11.0.tmp")); err == nil {
+		t.Error("the .tmp folder stayed")
 	}
 }

@@ -183,3 +183,22 @@ func TestFetchNodeNeedsTheFileName(t *testing.T) {
 		t.Errorf("err %v, want ErrChecksum", err)
 	}
 }
+
+// The link check does not depend on the order of the entries: A -> q/.. is fine until q -> a/b/s
+// (which reaches ../.. from a/b) makes it leave the folder.
+func TestUnpackNodeRefusesLinksCompletedLater(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "1.0.0")
+	err := UnpackNode(nodeTar(t,
+		reg("node-v1/bin/node", "ELF", 0o755),
+		tar.Header{Name: "node-v1/A", Typeflag: tar.TypeSymlink, Linkname: "q/.."},
+		tar.Header{Name: "node-v1/a/b/s", Typeflag: tar.TypeSymlink, Linkname: "../.."},
+		tar.Header{Name: "node-v1/q", Typeflag: tar.TypeSymlink, Linkname: "a/b/s"},
+	), dir)
+	if err == nil {
+		t.Fatal("want a refusal")
+	}
+	if _, serr := os.Stat(dir); serr == nil {
+		t.Error("the folder stayed after a refusal")
+	}
+}

@@ -180,14 +180,18 @@ func (e *env) undoNode(u *nodeUndo) error {
 	return nil
 }
 
-// installNode downloads Node ver, checks it, unpacks it into its version folder, runs check on it
-// and writes the folder's marker through the generation under u.Op; it returns the tarball's
-// sha256. A folder that fails check is removed before anything is recorded.
-func (e *env) installNode(ctx context.Context, u *nodeUndo, check func() error) (string, error) {
+// installNode downloads Node ver, checks it, unpacks it into <ver>.tmp, runs check on that folder,
+// then swaps it in for the version folder and writes the folder's marker through the generation
+// under u.Op; it returns the tarball's sha256. A node that fails check is removed before anything
+// else changes, so a working node of the same version and its links stay as they were.
+func (e *env) installNode(ctx context.Context, u *nodeUndo, check func(dir string) error) (string, error) {
 	ver := u.Version
 	data, sum, err := tools.FetchNode(ctx, e.client(), userAgent(), cmp.Or(e.NodeBase, "https://nodejs.org"), ver, e.Platform.Arch)
 	if err != nil {
 		return "", err
+	}
+	if e.gen == nil {
+		return "", errors.New("setup: a dry run writes nothing")
 	}
 	dest := filepath.Join(e.nodeRoot(), ver)
 	tmp := dest + ".tmp"
@@ -197,36 +201,37 @@ func (e *env) installNode(ctx context.Context, u *nodeUndo, check func() error) 
 	if err := os.MkdirAll(e.nodeRoot(), 0o755); err != nil {
 		return "", err
 	}
+	cleanTmp := func(err error) (string, error) {
+		_ = os.RemoveAll(tmp)
+		_ = os.Remove(e.nodeRoot()) // empty after a first install
+		return "", err
+	}
 	if err := tools.UnpackNode(data, tmp); err != nil {
-		return "", fmt.Errorf("unpack node %s: %w", ver, err)
+		return cleanTmp(fmt.Errorf("unpack node %s: %w", ver, err))
 	}
-	if err := os.RemoveAll(dest); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, dest); err != nil {
-		return "", err
-	}
-	fail := func(err error) (string, error) {
-		_ = os.RemoveAll(dest)
-		_ = os.Remove(e.nodeRoot())
-		return "", err
-	}
-	if err := check(); err != nil {
-		return fail(err)
-	}
-	if e.gen == nil {
-		return fail(errors.New("setup: a dry run writes nothing"))
+	if err := check(tmp); err != nil {
+		return cleanTmp(err)
 	}
 	b, err := json.Marshal(u)
 	if err != nil {
-		return fail(err)
+		return cleanTmp(err)
 	}
 	if err := fsx.WriteAtomic(filepath.Join(e.gen.Dir, nodeUndoFile), b, 0o600); err != nil {
-		return fail(err)
+		return cleanTmp(err)
+	}
+	if err := os.RemoveAll(dest); err != nil {
+		return cleanTmp(err)
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		return cleanTmp(err)
 	}
 	if err := e.write(u.Op, filepath.Join(dest, nodeMarker), []byte(sum), 0o644); err != nil {
 		_ = os.Remove(filepath.Join(e.gen.Dir, nodeUndoFile))
-		return fail(err)
+		if !u.DirExisted {
+			_ = os.RemoveAll(dest)
+			_ = os.Remove(e.nodeRoot())
+		}
+		return "", err
 	}
 	return sum, nil
 }
@@ -258,6 +263,9 @@ func (e *env) ownedLink(path string) bool {
 // repointed, anything else left alone and returned by name. When one fails, the ones already
 // changed are put back, so the links never point at two versions.
 func (e *env) linkNode(ver string) (left []string, err error) {
+	if e.nodeLinkHook != nil {
+		e.nodeLinkHook()
+	}
 	if err := os.MkdirAll(e.localBin(), 0o755); err != nil {
 		return nil, err
 	}
@@ -300,13 +308,11 @@ func (e *env) keepNodeLinks(left []string) {
 	}
 }
 
-// pathFirst puts dir first on this process's PATH, so the npm routes later in the run find the
-// node just linked.
+// pathFirst puts dir first on this process's PATH (moving it when it is there behind another
+// folder), so the npm routes later in the run, and the daily run, find makeit's node.
 func pathFirst(dir string) {
-	p := os.Getenv("PATH")
-	if !slices.Contains(filepath.SplitList(p), dir) {
-		_ = os.Setenv("PATH", dir+string(filepath.ListSeparator)+p)
-	}
+	rest := slices.DeleteFunc(filepath.SplitList(os.Getenv("PATH")), func(d string) bool { return d == dir })
+	_ = os.Setenv("PATH", strings.Join(append([]string{dir}, rest...), string(filepath.ListSeparator)))
 }
 
 // libatomicPkgs are the packages that carry libatomic, which nodejs.org's build needs and slim
@@ -314,22 +320,22 @@ func pathFirst(dir string) {
 var libatomicPkgs = platform.Prereq{Pkgs: map[platform.PM][]string{
 	platform.APT: {"libatomic1"}, platform.DNF: {"libatomic"}, platform.Pacman: {"gcc-libs"}}}
 
-// nodeProbe runs the node of version ver.
-func (e *env) nodeProbe(ctx context.Context, ver string) error {
-	r, err := e.Run(ctx, execx.Cmd{Argv: []string{filepath.Join(e.nodeRoot(), ver, "bin", "node"), "-v"}, Timeout: 30 * time.Second})
+// nodeProbe runs the node unpacked in dir.
+func (e *env) nodeProbe(ctx context.Context, dir string) error {
+	r, err := e.Run(ctx, execx.Cmd{Argv: []string{filepath.Join(dir, "bin", "node"), "-v"}, Timeout: 30 * time.Second})
 	if err != nil {
 		return err
 	}
 	if r.Code != 0 {
-		return fmt.Errorf("node %s does not start (%s)", ver, r.Text())
+		return fmt.Errorf("node in %s does not start (%s)", filepath.Base(dir), r.Text())
 	}
 	return nil
 }
 
 // nodeStarts runs the node just unpacked. When it fails for libatomic and the package manager may
 // be used, the package is installed and node tried again; otherwise the error says what to install.
-func (e *env) nodeStarts(ctx context.Context, ver string, refresh func() []execx.Cmd, canPackages bool) error {
-	err := e.nodeProbe(ctx, ver)
+func (e *env) nodeStarts(ctx context.Context, dir string, refresh func() []execx.Cmd, canPackages bool) error {
+	err := e.nodeProbe(ctx, dir)
 	if err == nil || !strings.Contains(err.Error(), "libatomic") {
 		return err
 	}
@@ -340,7 +346,7 @@ func (e *env) nodeStarts(ctx context.Context, ver string, refresh func() []execx
 	if ierr := e.runAll(ctx, append(refresh(), install)); ierr != nil {
 		return fmt.Errorf("%w; installing libatomic failed: %v", err, ierr)
 	}
-	return e.nodeProbe(ctx, ver)
+	return e.nodeProbe(ctx, dir)
 }
 
 // nodeRoute installs the newest Node LTS from nodejs.org, before the package route. When that
@@ -353,16 +359,17 @@ func (e *env) nodeRoute(record func(route string, argv []string, sha string), re
 			return "", err
 		}
 		u := e.beginNode("prereq.node", v)
-		sum, err := e.installNode(ctx, u, func() error { return e.nodeStarts(ctx, v, refresh, canPackages) })
+		sum, err := e.installNode(ctx, u, func(dir string) error { return e.nodeStarts(ctx, dir, refresh, canPackages) })
 		if err != nil {
 			return "", err
 		}
+		// The record first: a run cut off while linking leaves links with a record behind them.
+		record("nodedist", nil, sum)
+		e.st.Prereqs["node"].Version = v
 		left, err := e.linkNode(v)
 		if err != nil {
 			return "", e.failNode(u, err)
 		}
-		record("nodedist", nil, sum)
-		e.st.Prereqs["node"].Version = v
 		e.keepNodeLinks(left)
 		pathFirst(e.localBin())
 		return "v" + v, nil
@@ -379,7 +386,11 @@ func (e *env) nodeRoute(record func(route string, argv []string, sha string), re
 		if fallback.run == nil {
 			return "", err
 		}
-		return fallback.run(ctx)
+		out, ferr := fallback.run(ctx)
+		if ferr == nil {
+			e.keep("node", fmt.Sprintf("the newest Node LTS could not be installed from nodejs.org (%v); node came from the package manager and may be too old for the browser tool (chrome-devtools-mcp needs 20.19 or 22.12)", err))
+		}
+		return out, ferr
 	}}
 }
 
@@ -411,18 +422,18 @@ func (e *env) nodeUpgradeSteps() []plan.Step {
 				return "", err
 			}
 			u := e.beginNode("upgrade.node", v)
-			sum, err := e.installNode(ctx, u, func() error { return e.nodeProbe(ctx, v) })
+			sum, err := e.installNode(ctx, u, func(dir string) error { return e.nodeProbe(ctx, dir) })
 			if err != nil {
 				e.keep("node", fmt.Sprintf("kept at %s: node %s could not be installed (%v)", cmp.Or(rec.Version, "its version"), v, err))
 				return "", plan.ErrSkip
 			}
+			from := rec.Version
+			rec.Version, rec.Sha256 = v, sum
 			left, err := e.linkNode(v)
 			if err != nil {
 				return "", e.failNode(u, err)
 			}
 			e.keepNodeLinks(left)
-			from := rec.Version
-			rec.Version, rec.Sha256 = v, sum
 			e.changes = append(e.changes, state.Change{Kind: "tool", Item: "node", From: from, To: v})
 			e.pruneNode(v, from)
 			return cmp.Or(from, "?") + " → " + v, nil

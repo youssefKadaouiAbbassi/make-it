@@ -105,6 +105,13 @@ func UnpackNode(data []byte, dir string) (err error) {
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
+			// A later link can change where an earlier one points: check them all again, now that
+			// every link is known.
+			for rel, target := range links {
+				if !within(links, rel, target) {
+					return fmt.Errorf("the archive link %q points outside the folder", rel)
+				}
+			}
 			return nil
 		}
 		if err != nil {
