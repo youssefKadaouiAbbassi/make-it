@@ -49,6 +49,9 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - Replace, do not deprecate: remove the old implementation entirely.
 - Each new dependency is attack surface. Justify it, look up its current
   stable version, pin it. Never take a version from memory.
+- A change to a screen that exists keeps its look: reuse its components and
+  fill them with the new data. Hiding or replacing a designed part is a choice
+  to name in the approaches, beside a screenshot of the screen as it is today.
 
 ## Verification
 
@@ -62,7 +65,9 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   test, and never end by offering to. Before you report work done, start what you changed and use
   it the way a person would: a web UI in the browser tools (chrome-devtools) at desktop and phone
   width, reading the screenshots and the console; a mobile app on an installed emulator or
-  simulator (`flutter run`, `adb`), with screenshots; a CLI or API by calling it. Ask first only
+  simulator (`flutter run`, `adb`), with screenshots; a CLI or API by calling it. A UI change
+  gets before and after screenshots of every screen the change reaches, including ones you did
+  not edit (an app page fed by a back-office field). Ask first only
   when the test would write to production or shared data, send real messages, or cost money. If
   nothing here can run it, say so and say what the owner should check.
 - chrome-devtools for your own local pages, the Chrome extension for sites that

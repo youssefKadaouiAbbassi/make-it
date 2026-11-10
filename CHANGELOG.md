@@ -3,6 +3,15 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.4.4
+
+- The global `CLAUDE.md` gains two rules for UI changes. A change to a screen that exists keeps
+  its look: Claude reuses its components and fills them with the new data, and hiding or
+  replacing a designed part becomes a choice it shows you in the approaches, with a screenshot of
+  the screen today. And a UI change is checked with before and after screenshots of every screen
+  it reaches, not only the one edited, such as the app page a back-office field feeds.
+  `makeit update` applies it to a `CLAUDE.md` you have not edited.
+
 ## 0.4.3
 
 - deja no longer writes past-session text into your repositories on its own. Since deja 0.24 its
