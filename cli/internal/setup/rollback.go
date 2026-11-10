@@ -96,6 +96,7 @@ func (e *env) rollbackSteps(g *state.Generation) []plan.Step {
 		steps = append(steps, e.restoreStep(g, ops[i]))
 	}
 	steps = append(steps, e.toolRollbackSteps(g)...)
+	steps = append(steps, e.nodeRollbackSteps(g)...)
 	if mcp := mcpChanges(g.Manifest); len(g.Manifest.Pins) > 0 || len(mcp) > 0 {
 		steps = append(steps, e.pinsStep(g.Manifest.Pins, mcp))
 		for _, p := range g.Manifest.Pins {

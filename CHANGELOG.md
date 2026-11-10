@@ -3,6 +3,28 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.4.2
+
+- On Linux, setup installs the newest Node LTS from nodejs.org when node is missing or older than
+  20.19 / 22.12 (the browser server, chrome-devtools-mcp, needs that; Ubuntu 24.04 and Debian 12
+  ship node 18, where it could not start). The checksum from nodejs.org is verified, node goes to
+  `~/.local/share/makeit/node/<version>` and `node`, `npm` and `npx` are linked into
+  `~/.local/bin`; your system node stays. Alpine, Homebrew and winget keep their own routes.
+  The daily update never installs tools, so on Ubuntu 24.04, Debian 12 and other machines with an
+  old node, run `makeit setup` once to get the new node. If the nodejs.org download fails, an old
+  node stays and a missing one comes from the package manager as before.
+- `makeit update` moves that node to the next LTS and keeps the previous version until the update
+  after; `makeit rollback` brings it back; `makeit uninstall` removes the folder and the links
+  that are makeit's.
+- `makeit doctor` warns when another node comes first on PATH than the one makeit installed.
+- makeit no longer turns on the advisor (`advisorModel`): measured, it added no quality on tasks
+  Opus solved alone and a consultation cost 4.4 times more; update removes the setting unless you
+  changed it, and `/advisor` still turns it on.
+- The global CLAUDE.md asks for: commands that may run past two minutes in the background, the
+  quick check while iterating and the full suite once, Sonnet for research and mechanical
+  subagents, the reviewer's criteria in a builder's brief, and parallel worktrees for plan tasks
+  that touch different files.
+
 ## 0.4.1
 
 - `makeit update` now updates the plugins from the makeit marketplace that you installed yourself

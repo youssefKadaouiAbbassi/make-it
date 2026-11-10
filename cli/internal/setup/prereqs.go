@@ -31,6 +31,7 @@ func (e *env) prereqSteps() []plan.Step {
 	if e.Background {
 		return nil
 	}
+	e.dropBrokenNodeRecord()
 	var steps []plan.Step
 	refreshed := false
 	// npm arrives with node, which setup installs before the rows that need it (table order), so
@@ -56,12 +57,18 @@ func (e *env) prereqSteps() []plan.Step {
 		}
 		return false
 	}
-	for _, s := range platform.Status(e.Platform, present) {
+	usable := func(bin string) bool {
+		if bin == "node" {
+			return e.nodeUsable(present)
+		}
+		return present(bin)
+	}
+	for _, s := range platform.Status(e.Platform, usable) {
 		r := s.Prereq
 		if s.Present {
 			continue
 		}
-		if rec := e.st.Prereqs[r.ID]; rec != nil && rec.InstalledBy == "makeit" && !slices.Contains(e.Reinstall, r.ID) {
+		if rec := e.st.Prereqs[r.ID]; rec != nil && rec.InstalledBy == "makeit" && !slices.Contains(e.Reinstall, r.ID) && !(r.ID == "node" && e.Present("node")) {
 			e.keep(r.ID, "removed by you")
 			continue
 		}
@@ -70,6 +77,7 @@ func (e *env) prereqSteps() []plan.Step {
 			e.needsYou = append(e.needsYou, NeedsYou{ID: r.ID, Manual: r.Manual})
 			continue
 		}
+		nodePlanned = nodePlanned || r.ID == "node"
 		steps = append(steps, plan.Step{ID: "prereq." + r.ID, Title: "Install " + r.ID, Detail: rt.detail, Command: rt.argv,
 			Already: func(context.Context) (bool, error) { return false, nil }, Run: rt.run})
 	}
@@ -84,6 +92,11 @@ type toolRoute struct {
 }
 
 func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) bool, canPackages bool) toolRoute {
+	return e.toolRouteAt(r, refreshed, avail, canPackages, true)
+}
+
+// toolRouteAt is toolRoute; dist false leaves out the nodejs.org route, the fallback behind it.
+func (e *env) toolRouteAt(r platform.Prereq, refreshed *bool, avail func(string) bool, canPackages, dist bool) toolRoute {
 	record := func(route string, argv []string, sha string) {
 		e.st.Prereqs = initMap(e.st.Prereqs)
 		e.st.Prereqs[r.ID] = &state.Prereq{InstalledBy: "makeit", Route: route, Argv: argv, Sha256: sha}
@@ -101,6 +114,9 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 			return []execx.Cmd{e.sudo("apk", "update")}
 		}
 		return nil
+	}
+	if dist && r.NodeDist && e.nodeDistHere() && !e.Offline {
+		return e.nodeRoute(record, refresh, canPackages, e.toolRouteAt(r, refreshed, avail, canPackages, false))
 	}
 	packages := canPackages || r.Required
 	if cmd, ok := platform.InstallCommand(r, e.Platform.PM, e.prompting(), e.Root); ok && packages {

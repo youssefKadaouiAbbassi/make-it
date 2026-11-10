@@ -101,7 +101,6 @@ differs. `--dry-run` prints each path with its value.
 | `skipDangerousModePermissionPrompt` | `true` | skips Claude Code's one-time confirmation for that mode |
 | `permissions.ask` | a list of commands | these always ask first: merging pull requests, `DELETE` calls through `gh api`, pushing to `main` or `master`, force pushes, `git reset --hard`, publishing packages and releases (npm, cargo, uv, twine, gh, eas), `gh pr comment`, `rm -rf` on home, root or parent paths, and the DBHub write tools |
 | `model` | `opus` | the newest Opus, resolved by Claude Code |
-| `advisorModel` | `fable` | the newest Fable as the advisor, resolved by Claude Code |
 | `cleanupPeriodDays` | `3650` | keeps session transcripts for ten years (deja-vu searches them) |
 | `env.PONYTAIL_DEFAULT_MODE` | `full` | ponytail's level |
 | `crossSessionInbound` | `accept` | lets sessions receive messages from other sessions |
@@ -151,7 +150,7 @@ release on every update.
 |---|---|---|
 | CA certificates | your package manager (Linux only) | TLS for makeit, git and Claude Code's plugin installs |
 | git | your package manager | every repository, the HANDOFF hook, the commit hooks |
-| [Node.js](https://nodejs.org/) | your package manager | installs and runs the chrome-devtools MCP server (`npx` is the fallback) |
+| [Node.js](https://nodejs.org/) | Homebrew, winget, apk on Alpine; on other Linux the newest LTS from nodejs.org (into `~/.local/share/makeit/node`) when yours is missing or older than 20.19 / 22.12 | installs and runs the chrome-devtools MCP server (`npx` is the fallback) |
 | [jq](https://jqlang.github.io/jq/) | your package manager | the hooks read Claude Code's JSON with it |
 | [gh](https://cli.github.com/) | your package manager | `makeit init --rulesets` sends GitHub rulesets through the GitHub API |
 | [Chrome](https://www.google.com/chrome/) | Homebrew, winget, or Google's own `.deb`/`.rpm` on apt or dnf (x86-64); left to you elsewhere | chrome-devtools-mcp drives an installed Chrome (Chrome or Chrome for Testing, not Chromium) |

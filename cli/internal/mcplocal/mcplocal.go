@@ -18,6 +18,9 @@ const (
 	MCPFile = "plugins/makeit/.mcp.json"
 )
 
+// NodeFloor is the node range chrome-devtools-mcp runs on; makeit installs its own node below it.
+const NodeFloor = "^20.19.0 || ^22.12.0 || >=23"
+
 // Dir is the npm prefix of the local install.
 func Dir(stack string) string { return filepath.Join(stack, "mcp", "chrome-devtools") }
 

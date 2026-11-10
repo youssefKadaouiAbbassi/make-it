@@ -61,7 +61,11 @@ type Machine struct {
 	StackDir string
 	// NodeVersion is `node -v` ("v22.1.0"), or "" when node is missing or unreadable.
 	NodeVersion string
-	Globals     []string
+	// NodeDist: makeit installed node from nodejs.org; NodeLink is the link it made and NodePath
+	// the node PATH finds first ("" for none).
+	NodeDist           bool
+	NodeLink, NodePath string
+	Globals            []string
 	// Getenv reads the environment (os.Getenv in production); nil is an empty environment.
 	Getenv func(string) string
 	// Root and HasSudo say whether setup could use the package manager here (brew and winget
@@ -108,6 +112,7 @@ func Run(ctx context.Context, m Machine) []Check {
 	warm.Wait()
 	r.plugins(ctx, m, req, reqErr, unusable, st)
 	r.mcpLocal(m)
+	r.nodePath(m)
 	r.global(m)
 	r.record(st, info, stErr)
 	return r.checks

@@ -124,6 +124,7 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 		return Report{}, nil, err
 	}
 	en := &env{Env: e, st: st, req: req, command: command}
+	en.nodePathAtStart()
 	phases := build(en)
 	rep := Report{Plan: runPhases(ctx, phases, plan.Options{DryRun: true})}
 	rep.Hints, rep.Kept, rep.NeedsYou = en.hints, en.kept, en.needsYou

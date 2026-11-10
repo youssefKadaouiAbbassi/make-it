@@ -211,6 +211,21 @@ func TestBaselineSetupReview(t *testing.T) {
 	}
 }
 
+// The advisor is off in makeit's baseline: m9 measured no quality gain and 4.4x cost per consultation.
+func TestBaselineHasNoAdvisor(t *testing.T) {
+	b, err := Embedded.ReadFile("settings.baseline.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s map[string]any
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := s["advisorModel"]; ok {
+		t.Errorf("baseline sets advisorModel = %v", v)
+	}
+}
+
 func TestMCPSetupReview(t *testing.T) {
 	b, err := Embedded.ReadFile("plugins/makeit/.mcp.json")
 	if err != nil {

@@ -25,7 +25,10 @@ type fakeRunner struct {
 func (f *fakeRunner) run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, c)
+	// The node version probe is planning, not a route's command: no test asserts on it.
+	if strings.Join(c.Argv, " ") != "node -v" {
+		f.calls = append(f.calls, c)
+	}
 	if err := ctx.Err(); err != nil {
 		return execx.Result{Code: -1}, err
 	}
@@ -138,7 +141,7 @@ func TestPrereqSudoFails(t *testing.T) {
 
 func TestPrereqRequiredWithoutRouteFails(t *testing.T) {
 	e, _ := newEnv(t, "git", "node", "jq")
-	e.Platform.PM = platform.None
+	e.Platform = platform.Platform{OS: "darwin", Arch: "arm64", PM: platform.None}
 	e.Present = only("git", "jq")
 	node := stepByID(t, e, "prereq.node")
 	if _, err := node.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "nodejs.org") {
