@@ -134,7 +134,7 @@ done
 
 echo "== global CLAUDE.md"
 g=../templates/global/CLAUDE.md
-for k in 'skips the design and plan steps' 'claude -w <name>' 'with Monitor, never a' 'foreground sleep' 'captcha or 2FA screen'; do
+for k in 'skips the design and plan steps' 'claude -w <name>' 'or with Monitor; never a fixed foreground sleep' 'may run past two minutes' 'run `check:task`; run the full suite once' 'criteria its reviewer will check' 'mechanical subagents run on Sonnet' 'touch different files may run in parallel' 'captcha or 2FA screen'; do
   grep -qF -- "$k" "$g" && echo "ok $k" || { echo "FAIL $g lacks: $k"; fail=1; }
 done
 [ "$(wc -l < "$g")" -lt 200 ] && echo "ok under 200 lines" || { echo "FAIL $g is 200+ lines"; fail=1; }

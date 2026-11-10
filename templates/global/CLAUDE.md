@@ -92,12 +92,18 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - Write `HANDOFF.md` (`HANDOFF.<branch>.md` on a branch) before a context reset and
   at the end of a session that changed files: what is done, what is next, what
   is open, how to verify.
+- While iterating, run `check:task`; run the full suite once before reporting.
 - Subagents for large, independent tracks only; parallel writers get their own
   worktree. Do not spawn subagents to double-check routine work.
+- Plan tasks that touch different files may run in parallel, each in its own
+  worktree, merged after their reviews.
+- A builder's brief includes the criteria its reviewer will check.
+- Read-only research and mechanical subagents run on Sonnet; design and review
+  stay on the session's model.
 - A second session that writes code in the same repository runs in its own
   worktree (`claude -w <name>`).
-- A wait longer than a minute runs in the background or with Monitor, never a
-  foreground sleep.
+- A command that may run past two minutes, or a wait longer than a minute, runs
+  in the background or with Monitor; never a fixed foreground sleep.
 
 ## Communication
 
