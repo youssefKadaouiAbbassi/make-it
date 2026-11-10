@@ -48,6 +48,8 @@ type Env struct {
 	// ReleaseBase is where GitHub releases are fetched from (https://github.com when "").
 	Client      *http.Client
 	ReleaseBase string
+	// NodeBase is where Node's builds are fetched from (https://nodejs.org when "").
+	NodeBase string
 	// RegistryBase is the npm registry Claude Code's newest version is read from; "" looks
 	// nothing up (the command sets https://registry.npmjs.org).
 	RegistryBase string
@@ -105,6 +107,10 @@ type env struct {
 	// releases are the newest release of each release tool, looked up once per run, together.
 	releasesOnce sync.Once
 	releases     map[string]release
+	// nodeVer is the newest Node LTS, looked up once per run.
+	nodeOnce sync.Once
+	nodeVer  string
+	nodeErr  error
 	// needsYou are the tools with no install route here.
 	needsYou []NeedsYou
 	hints    []Hint

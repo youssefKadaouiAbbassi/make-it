@@ -86,6 +86,9 @@ type Prereq struct {
 	Via []Via
 	// PkgFile is a .deb or .rpm the vendor publishes for x86-64, installed with the package manager.
 	PkgFile map[PM]string
+	// NodeDist: on Linux with glibc the newest LTS from nodejs.org comes before the package route,
+	// whose node is too old for the browser MCP on Ubuntu 24.04 and Debian 12.
+	NodeDist bool
 	// Release is the program's GitHub release, the route when no package or toolchain has it.
 	Release *Release
 }
@@ -187,9 +190,9 @@ var Prereqs = []Prereq{
 		Pkgs: map[PM][]string{Brew: {"git"}, APT: {"git"}, DNF: {"git"}, APK: {"git"}, Pacman: {"git"}, WinGet: {"Git.Git"}},
 	},
 	{
-		ID: "node", Why: "the MCP server (chrome-devtools-mcp), its npm install and the hooks that run node", Required: true, Bins: []string{"node"},
+		ID: "node", Why: "the MCP server (chrome-devtools-mcp, which needs node 20.19, 22.12 or later), its npm install and the hooks that run node", Required: true, Bins: []string{"node"}, NodeDist: true,
 		Pkgs:   map[PM][]string{Brew: {"node"}, APT: {"nodejs", "npm"}, DNF: {"nodejs", "npm"}, APK: {"nodejs", "npm"}, Pacman: {"nodejs", "npm"}, WinGet: {"OpenJS.NodeJS.LTS"}},
-		Manual: "https://nodejs.org/en/download (20.19, 22.12 or later)",
+		Manual: "https://nodejs.org/en/download (the LTS; chrome-devtools-mcp needs 20.19, 22.12 or later, and Ubuntu 24.04 and Debian 12 ship 18)",
 	},
 	{
 		ID: "jq", Why: "the ntfy and handoff hooks read Claude Code's JSON with it", Required: true, Bins: []string{"jq"},

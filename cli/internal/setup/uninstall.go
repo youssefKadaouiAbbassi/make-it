@@ -759,6 +759,10 @@ func (e *env) toolSteps() []plan.Step {
 		if rec.InstalledBy != "makeit" {
 			continue
 		}
+		if rec.Route == "nodedist" {
+			steps = append(steps, e.nodeUninstallStep())
+			continue
+		}
 		if rec.Route != "release" {
 			e.keep(id, "installed by makeit through "+rec.Route+"; to remove: "+removeCommand(rec.Route, id))
 			continue

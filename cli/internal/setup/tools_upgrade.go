@@ -129,7 +129,7 @@ func (e *env) toolUpgradeSteps() []plan.Step {
 				return cmp.Or(from, "?") + " → " + v, nil
 			}})
 	}
-	return steps
+	return append(steps, e.nodeUpgradeSteps()...)
 }
 
 // toolRollbackSteps put the records of the tools g upgraded back to the earlier release once
