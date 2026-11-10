@@ -311,3 +311,16 @@ func TestMCPLocalFirstNpxFallback(t *testing.T) {
 		t.Errorf("env %v lacks the telemetry switch", cd.Env)
 	}
 }
+
+// The global rules keep an existing screen's look and check every screen a change reaches.
+func TestGlobalRulesUIChanges(t *testing.T) {
+	b, err := Embedded.ReadFile("templates/global/CLAUDE.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, must := range []string{"A change to a screen that exists keeps its look", "every screen the change reaches"} {
+		if !strings.Contains(string(b), must) {
+			t.Errorf("global CLAUDE.md lacks %q", must)
+		}
+	}
+}
