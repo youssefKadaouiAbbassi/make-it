@@ -181,7 +181,7 @@ func TestBaselineSetupReview(t *testing.T) {
 	if s.CrossSessionInbound != "accept" {
 		t.Errorf("crossSessionInbound = %q", s.CrossSessionInbound)
 	}
-	for k, want := range map[string]string{"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1", "CLAUDE_CODE_SUBAGENT_EFFORT": "medium"} {
+	for k, want := range map[string]string{"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1", "CLAUDE_CODE_SUBAGENT_EFFORT": "medium", "DEJA_REPO": "off"} {
 		if s.Env[k] != want {
 			t.Errorf("env %s = %q, want %q", k, s.Env[k], want)
 		}

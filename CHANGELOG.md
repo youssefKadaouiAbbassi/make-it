@@ -3,6 +3,17 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.4.3
+
+- deja no longer writes past-session text into your repositories on its own. Since deja 0.24 its
+  session-start summary and its MCP server added a `.deja/memory.jsonl` (up to 12 lines quoted
+  from past sessions) to the git repository you work in, uncommitted and not ignored, so
+  `git add -A` and a push would publish it. makeit now sets `DEJA_REPO=off` in Claude Code's
+  settings; `makeit update` adds it unless you set your own value. Writing a note into the
+  repository on purpose (`deja repo add`, or asking Claude to remember something for the repo)
+  still works. If a `.deja/` folder already appeared in one of your repositories, look at it and
+  delete it before your next commit.
+
 ## 0.4.2
 
 - On Linux, setup installs the newest Node LTS from nodejs.org when node is missing or older than
