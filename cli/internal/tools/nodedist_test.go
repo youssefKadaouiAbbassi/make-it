@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -93,17 +94,21 @@ func TestUnpackNode(t *testing.T) {
 // An entry that would land outside the folder is refused, and nothing it comes with stays.
 func TestUnpackNodeRefusesEscapes(t *testing.T) {
 	for name, h := range map[string]tar.Header{
-		"dotdot":         reg("node-v1/../../evil", "x", 0o644),
-		"absolute":       reg("/etc/evil", "x", 0o644),
-		"absolute link":  {Name: "node-v1/bin/l", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"},
-		"link escaping":  {Name: "node-v1/bin/l", Typeflag: tar.TypeSymlink, Linkname: "../../../x"},
-		"hard link":      {Name: "node-v1/bin/h", Typeflag: tar.TypeLink, Linkname: "node-v1/bin/node"},
-		"write via link": reg("node-v1/l/evil", "x", 0o644),
+		"dotdot":              reg("node-v1/../../evil", "x", 0o644),
+		"absolute":            reg("/etc/evil", "x", 0o644),
+		"absolute link":       {Name: "node-v1/bin/l", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"},
+		"link escaping":       {Name: "node-v1/bin/l", Typeflag: tar.TypeSymlink, Linkname: "../../../x"},
+		"hard link":           {Name: "node-v1/bin/h", Typeflag: tar.TypeLink, Linkname: "node-v1/bin/node"},
+		"write via link":      reg("node-v1/l/evil", "x", 0o644),
+		"link through a link": {Name: "node-v1/x", Typeflag: tar.TypeSymlink, Linkname: "a/b/s/../../.."},
 	} {
 		t.Run(name, func(t *testing.T) {
 			parent := t.TempDir()
 			dir := filepath.Join(parent, "1.0.0")
 			entries := []tar.Header{reg("node-v1/bin/node", "ELF", 0o755)}
+			if name == "link through a link" {
+				entries = append(entries, tar.Header{Name: "node-v1/a/b/s", Typeflag: tar.TypeSymlink, Linkname: "../.."})
+			}
 			if name == "write via link" {
 				entries = append(entries, tar.Header{Name: "node-v1/l", Typeflag: tar.TypeSymlink, Linkname: "."})
 			}
@@ -146,5 +151,35 @@ func TestFetchNode(t *testing.T) {
 	}
 	if _, _, err := FetchNode(context.Background(), s.Client(), "t", base, "22.0.0", "386"); !errors.Is(err, ErrNoAsset) {
 		t.Errorf("err %v, want ErrNoAsset", err)
+	}
+}
+
+// A version from the index that is not x.y.z (a path, say) is never put in a URL or a folder name.
+func TestNodeVersionMustBeNumeric(t *testing.T) {
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"version":"v../../evil","lts":"Jod"}]`))
+	}))
+	defer s.Close()
+	if v, err := NewestNodeLTS(context.Background(), s.Client(), "t", s.URL, nil); err == nil {
+		t.Errorf("accepted %q", v)
+	}
+	if _, _, err := FetchNode(context.Background(), s.Client(), "t", s.URL, "../../evil", "amd64"); err == nil {
+		t.Error("FetchNode accepted a path as a version")
+	}
+}
+
+// A checksum file with one bare hash and no file name proves nothing about this asset.
+func TestFetchNodeNeedsTheFileName(t *testing.T) {
+	archive := []byte("tarball bytes")
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "SHASUMS256.txt") {
+			_, _ = w.Write([]byte(sha(archive) + "\n"))
+			return
+		}
+		_, _ = w.Write(archive)
+	}))
+	defer s.Close()
+	if _, _, err := FetchNode(context.Background(), s.Client(), "t", s.URL, "22.0.0", "amd64"); !errors.Is(err, ErrChecksum) {
+		t.Errorf("err %v, want ErrChecksum", err)
 	}
 }
