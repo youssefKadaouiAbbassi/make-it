@@ -101,7 +101,6 @@ differs. `--dry-run` prints each path with its value.
 | `skipDangerousModePermissionPrompt` | `true` | skips Claude Code's one-time confirmation for that mode |
 | `permissions.ask` | a list of commands | these always ask first: merging pull requests, `DELETE` calls through `gh api`, pushing to `main` or `master`, force pushes, `git reset --hard`, publishing packages and releases (npm, cargo, uv, twine, gh, eas), `gh pr comment`, `rm -rf` on home, root or parent paths, and the DBHub write tools |
 | `model` | `opus` | the newest Opus, resolved by Claude Code |
-| `advisorModel` | `fable` | the newest Fable as the advisor, resolved by Claude Code |
 | `cleanupPeriodDays` | `3650` | keeps session transcripts for ten years (deja-vu searches them) |
 | `env.PONYTAIL_DEFAULT_MODE` | `full` | ponytail's level |
 | `crossSessionInbound` | `accept` | lets sessions receive messages from other sessions |

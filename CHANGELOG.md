@@ -17,6 +17,13 @@ raises the minor version.
   after; `makeit rollback` brings it back; `makeit uninstall` removes the folder and the links
   that are makeit's.
 - `makeit doctor` warns when another node comes first on PATH than the one makeit installed.
+- makeit no longer turns on the advisor (`advisorModel`): measured, it added no quality on tasks
+  Opus solved alone and a consultation cost 4.4 times more; update removes the setting unless you
+  changed it, and `/advisor` still turns it on.
+- The global CLAUDE.md asks for: commands that may run past two minutes in the background, the
+  quick check while iterating and the full suite once, Sonnet for research and mechanical
+  subagents, the reviewer's criteria in a builder's brief, and parallel worktrees for plan tasks
+  that touch different files.
 
 ## 0.4.1
 
