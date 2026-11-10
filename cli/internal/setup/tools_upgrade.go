@@ -137,7 +137,7 @@ func (e *env) toolUpgradeSteps() []plan.Step {
 func (e *env) toolRollbackSteps(g *state.Generation) []plan.Step {
 	var steps []plan.Step
 	for _, c := range g.Manifest.Changes {
-		if c.Kind != "tool" {
+		if c.Kind != "tool" || c.Item == "node" { // node has its own rollback step
 			continue
 		}
 		i := slices.IndexFunc(g.Manifest.Ops, func(op state.Op) bool { return op.ID == "upgrade."+c.Item })

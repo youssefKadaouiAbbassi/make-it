@@ -31,6 +31,7 @@ func (e *env) prereqSteps() []plan.Step {
 	if e.Background {
 		return nil
 	}
+	e.dropBrokenNodeRecord()
 	var steps []plan.Step
 	refreshed := false
 	// npm arrives with node, which setup installs before the rows that need it (table order), so
@@ -91,6 +92,11 @@ type toolRoute struct {
 }
 
 func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) bool, canPackages bool) toolRoute {
+	return e.toolRouteAt(r, refreshed, avail, canPackages, true)
+}
+
+// toolRouteAt is toolRoute; dist false leaves out the nodejs.org route, the fallback behind it.
+func (e *env) toolRouteAt(r platform.Prereq, refreshed *bool, avail func(string) bool, canPackages, dist bool) toolRoute {
 	record := func(route string, argv []string, sha string) {
 		e.st.Prereqs = initMap(e.st.Prereqs)
 		e.st.Prereqs[r.ID] = &state.Prereq{InstalledBy: "makeit", Route: route, Argv: argv, Sha256: sha}
@@ -109,8 +115,8 @@ func (e *env) toolRoute(r platform.Prereq, refreshed *bool, avail func(string) b
 		}
 		return nil
 	}
-	if r.NodeDist && e.nodeDistHere() && !e.Offline {
-		return e.nodeRoute(record, refresh)
+	if dist && r.NodeDist && e.nodeDistHere() && !e.Offline {
+		return e.nodeRoute(record, refresh, canPackages, e.toolRouteAt(r, refreshed, avail, canPackages, false))
 	}
 	packages := canPackages || r.Required
 	if cmd, ok := platform.InstallCommand(r, e.Platform.PM, e.prompting(), e.Root); ok && packages {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"testing"
 
 	"makeit/internal/execx"
+	"makeit/internal/plan"
 	"makeit/internal/platform"
 	"makeit/internal/state"
 )
@@ -233,11 +235,11 @@ func TestNodeDistInstall(t *testing.T) {
 }
 
 func TestNodeDistChecksumMismatchWritesNothing(t *testing.T) {
-	e, _ := nodeEnv(t, "")
+	e, _ := nodeEnv(t, "18.19.1")
 	nodeSite(t, e, true, "24.11.0")
 	withGen(t, e)
-	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); err == nil {
-		t.Fatal("a mismatching checksum was accepted")
+	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); !errors.Is(err, plan.ErrSkip) {
+		t.Fatalf("err %v: a mismatching checksum was accepted", err)
 	}
 	if _, err := os.Stat(filepath.Join(e.Roots.Home, ".local")); err == nil {
 		t.Error("the run wrote under ~/.local")
@@ -479,16 +481,210 @@ func TestNodeDistInstallsLibatomic(t *testing.T) {
 		t.Error("no record after the install")
 	}
 
-	e2, f2 := nodeEnv(t, "")
+	e2, f2 := nodeEnv(t, "18.19.1")
 	nodeSite(t, e2, false, "24.11.0")
 	withGen(t, e2)
 	f2.answers[filepath.Join(nodeDir(e2), "24.11.0", "bin", "node")+" -v"] = func(execx.Cmd) execx.Result {
 		return execx.Result{Code: 127, Stderr: "libatomic.so.1 missing"}
 	}
-	if _, err := stepByID(t, e2, "prereq.node").Run(context.Background()); err == nil || !strings.Contains(err.Error(), "libatomic") {
-		t.Errorf("err %v, want the failure to name libatomic", err)
+	if _, err := stepByID(t, e2, "prereq.node").Run(context.Background()); !errors.Is(err, plan.ErrSkip) || !slices.ContainsFunc(e2.kept, func(k Kept) bool { return strings.Contains(k.Reason, "libatomic") }) {
+		t.Errorf("err %v kept %+v, want the old node kept naming libatomic", err, e2.kept)
 	}
 	if e2.st.Prereqs["node"] != nil {
 		t.Error("a record for a node that does not start")
+	}
+}
+
+// brokenSite is a node.org that answers nothing.
+func brokenSite(e *env) {
+	e.Client, e.NodeBase = &http.Client{Transport: failing{}}, "https://nodejs.invalid"
+}
+
+func TestNodeDistFailureFallsBack(t *testing.T) {
+	t.Run("an old node is kept", func(t *testing.T) {
+		e, f := nodeEnv(t, "18.19.1")
+		brokenSite(e)
+		withGen(t, e)
+		_, err := stepByID(t, e, "prereq.node").Run(context.Background())
+		if !errors.Is(err, plan.ErrSkip) {
+			t.Fatalf("err %v, want plan.ErrSkip", err)
+		}
+		if !slices.ContainsFunc(e.kept, func(k Kept) bool { return k.Item == "node" && strings.Contains(k.Reason, "18.19.1") }) {
+			t.Errorf("kept %+v, want node 18.19.1 named", e.kept)
+		}
+		if strings.Contains(strings.Join(f.argvs(), "\n"), "apt-get install") {
+			t.Errorf("the package route ran over a node that is there: %v", f.argvs())
+		}
+	})
+	t.Run("no node: the package route runs and its route is recorded", func(t *testing.T) {
+		e, f := nodeEnv(t, "")
+		brokenSite(e)
+		withGen(t, e)
+		if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.Join(f.argvs(), "\n"), "apt-get install -y nodejs npm") {
+			t.Errorf("calls %v, want the apt install", f.argvs())
+		}
+		if rec := e.st.Prereqs["node"]; rec == nil || rec.Route != "apt" {
+			t.Errorf("record %+v, want route apt", rec)
+		}
+	})
+}
+
+func libatomicBroken(f *fakeRunner, e *env) {
+	f.answers[filepath.Join(nodeDir(e), "24.11.0", "bin", "node")+" -v"] = func(execx.Cmd) execx.Result {
+		return execx.Result{Code: 127, Stderr: "libatomic.so.1: cannot open shared object file"}
+	}
+}
+
+// Without root or sudo the libatomic package is not installed (a sudo call would fail or hang);
+// the unpacked folder goes, and an old node stays.
+func TestNodeDistLibatomicWithoutSudo(t *testing.T) {
+	e, f := nodeEnv(t, "18.19.1")
+	e.Present = only("apt-get", "git", "jq", "node")
+	nodeSite(t, e, false, "24.11.0")
+	withGen(t, e)
+	libatomicBroken(f, e)
+	_, err := stepByID(t, e, "prereq.node").Run(context.Background())
+	if !errors.Is(err, plan.ErrSkip) {
+		t.Fatalf("err %v, want plan.ErrSkip", err)
+	}
+	if strings.Contains(strings.Join(f.argvs(), "\n"), "libatomic1") {
+		t.Errorf("calls %v: libatomic installed without sudo", f.argvs())
+	}
+	if _, err := os.Stat(filepath.Join(nodeDir(e), "24.11.0")); err == nil {
+		t.Error("the unpacked folder stayed")
+	}
+	if !slices.ContainsFunc(e.kept, func(k Kept) bool { return k.Item == "node" && strings.Contains(k.Reason, "libatomic") }) {
+		t.Errorf("kept %+v, want the manual libatomic line", e.kept)
+	}
+	if len(e.gen.Manifest.Ops) != 0 {
+		t.Errorf("ops %+v recorded for a folder that was removed", e.gen.Manifest.Ops)
+	}
+}
+
+func TestNodeDistLibatomicPacman(t *testing.T) {
+	e, f := nodeEnv(t, "")
+	e.Platform.PM = platform.Pacman
+	e.Present = only("pacman", "sudo", "git", "jq")
+	nodeSite(t, e, false, "24.11.0")
+	withGen(t, e)
+	libatomicBroken(f, e)
+	_, _ = stepByID(t, e, "prereq.node").Run(context.Background())
+	if !slices.Contains(f.argvs(), "sudo -n pacman -S --noconfirm gcc-libs") {
+		t.Errorf("calls %v, want the pacman install of gcc-libs", f.argvs())
+	}
+}
+
+func TestNodeDistDanglingLinkReinstalls(t *testing.T) {
+	e, _ := nodeEnv(t, "")
+	nodeSite(t, e, false, "24.11.0")
+	bin := filepath.Join(e.Roots.Home, ".local", "bin")
+	_ = os.MkdirAll(bin, 0o755)
+	_ = os.Symlink("../share/makeit/node/24.11.0/bin/node", filepath.Join(bin, "node"))
+	marker := filepath.Join(nodeDir(e), "24.11.0", nodeMarker)
+	_ = os.MkdirAll(filepath.Dir(marker), 0o755)
+	_ = os.WriteFile(marker, []byte("sha"), 0o644)
+	e.st.Prereqs = map[string]*state.Prereq{"node": {InstalledBy: "makeit", Route: "nodedist", Version: "24.11.0"}}
+	if ok, _, _ := nodeStep(e); !ok {
+		t.Error("a dangling node link counted as installed")
+	}
+}
+
+// After uninstall and a rollback of something else, the record outlives the folder: not "removed by you".
+func TestNodeDistRecordWithoutFolderReinstalls(t *testing.T) {
+	e, _ := nodeEnv(t, "")
+	e.st.Prereqs = map[string]*state.Prereq{"node": {InstalledBy: "makeit", Route: "nodedist", Version: "24.11.0"}}
+	if ok, detail, _ := nodeStep(e); !ok || !strings.Contains(detail, "nodejs.org") {
+		t.Errorf("step %v %q, want a reinstall", ok, detail)
+	}
+}
+
+// A failure while linking leaves every link on the version it had.
+func TestNodeLinkFailureRestoresLinks(t *testing.T) {
+	e := installedNode(t, "22.21.0", "24.11.0")
+	bin := filepath.Join(e.Roots.Home, ".local", "bin")
+	blocker := filepath.Join(bin, "npx.makeit-tmp")
+	_ = os.MkdirAll(filepath.Join(blocker, "x"), 0o755)
+	_ = os.WriteFile(filepath.Join(blocker, "x", "y"), []byte("x"), 0o644)
+	s, _ := nodeUpgrade(t, e)
+	if _, err := s.Run(context.Background()); err == nil {
+		t.Fatal("want the link step to fail")
+	}
+	for _, n := range nodeLinks {
+		if got, want := linkTarget(e, n), filepath.Join(nodeDir(e), "22.21.0", "bin", n); got != want {
+			t.Errorf("link %s -> %s, want %s", n, got, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(nodeDir(e), "24.11.0")); err == nil {
+		t.Error("the new folder stayed after a failed update")
+	}
+	if rec := e.st.Prereqs["node"]; rec.Version != "22.21.0" {
+		t.Errorf("record %+v", rec)
+	}
+}
+
+// An earlier record (the apt route) comes back on rollback, and a reinstall of the version already
+// there does not lose its folder.
+func TestNodeRollbackRestoresRecord(t *testing.T) {
+	e, _ := nodeEnv(t, "18.19.1")
+	nodeSite(t, e, false, "24.11.0")
+	withGen(t, e)
+	e.st.Prereqs = map[string]*state.Prereq{"node": {InstalledBy: "makeit", Route: "apt", Argv: []string{"apt-get"}}}
+	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if rep := runAll(t, e.rollbackSteps(e.gen)); rep.Failed() {
+		t.Fatalf("rollback failed: %+v", rep.Outcomes)
+	}
+	if rec := e.st.Prereqs["node"]; rec == nil || rec.Route != "apt" {
+		t.Errorf("record %+v, want the apt record back", rec)
+	}
+}
+
+func TestNodeRollbackKeepsAFolderThatWasThere(t *testing.T) {
+	e := installedNode(t, "24.11.0")
+	e.Reinstall = []string{"node"}
+	e.Present = only("apt-get", "sudo", "git", "jq")
+	withGen(t, e)
+	e.gen.Manifest.Ops = nil
+	if _, err := stepByID(t, e, "prereq.node").Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if rep := runAll(t, e.rollbackSteps(e.gen)); rep.Failed() {
+		t.Fatalf("rollback failed: %+v", rep.Outcomes)
+	}
+	if _, err := os.Stat(filepath.Join(nodeDir(e), "24.11.0", "bin", "node")); err != nil {
+		t.Errorf("rollback removed a folder that existed before the run: %v", err)
+	}
+}
+
+func TestNodeRollbackPlansNoGenericToolStep(t *testing.T) {
+	e := installedNode(t, "22.21.0", "24.11.0")
+	s, _ := nodeUpgrade(t, e)
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	e.gen.Manifest.Changes = e.changes
+	for _, st := range e.rollbackSteps(e.gen) {
+		if st.ID == "tool.rollback.node" {
+			t.Error("a generic tool.rollback.node step is planned next to node.rollback")
+		}
+	}
+}
+
+func TestNodePathFirstAtStart(t *testing.T) {
+	e := installedNode(t, "24.11.0")
+	t.Setenv("PATH", "/usr/bin")
+	e.nodePathAtStart()
+	if p := os.Getenv("PATH"); !strings.HasPrefix(p, filepath.Join(e.Roots.Home, ".local", "bin")+string(filepath.ListSeparator)) {
+		t.Errorf("PATH %q", p)
+	}
+	t.Setenv("PATH", "/usr/bin")
+	e.st.Prereqs = nil
+	e.nodePathAtStart()
+	if p := os.Getenv("PATH"); p != "/usr/bin" {
+		t.Errorf("PATH %q changed without a nodedist record", p)
 	}
 }

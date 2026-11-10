@@ -3,15 +3,18 @@ package setup
 import (
 	"cmp"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"makeit/internal/execx"
+	"makeit/internal/fsx"
 	"makeit/internal/mcplocal"
 	"makeit/internal/plan"
 	"makeit/internal/platform"
@@ -39,23 +42,64 @@ func (e *env) nodeDistHere() bool {
 	return p.OS == "linux" && p.PM != platform.APK && p.PM != platform.Brew && (p.Arch == "amd64" || p.Arch == "arm64")
 }
 
+// nodeMarkerPath is the marker of version ver's folder.
+func (e *env) nodeMarkerPath(ver string) string { return filepath.Join(e.nodeRoot(), ver, nodeMarker) }
+
+// dropBrokenNodeRecord forgets a nodedist record whose folder is gone (an uninstall, then a
+// rollback of something else) or whose node link dangles: that node is not installed, so setup
+// installs it again instead of calling it removed by you.
+func (e *env) dropBrokenNodeRecord() {
+	rec := e.st.Prereqs["node"]
+	if rec == nil || rec.InstalledBy != "makeit" || rec.Route != "nodedist" {
+		return
+	}
+	link := filepath.Join(e.localBin(), "node")
+	_, lerr := os.Lstat(link)
+	_, serr := os.Stat(link)
+	if _, err := os.Stat(e.nodeMarkerPath(rec.Version)); err != nil || (lerr == nil && serr != nil) {
+		delete(e.st.Prereqs, "node")
+	}
+}
+
+// nodeVersion is `node -v` of the node on PATH, "" when it cannot be read.
+func (e *env) nodeVersion() string {
+	if e.Run == nil {
+		return ""
+	}
+	r, err := e.Run(context.Background(), execx.Cmd{Argv: []string{"node", "-v"}, Timeout: 5 * time.Second})
+	if err != nil || r.Code != 0 {
+		return ""
+	}
+	return strings.TrimSpace(r.Stdout)
+}
+
 // nodeUsable is the node row's presence: a node makeit linked counts (PATH order is doctor's
 // business); else node on PATH, inside the browser MCP's floor where the nodejs.org route applies.
 // An unreadable version and an offline run take the node there is.
 func (e *env) nodeUsable(present func(string) bool) bool {
+	if slices.Contains(e.Reinstall, "node") {
+		return false
+	}
 	if rec := e.st.Prereqs["node"]; rec != nil && rec.InstalledBy == "makeit" && rec.Route == "nodedist" {
-		if _, err := os.Lstat(filepath.Join(e.localBin(), "node")); err == nil {
+		if _, err := os.Stat(filepath.Join(e.localBin(), "node")); err == nil {
 			return true
 		}
 	}
 	if !present("node") {
 		return false
 	}
-	if !e.nodeDistHere() || e.Offline || e.Run == nil || !e.Present("node") {
+	if !e.nodeDistHere() || e.Offline || !e.Present("node") {
 		return true
 	}
-	r, err := e.Run(context.Background(), execx.Cmd{Argv: []string{"node", "-v"}, Timeout: 5 * time.Second})
-	return err != nil || r.Code != 0 || mcplocal.Satisfies(strings.TrimSpace(r.Stdout), mcplocal.NodeFloor)
+	return mcplocal.Satisfies(e.nodeVersion(), mcplocal.NodeFloor)
+}
+
+// nodePathAtStart puts ~/.local/bin first on this process's PATH when makeit installed node, so a
+// run after the install (the daily one) uses makeit's node and npm.
+func (e *env) nodePathAtStart() {
+	if rec := e.st.Prereqs["node"]; rec != nil && rec.InstalledBy == "makeit" && rec.Route == "nodedist" {
+		pathFirst(e.localBin())
+	}
 }
 
 // newestNode is the newest Node LTS, looked up once per run.
@@ -75,9 +119,72 @@ func (e *env) newestNode(ctx context.Context) (string, error) {
 	return e.nodeVer, e.nodeErr
 }
 
-// installNode downloads Node ver, checks it, unpacks it into its version folder and writes the
-// folder's marker through the generation under op; it returns the tarball's sha256.
-func (e *env) installNode(ctx context.Context, op, ver string) (string, error) {
+// nodeUndo is what a run changed about node, kept in the generation (node.json) so rollback, and
+// a failure part way, can put it back: the folder (unless it was there before), the links, and
+// the earlier record.
+type nodeUndo struct {
+	Op         string            `json:"op"`
+	Version    string            `json:"version"`
+	DirExisted bool              `json:"dirExisted"`
+	Prev       *state.Prereq     `json:"prev"`
+	Links      map[string]string `json:"links"` // name -> the target a link of makeit's had; absent for none
+}
+
+const nodeUndoFile = "node.json"
+
+// beginNode captures the state a run is about to change.
+func (e *env) beginNode(op, ver string) *nodeUndo {
+	u := &nodeUndo{Op: op, Version: ver, Links: map[string]string{}}
+	_, err := os.Stat(filepath.Join(e.nodeRoot(), ver))
+	u.DirExisted = err == nil
+	if rec := e.st.Prereqs["node"]; rec != nil {
+		c := *rec
+		u.Prev = &c
+	}
+	for _, n := range nodeLinks {
+		if link := filepath.Join(e.localBin(), n); e.ownedLink(link) {
+			u.Links[n], _ = os.Readlink(link)
+		}
+	}
+	return u
+}
+
+// undoNode puts back what u captured: the links makeit owns (or that are gone) go to their earlier
+// target or are removed, the folder is removed unless it was there before, the record returns.
+func (e *env) undoNode(u *nodeUndo) error {
+	for _, n := range nodeLinks {
+		link := filepath.Join(e.localBin(), n)
+		if _, err := os.Lstat(link); err == nil && !e.ownedLink(link) {
+			continue // the user's
+		}
+		_ = os.Remove(link)
+		if prev := u.Links[n]; prev != "" {
+			if err := os.Symlink(prev, link); err != nil {
+				return err
+			}
+		}
+	}
+	if !u.DirExisted {
+		if err := os.RemoveAll(filepath.Join(e.nodeRoot(), u.Version)); err != nil {
+			return err
+		}
+		_ = os.Remove(e.nodeRoot()) // empty after a first install
+	}
+	if u.Prev != nil {
+		c := *u.Prev
+		e.st.Prereqs = initMap(e.st.Prereqs)
+		e.st.Prereqs["node"] = &c
+	} else {
+		delete(e.st.Prereqs, "node")
+	}
+	return nil
+}
+
+// installNode downloads Node ver, checks it, unpacks it into its version folder, runs check on it
+// and writes the folder's marker through the generation under u.Op; it returns the tarball's
+// sha256. A folder that fails check is removed before anything is recorded.
+func (e *env) installNode(ctx context.Context, u *nodeUndo, check func() error) (string, error) {
+	ver := u.Version
 	data, sum, err := tools.FetchNode(ctx, e.client(), userAgent(), cmp.Or(e.NodeBase, "https://nodejs.org"), ver, e.Platform.Arch)
 	if err != nil {
 		return "", err
@@ -99,11 +206,40 @@ func (e *env) installNode(ctx context.Context, op, ver string) (string, error) {
 	if err := os.Rename(tmp, dest); err != nil {
 		return "", err
 	}
-	if err := e.write(op, filepath.Join(dest, nodeMarker), []byte(sum), 0o644); err != nil {
+	fail := func(err error) (string, error) {
 		_ = os.RemoveAll(dest)
+		_ = os.Remove(e.nodeRoot())
 		return "", err
 	}
+	if err := check(); err != nil {
+		return fail(err)
+	}
+	if e.gen == nil {
+		return fail(errors.New("setup: a dry run writes nothing"))
+	}
+	b, err := json.Marshal(u)
+	if err != nil {
+		return fail(err)
+	}
+	if err := fsx.WriteAtomic(filepath.Join(e.gen.Dir, nodeUndoFile), b, 0o600); err != nil {
+		return fail(err)
+	}
+	if err := e.write(u.Op, filepath.Join(dest, nodeMarker), []byte(sum), 0o644); err != nil {
+		_ = os.Remove(filepath.Join(e.gen.Dir, nodeUndoFile))
+		return fail(err)
+	}
 	return sum, nil
+}
+
+// failNode undoes a run's node changes after a later step failed.
+func (e *env) failNode(u *nodeUndo, err error) error {
+	if uerr := e.undoNode(u); uerr != nil {
+		return fmt.Errorf("%w (and putting node back failed: %v)", err, uerr)
+	}
+	if e.gen != nil {
+		_ = os.Remove(filepath.Join(e.gen.Dir, nodeUndoFile))
+	}
+	return err
 }
 
 // ownedLink: path is a symlink into makeit's node folder.
@@ -119,10 +255,21 @@ func (e *env) ownedLink(path string) bool {
 }
 
 // linkNode points the three links at version ver; one that is absent is made, one of makeit's
-// repointed, anything else left alone and returned by name.
+// repointed, anything else left alone and returned by name. When one fails, the ones already
+// changed are put back, so the links never point at two versions.
 func (e *env) linkNode(ver string) (left []string, err error) {
 	if err := os.MkdirAll(e.localBin(), 0o755); err != nil {
 		return nil, err
+	}
+	prev := map[string]string{} // name -> earlier target, "" for none
+	undo := func() {
+		for n, t := range prev {
+			link := filepath.Join(e.localBin(), n)
+			_ = os.Remove(link)
+			if t != "" {
+				_ = os.Symlink(t, link)
+			}
+		}
 	}
 	for _, n := range nodeLinks {
 		link := filepath.Join(e.localBin(), n)
@@ -133,11 +280,16 @@ func (e *env) linkNode(ver string) (left []string, err error) {
 		tmp := link + ".makeit-tmp"
 		_ = os.Remove(tmp)
 		if err := os.Symlink(filepath.Join("..", "share", "makeit", "node", ver, "bin", n), tmp); err != nil {
-			return left, err
+			undo()
+			return nil, err
 		}
+		before, _ := os.Readlink(link)
 		if err := os.Rename(tmp, link); err != nil {
-			return left, err
+			_ = os.Remove(tmp)
+			undo()
+			return nil, err
 		}
+		prev[n] = before
 	}
 	return left, nil
 }
@@ -157,75 +309,89 @@ func pathFirst(dir string) {
 	}
 }
 
-// nodeRoute installs the newest Node LTS from nodejs.org, before the package route.
-func (e *env) nodeRoute(record func(route string, argv []string, sha string), refresh func() []execx.Cmd) toolRoute {
-	return toolRoute{name: "nodedist", detail: "the newest Node LTS from nodejs.org, into ~/.local/share/makeit/node", run: func(ctx context.Context) (string, error) {
+// libatomicPkgs are the packages that carry libatomic, which nodejs.org's build needs and slim
+// images lack.
+var libatomicPkgs = platform.Prereq{Pkgs: map[platform.PM][]string{
+	platform.APT: {"libatomic1"}, platform.DNF: {"libatomic"}, platform.Pacman: {"gcc-libs"}}}
+
+// nodeProbe runs the node of version ver.
+func (e *env) nodeProbe(ctx context.Context, ver string) error {
+	r, err := e.Run(ctx, execx.Cmd{Argv: []string{filepath.Join(e.nodeRoot(), ver, "bin", "node"), "-v"}, Timeout: 30 * time.Second})
+	if err != nil {
+		return err
+	}
+	if r.Code != 0 {
+		return fmt.Errorf("node %s does not start (%s)", ver, r.Text())
+	}
+	return nil
+}
+
+// nodeStarts runs the node just unpacked. When it fails for libatomic and the package manager may
+// be used, the package is installed and node tried again; otherwise the error says what to install.
+func (e *env) nodeStarts(ctx context.Context, ver string, refresh func() []execx.Cmd, canPackages bool) error {
+	err := e.nodeProbe(ctx, ver)
+	if err == nil || !strings.Contains(err.Error(), "libatomic") {
+		return err
+	}
+	install, ok := platform.InstallCommand(libatomicPkgs, e.Platform.PM, e.prompting(), e.Root)
+	if !ok || !canPackages {
+		return fmt.Errorf("%w; install libatomic1 (or libatomic, gcc-libs) with your package manager, then run makeit setup again", err)
+	}
+	if ierr := e.runAll(ctx, append(refresh(), install)); ierr != nil {
+		return fmt.Errorf("%w; installing libatomic failed: %v", err, ierr)
+	}
+	return e.nodeProbe(ctx, ver)
+}
+
+// nodeRoute installs the newest Node LTS from nodejs.org, before the package route. When that
+// fails, an old node stays (kept, with the reason) and with no node the package route runs, so
+// setup is no worse off than before.
+func (e *env) nodeRoute(record func(route string, argv []string, sha string), refresh func() []execx.Cmd, canPackages bool, fallback toolRoute) toolRoute {
+	install := func(ctx context.Context) (string, error) {
 		v, err := e.newestNode(ctx)
 		if err != nil {
 			return "", err
 		}
-		sum, err := e.installNode(ctx, "prereq.node", v)
+		u := e.beginNode("prereq.node", v)
+		sum, err := e.installNode(ctx, u, func() error { return e.nodeStarts(ctx, v, refresh, canPackages) })
 		if err != nil {
-			return "", err
-		}
-		if err := e.nodeStarts(ctx, v, refresh); err != nil {
 			return "", err
 		}
 		left, err := e.linkNode(v)
 		if err != nil {
-			return "", err
+			return "", e.failNode(u, err)
 		}
 		record("nodedist", nil, sum)
 		e.st.Prereqs["node"].Version = v
 		e.keepNodeLinks(left)
 		pathFirst(e.localBin())
 		return "v" + v, nil
+	}
+	return toolRoute{name: "nodedist", detail: "the newest Node LTS from nodejs.org, into ~/.local/share/makeit/node", run: func(ctx context.Context) (string, error) {
+		out, err := install(ctx)
+		if err == nil {
+			return out, nil
+		}
+		if have := e.nodeVersion(); e.Present("node") {
+			e.keep("node", fmt.Sprintf("node %s kept: the newest Node LTS could not be installed (%v)", cmp.Or(have, "on PATH"), err))
+			return "", plan.ErrSkip
+		}
+		if fallback.run == nil {
+			return "", err
+		}
+		return fallback.run(ctx)
 	}}
-}
-
-// nodeStarts runs the node just unpacked. nodejs.org's build needs libatomic, which slim images
-// lack: when that is the failure, the package is installed and node tried again.
-func (e *env) nodeStarts(ctx context.Context, ver string, refresh func() []execx.Cmd) error {
-	probe := execx.Cmd{Argv: []string{filepath.Join(e.nodeRoot(), ver, "bin", "node"), "-v"}, Timeout: 30 * time.Second}
-	try := func() error {
-		r, err := e.Run(ctx, probe)
-		if err != nil {
-			return err
-		}
-		if r.Code != 0 {
-			return fmt.Errorf("node %s does not start (%s)", ver, r.Text())
-		}
-		return nil
-	}
-	err := try()
-	if err == nil || !strings.Contains(err.Error(), "libatomic") {
-		return err
-	}
-	var install execx.Cmd
-	switch e.Platform.PM {
-	case platform.APT:
-		install = e.sudo("env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "libatomic1")
-	case platform.DNF:
-		install = e.sudo("dnf", "install", "-y", "libatomic")
-	case platform.Pacman:
-		install = e.sudo("pacman", "-S", "--noconfirm", "gcc-libs")
-	default:
-		return fmt.Errorf("%w: install libatomic with your package manager", err)
-	}
-	if ierr := e.runAll(ctx, append(refresh(), install)); ierr != nil {
-		return fmt.Errorf("%w; installing libatomic failed: %v", err, ierr)
-	}
-	return try()
 }
 
 // nodeUpgradeSteps move the node makeit installed from nodejs.org to the newest LTS and repoint
 // the links; the folder of the version it leaves stays until the next update.
 func (e *env) nodeUpgradeSteps() []plan.Step {
+	e.dropBrokenNodeRecord()
 	rec := e.st.Prereqs["node"]
 	if rec == nil || rec.InstalledBy != "makeit" || rec.Route != "nodedist" || !e.nodeDistHere() {
 		return nil
 	}
-	if _, err := os.Lstat(filepath.Join(e.localBin(), "node")); err != nil {
+	if _, err := os.Stat(filepath.Join(e.localBin(), "node")); err != nil {
 		return nil // removed by you: setup's own rule says so
 	}
 	return []plan.Step{{ID: "upgrade.node", Title: "Update node",
@@ -244,14 +410,15 @@ func (e *env) nodeUpgradeSteps() []plan.Step {
 			if err != nil {
 				return "", err
 			}
-			sum, err := e.installNode(ctx, "upgrade.node", v)
+			u := e.beginNode("upgrade.node", v)
+			sum, err := e.installNode(ctx, u, func() error { return e.nodeProbe(ctx, v) })
 			if err != nil {
 				e.keep("node", fmt.Sprintf("kept at %s: node %s could not be installed (%v)", cmp.Or(rec.Version, "its version"), v, err))
 				return "", plan.ErrSkip
 			}
 			left, err := e.linkNode(v)
 			if err != nil {
-				return "", err
+				return "", e.failNode(u, err)
 			}
 			e.keepNodeLinks(left)
 			from := rec.Version
@@ -275,56 +442,38 @@ func (e *env) pruneNode(keep ...string) {
 	}
 }
 
-// nodeRollbackSteps undo the node folder g wrote: remove it and point the links back at the
-// version before (an update), or remove them (the first install). The marker file itself is
-// restored by the file steps before these run.
+// nodeRollbackSteps undo the node changes g made, from the node.json it kept: the folder (unless
+// it was there before), the links, the earlier record. The marker file itself is restored by the
+// file steps before this one.
 func (e *env) nodeRollbackSteps(g *state.Generation) []plan.Step {
-	var steps []plan.Step
-	for _, op := range g.Manifest.Ops {
-		if op.ID != "prereq.node" && op.ID != "upgrade.node" {
-			continue
-		}
-		dest := filepath.Dir(e.Roots.Abs(op.Path))
-		ver, from := filepath.Base(dest), ""
-		for _, c := range g.Manifest.Changes {
-			if c.Kind == "tool" && c.Item == "node" {
-				from = c.From
-			}
-		}
-		steps = append(steps, plan.Step{ID: "node.rollback", Title: "Put node back to " + cmp.Or(from, "no makeit node"),
-			Run: func(context.Context) (string, error) {
-				if filepath.Dir(dest) != e.nodeRoot() {
-					return "", plan.ErrSkip
-				}
-				if err := os.RemoveAll(dest); err != nil {
-					return "", err
-				}
-				rec := e.st.Prereqs["node"]
-				if prev, err := os.ReadFile(filepath.Join(e.nodeRoot(), from, nodeMarker)); from != "" && err == nil {
-					left, err := e.linkNode(from)
-					if err != nil {
-						return "", err
-					}
-					e.keepNodeLinks(left)
-					if rec != nil {
-						rec.Version, rec.Sha256 = from, string(prev)
-					}
-				} else {
-					e.removeNodeLinks()
-					_ = os.Remove(e.nodeRoot()) // empty after a first install
-					delete(e.st.Prereqs, "node")
-				}
-				if e.st.ToolSkips == nil {
-					e.st.ToolSkips = map[string][]string{}
-				}
-				if !slices.Contains(e.st.ToolSkips["node"], "v"+ver) {
-					e.st.ToolSkips["node"] = append(e.st.ToolSkips["node"], "v"+ver)
-				}
-				return "", nil
-			}})
+	b, err := os.ReadFile(filepath.Join(g.Dir, nodeUndoFile))
+	if err != nil {
+		return nil
 	}
-	return steps
+	var u nodeUndo
+	if json.Unmarshal(b, &u) != nil || !nodeVersionName.MatchString(u.Version) {
+		return nil
+	}
+	return []plan.Step{{ID: "node.rollback", Title: "Put node back",
+		Run: func(context.Context) (string, error) {
+			if err := e.undoNode(&u); err != nil {
+				return "", err
+			}
+			if u.Prev != nil && u.Prev.Version == u.Version {
+				return "", nil
+			}
+			if e.st.ToolSkips == nil {
+				e.st.ToolSkips = map[string][]string{}
+			}
+			if !slices.Contains(e.st.ToolSkips["node"], "v"+u.Version) {
+				e.st.ToolSkips["node"] = append(e.st.ToolSkips["node"], "v"+u.Version)
+			}
+			return "", nil
+		}}}
 }
+
+// nodeVersionName is the shape of a version folder's name, checked before one is removed.
+var nodeVersionName = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 // removeNodeLinks removes the links that are makeit's and returns the names of the others that exist.
 func (e *env) removeNodeLinks() (left []string) {
