@@ -109,6 +109,23 @@ func (e *env) rollbackSteps(g *state.Generation) []plan.Step {
 				}})
 		}
 	}
+	if len(g.Manifest.Writes) > 0 {
+		// The undone run's hook check replaced these records: back to what was accepted before it.
+		steps = append(steps, plan.Step{ID: "writes.rollback", Title: "Put back what the plugins' session hooks were seen writing",
+			Run: func(context.Context) (string, error) {
+				for id, old := range g.Manifest.Writes {
+					if old == nil {
+						delete(e.st.PluginWrites, id)
+						continue
+					}
+					if e.st.PluginWrites == nil {
+						e.st.PluginWrites = map[string]state.Writes{}
+					}
+					e.st.PluginWrites[id] = *old
+				}
+				return "", nil
+			}})
+	}
 	return steps
 }
 

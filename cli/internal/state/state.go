@@ -31,6 +31,9 @@ const Revision = 1
 type Writes struct {
 	Project []string `json:"project"`
 	Home    []string `json:"home"`
+	// Unchecked: the check could not run for this plugin, so there is nothing to compare with yet;
+	// the next check that works only records.
+	Unchecked bool `json:"unchecked,omitempty"`
 }
 
 // State is state.json. Paths in it use the roots claude:, stack: and home: (package paths).

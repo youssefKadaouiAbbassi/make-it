@@ -86,7 +86,10 @@ func Run(ctx context.Context, pluginDir string, env []string) (Writes, error) {
 		os.WriteFile(filepath.Join(project, "README.md"), []byte("scratch project\n"), 0o600)); err != nil {
 		return Writes{}, fmt.Errorf("scratch folder: %w", err)
 	}
-	env = append(slices.Clone(env),
+	// No inherited GIT_* variable: with GIT_DIR exported (a git hook, a bare dotfiles setup) the
+	// scratch commit and every probed hook would act on that repository instead.
+	env = slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
+	env = append(env,
 		"HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"), "XDG_STATE_HOME="+filepath.Join(home, ".local", "state"),
 		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"), "XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
 		"CLAUDE_CONFIG_DIR="+config, "CLAUDE_PLUGIN_ROOT="+pluginDir, "CLAUDE_PROJECT_DIR="+project, "PWD="+project,
@@ -223,19 +226,34 @@ func hookSources(pluginDir string) []map[string]json.RawMessage {
 		Hooks json.RawMessage `json:"hooks"`
 	}
 	if raw, err := os.ReadFile(filepath.Join(pluginDir, ".claude-plugin", "plugin.json")); err == nil && json.Unmarshal(raw, &manifest) == nil {
-		var rel string
-		switch {
-		case json.Unmarshal(manifest.Hooks, &rel) != nil:
-			table(manifest.Hooks)
-		// The default file is already read; a path that leaves the plugin is not followed.
-		case filepath.IsLocal(rel) && filepath.Clean(rel) != filepath.Join("hooks", "hooks.json"):
-			file(filepath.Join(pluginDir, rel))
+		// A path, a table, or a list of both.
+		var add func(raw json.RawMessage)
+		add = func(raw json.RawMessage) {
+			var rel string
+			var list []json.RawMessage
+			switch {
+			case json.Unmarshal(raw, &rel) == nil:
+				// The default file is already read; a path that leaves the plugin is not followed.
+				if filepath.IsLocal(rel) && filepath.Clean(rel) != filepath.Join("hooks", "hooks.json") {
+					file(filepath.Join(pluginDir, rel))
+				}
+			case json.Unmarshal(raw, &list) == nil:
+				for _, item := range list {
+					add(item)
+				}
+			default:
+				table(raw)
+			}
+		}
+		if len(manifest.Hooks) > 0 {
+			add(manifest.Hooks)
 		}
 	}
 	return out
 }
 
-// list is the regular files and symlinks under dir as slash paths, without the project's .git.
+// list is the regular files and symlinks under dir as slash paths. Of a .git folder only hooks/
+// is listed (a planted git hook is a write into the project); its objects and index are not.
 func list(dir string) map[string]bool {
 	out := map[string]bool{}
 	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -243,11 +261,15 @@ func list(dir string) map[string]bool {
 			return nil
 		}
 		rel, _ := filepath.Rel(dir, path)
-		if d.IsDir() && rel == ".git" {
-			return fs.SkipDir
+		rel = filepath.ToSlash(rel)
+		if strings.HasPrefix(rel, ".git/") && rel != ".git/hooks" && !strings.HasPrefix(rel, ".git/hooks/") {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		if d.Type().IsRegular() || d.Type()&fs.ModeSymlink != 0 {
-			out[filepath.ToSlash(rel)] = true
+			out[rel] = true
 		}
 		return nil
 	})

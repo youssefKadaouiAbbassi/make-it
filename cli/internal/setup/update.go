@@ -758,6 +758,9 @@ func (e *env) settingsEnv() []string {
 	return out
 }
 
+// probeRun is hookprobe.Run; tests stand in for it.
+var probeRun = hookprobe.Run
+
 // lacking are the paths of now that seen lacks.
 func lacking(now, seen []string) []string {
 	return slices.DeleteFunc(slices.Clone(now), func(p string) bool { return slices.Contains(seen, p) })
@@ -802,23 +805,40 @@ func (e *env) writesStep() plan.Step {
 			}
 			var found []string
 			for _, id := range slices.Sorted(maps.Keys(dirs)) {
-				now, err := hookprobe.Run(ctx, dirs[id], hookEnv)
+				now, err := probeRun(ctx, dirs[id], hookEnv)
 				switch {
 				case ctx.Err() != nil:
 					return "", ctx.Err()
 				case errors.Is(err, hookprobe.ErrUnsupported):
 					return "", plan.ErrSkip
-				case err != nil:
-					// The check itself could not run (no scratch folder, no git): never the run's failure.
-					e.keep(id, "its session hooks were not checked: "+err.Error())
-					continue
 				}
 				last, seen := e.st.PluginWrites[id]
 				if e.st.PluginWrites == nil {
 					e.st.PluginWrites = map[string]state.Writes{}
 				}
+				// What the record held before this run goes into the generation, once: rollback
+				// puts it back, so the release after an undone one is reported again.
+				if e.gen != nil {
+					if e.gen.Manifest.Writes == nil {
+						e.gen.Manifest.Writes = map[string]*state.Writes{}
+					}
+					if _, kept := e.gen.Manifest.Writes[id]; !kept {
+						e.gen.Manifest.Writes[id] = nil
+						if seen {
+							old := last
+							e.gen.Manifest.Writes[id] = &old
+						}
+					}
+				}
+				if err != nil {
+					// The check itself could not run (no scratch folder, no git): never the run's
+					// failure, and remembered so it does not come back until something moves.
+					e.keep(id, "its session hooks were not checked: "+err.Error())
+					e.st.PluginWrites[id] = state.Writes{Unchecked: true}
+					continue
+				}
 				e.st.PluginWrites[id] = state.Writes{Project: now.Project, Home: now.Home}
-				if !seen {
+				if !seen || last.Unchecked {
 					continue
 				}
 				name, _, _ := strings.Cut(id, "@")
