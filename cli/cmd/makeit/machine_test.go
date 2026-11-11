@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -26,7 +28,8 @@ func standIn(name string) string {
 // install (platform.Prereqs) gets an empty program, so the plan is the same on every host: one
 // with go and no gopls plans no install. The programs in outside get a stand-in that fails and
 // names the call, so a test that reaches one fails or says so instead of changing the host
-// (GitHub's runners have a sudo that asks no password). The names in real stay the host's.
+// (GitHub's runners have a sudo that asks no password). The names in real stay the host's; a
+// real git refuses a remote URL (gitStandIn).
 func stubTools(t *testing.T, bin string, real ...string) {
 	t.Helper()
 	for _, r := range platform.Prereqs {
@@ -38,6 +41,42 @@ func stubTools(t *testing.T, bin string, real ...string) {
 	}
 	for _, b := range outside {
 		write(t, filepath.Join(bin, b), standIn(b))
+	}
+	if slices.Contains(real, "git") {
+		write(t, filepath.Join(bin, "git"), gitStandIn(t, bin))
+	}
+}
+
+// gitStandIn is the host's git that refuses a remote URL (setup's release lookups, a clone from
+// GitHub): it fails like a stand-in and notes the call in remoteGitTrace. Local and file://
+// repositories go to the host's git, found before the test machine's PATH replaces the host's.
+func gitStandIn(t *testing.T, bin string) string {
+	t.Helper()
+	host, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("needs git")
+	}
+	return "#!/bin/sh\nfor a in \"$@\"; do\n  case \"$a\" in\n" +
+		"    https://* | http://* | ssh://* | git@*)\n" +
+		"      echo \"git $*\" >>'" + remoteGitTrace(bin) + "'\n" +
+		"      echo \"" + ranOutside + "git $*\" >&2\n      exit 97 ;;\n  esac\ndone\n" +
+		"exec '" + host + "' \"$@\"\n"
+}
+
+// remoteGitTrace is the file where a test machine's git notes each remote call it refused.
+func remoteGitTrace(bin string) string { return filepath.Join(bin, ".remote-git") }
+
+// Setup looks up the newest tool releases with git ls-remote on github.com. On a test machine
+// the host's git refuses that call, notes it, and setup goes on as it does offline.
+func TestMachineRefusesRemoteGit(t *testing.T) {
+	m := newCatMachine(t, nil)
+	code, out, errOut := run2(t, "setup", "--yes", "--plain")
+	if code != 0 {
+		t.Fatalf("setup with remote git refused: exit %d\n%s", code, out+errOut)
+	}
+	trace, _ := os.ReadFile(remoteGitTrace(m.bin))
+	if !strings.Contains(string(trace), "git ls-remote --tags https://github.com/") {
+		t.Errorf("no remote lookup was refused; trace %q\n%s", trace, out+errOut)
 	}
 }
 
