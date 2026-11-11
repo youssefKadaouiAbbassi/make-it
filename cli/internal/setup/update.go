@@ -761,6 +761,23 @@ func (e *env) settingsEnv() []string {
 // probeRun is hookprobe.Run; tests stand in for it.
 var probeRun = hookprobe.Run
 
+var (
+	hexRun   = regexp.MustCompile(`[0-9a-fA-F]{8,}`)
+	digitRun = regexp.MustCompile(`[0-9]+`)
+)
+
+// shapes are paths with what changes from run to run masked: a long hex run (a hash) becomes "*"
+// and a number "#". Hooks name caches after a folder, a process or a time, and the same file
+// under another name is not a new write. Sorted, each shape once.
+func shapes(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, digitRun.ReplaceAllString(hexRun.ReplaceAllString(p, "*"), "#"))
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
 // lacking are the paths of now that seen lacks.
 func lacking(now, seen []string) []string {
 	return slices.DeleteFunc(slices.Clone(now), func(p string) bool { return slices.Contains(seen, p) })
@@ -837,6 +854,7 @@ func (e *env) writesStep() plan.Step {
 					e.st.PluginWrites[id] = state.Writes{Unchecked: true}
 					continue
 				}
+				now.Project, now.Home = shapes(now.Project), shapes(now.Home)
 				e.st.PluginWrites[id] = state.Writes{Project: now.Project, Home: now.Home}
 				if !seen || last.Unchecked {
 					continue

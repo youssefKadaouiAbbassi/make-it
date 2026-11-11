@@ -79,3 +79,21 @@ func TestWritesProbeErrorIsRemembered(t *testing.T) {
 		t.Errorf("record = %+v", got)
 	}
 }
+
+// Hooks name caches after a folder, a process or a time: the same file under another name is not
+// a new write. Names are compared by shape (long hex runs and numbers masked).
+func TestWritesCompareNamesByShape(t *testing.T) {
+	dir := fakePlugin(t, `mkdir -p "$HOME/.cache/tool/modes" && touch "$HOME/.cache/tool/run-$$.log" "$HOME/.cache/tool/modes/$(printf %s "$PWD" | sha256sum | cut -c1-16)" "cache-$$.tmp"`)
+	e := writesEnv(t, map[string]string{"sp@makeit": dir})
+	if _, err := runWrites(t, e); err != nil {
+		t.Fatal(err)
+	}
+	rec := e.st.PluginWrites["sp@makeit"]
+	if !slices.Equal(rec.Home, []string{".cache/tool/modes/*", ".cache/tool/run-#.log"}) || !slices.Equal(rec.Project, []string{"cache-#.tmp"}) {
+		t.Fatalf("record = %+v, want the names by shape", rec)
+	}
+	e.reload, e.notes = true, nil
+	if _, err := runWrites(t, e); err != nil || len(e.notes) != 0 {
+		t.Errorf("the same files under other names were reported: err %v, notes %v", err, e.notes)
+	}
+}
