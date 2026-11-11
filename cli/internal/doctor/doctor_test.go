@@ -570,3 +570,46 @@ func TestUnusableClaudeListsNothing(t *testing.T) {
 func findRow(id string) platform.Prereq {
 	return platform.Prereqs[slices.IndexFunc(platform.Prereqs, func(r platform.Prereq) bool { return r.ID == id })]
 }
+
+func TestReleaseToolLines(t *testing.T) {
+	tool := platform.Prereq{ID: "prek", Why: "hooks", Release: &platform.Release{Bin: "prek", Asset: func(v, goos, goarch string) (string, string) { return "a", "b" }}}
+	for _, c := range []struct {
+		name, have, latest, by string
+		present                bool
+		level                  Level
+		msg, fix               string
+	}{
+		{"current", "0.6.0", "0.6.0", "makeit", true, OK, "prek 0.6.0 found", ""},
+		{"no record", "0.6.0", "", "", true, OK, "prek 0.6.0 found", ""},
+		{"unknown version", "", "0.6.0", "makeit", true, OK, "prek found", ""},
+		{"recorded older", "0.7.0", "0.6.0", "", true, OK, "prek 0.7.0 found", ""},
+		{"behind managed", "0.5.9", "0.6.0", "makeit", true, Warn, "prek 0.5.9 is behind 0.6.0: makeit update moves it", "makeit update"},
+		{"behind unmanaged", "0.5.9", "0.6.0", "", true, Warn, "prek 0.5.9 is behind 0.6.0: you installed it, so makeit leaves it; update it the way you installed it", ""},
+		{"missing", "", "0.6.0", "", false, Warn, "prek is missing: hooks", "makeit setup"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m, _ := healthy(t)
+			m.Prereqs = append(m.Prereqs, platform.State{Prereq: tool, Present: c.present})
+			m.ToolVersions = map[string]string{"prek": c.have}
+			st := &state.State{SchemaVersion: state.SchemaVersion, Revision: state.Revision, ToolLatest: map[string]string{}}
+			if c.latest != "" {
+				st.ToolLatest["prek"] = c.latest
+			}
+			if c.by != "" {
+				st.Prereqs = map[string]*state.Prereq{"prek": {InstalledBy: c.by, Route: "release"}}
+			}
+			if err := state.SaveState(m.StatePath, st); err != nil && !os.IsNotExist(err) {
+				if err := os.MkdirAll(filepath.Dir(m.StatePath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := state.SaveState(m.StatePath, st); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := byID(t, Run(context.Background(), m), "prereq.prek")
+			if got.Level != c.level || got.Message != c.msg || got.Fix != c.fix {
+				t.Errorf("got %+v, want %s %q fix %q", got, c.level, c.msg, c.fix)
+			}
+		})
+	}
+}

@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"makeit/internal/buildinfo"
@@ -73,6 +75,7 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 	if res, err := execx.Run(ctx, execx.Cmd{Argv: []string{"node", "-v"}, Timeout: 5 * time.Second}); err == nil && res.Code == 0 {
 		m.NodeVersion = strings.TrimSpace(res.Stdout)
 	}
+	m.ToolVersions = toolVersions(ctx, m.Prereqs)
 	if len(m.Installs) > 0 {
 		m.Claude = &claudecli.CLI{Path: m.Installs[0].Path, Run: execx.Run}
 		// A link in a Homebrew prefix is a cask's or, with Homebrew's node, npm's.
@@ -83,4 +86,36 @@ func Gather(ctx context.Context, version, target, digest string) (Machine, error
 		}
 	}
 	return m, nil
+}
+
+var versionRe = regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+// toolVersions runs `<tool> --version` of every present release tool, together, with a 3 second
+// limit each; a tool that prints nothing, fails or hangs has "".
+func toolVersions(ctx context.Context, states []platform.State) map[string]string {
+	out := map[string]string{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, s := range states {
+		if s.Prereq.Release == nil || !s.Present {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			path, ok := execx.LookPath(s.Prereq.Release.Bin)
+			if !ok {
+				return
+			}
+			v := ""
+			if res, err := execx.Run(ctx, execx.Cmd{Argv: []string{path, "--version"}, Timeout: 3 * time.Second}); err == nil && res.Code == 0 {
+				v = versionRe.FindString(res.Stdout)
+			}
+			mu.Lock()
+			out[s.Prereq.ID] = v
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return out
 }
