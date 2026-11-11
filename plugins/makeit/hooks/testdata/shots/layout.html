@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>shots layout test page</title>
+<style>body{margin:0}.wide{width:700px;height:40px;background:#ccc}</style>
+</head>
+<body>
+<h1>Layout picked at load</h1>
+<script>
+  // Like an app that picks its layout once, at load: a narrow window gets the wide block.
+  if (innerWidth < 600) document.body.insertAdjacentHTML('beforeend', '<div class="wide">phone layout</div>');
+  console.error('loaded at ' + innerWidth);
+</script>
+</body>
+</html>

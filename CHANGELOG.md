@@ -7,11 +7,11 @@ raises the minor version.
 
 Screenshots in one command, and a design step that reads the screens first.
 
-- **`shots` takes the screenshots of a UI change.** `shots URL...` opens each page in a headless
-  browser of its own, with a throwaway profile, and saves it at desktop and phone width
-  (`--widths` to change them) into one folder (`--out DIR`). It prints each file, says when a
-  page is wider than its viewport, and lists each page's console errors. Before and after a
-  change are two runs into two folders.
+- **`shots` takes the screenshots of a UI change.** `shots URL...` starts one headless browser
+  of its own, with a throwaway profile, loads each page once per width, at desktop and phone
+  width (`--widths` to change them), and saves the screenshots into one folder (`--out DIR`). It
+  prints each file, says when a page is wider than its viewport or landed on another address,
+  and lists each page's console errors. Before and after a change are two runs into two folders.
   Pages behind a login need a setup file that signs in first (`--setup FILE`); `/makeit:init`
   writes it when the project has a development account, and adds the `shots` line to the run
   recipe and the verify skill. Run `/makeit:init` in a project you already set up to get them.

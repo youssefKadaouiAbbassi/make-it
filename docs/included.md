@@ -95,11 +95,14 @@ comment): plain text ready to paste, in the reader's language, with no file path
 additive changes first, destructive ones last and alone, backfills in batches.
 
 Command: `shots URL...`, on the PATH of Claude's shell commands (not of your terminal), takes each
-page at desktop and phone width (`--widths` changes them) and saves the screenshots in one folder (`--out DIR`, or a new one under the temp folder). It prints
-each file, says when a page is wider than its viewport, and lists each page's console errors.
-It drives the chrome-devtools copy in `~/.makeit/mcp`, in its own headless browser with a
-throwaway profile. For pages behind a login, `--setup FILE` runs a project script that signs in
-first; `/makeit:init` writes it when the project has a development account.
+page at desktop and phone width (`--widths` changes them) and saves the screenshots in one folder (`--out DIR`, or a new one under the temp folder). It loads
+each page once per width, so a page that picks its layout at load gets the right one. It prints
+each file, says when a page is wider than its viewport, landed on another address or was still
+loading after the timeout, and lists each page's console errors. It drives the chrome-devtools
+copy in `~/.makeit/mcp`, in one headless browser of its own with a throwaway profile, and needs
+Google Chrome. The phone width is a narrow viewport, not a phone emulation. For pages behind a
+login, `--setup FILE` runs a project script that signs in first; `/makeit:init` writes it when
+the project has a development account.
 
 ## Settings
 

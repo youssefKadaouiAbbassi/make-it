@@ -1,4 +1,5 @@
 // A page behind a login, for the shots cases: POST /login sets a cookie, /private needs it.
+// /never never answers; /slow is a page whose image is /never.
 // Usage: node server.mjs LOGFILE   (prints its port; one line per /private request in LOGFILE)
 import http from 'node:http';
 import fs from 'node:fs';
@@ -23,6 +24,11 @@ const server = http.createServer((req, res) => {
     }
     res.writeHead(200, {'Content-Type': 'text/html'});
     return res.end(html('<h1>Welcome dev</h1>'));
+  }
+  if (req.url.startsWith('/never')) return;
+  if (req.url.startsWith('/slow')) {
+    res.writeHead(200, {'Content-Type': 'text/html'});
+    return res.end(html('<h1>Slow</h1><img src="/never" alt="">'));
   }
   res.writeHead(404);
   res.end();

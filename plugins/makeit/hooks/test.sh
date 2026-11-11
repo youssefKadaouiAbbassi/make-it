@@ -787,6 +787,10 @@ if PATH="$tmp/chromium-only" has_chrome; then bad "shots: Chromium alone counts 
 out=$(bash "$shots" 2>&1); rc=$?
 [ "$rc" = 2 ] && ok "shots: no URL is a usage error" || bad "shots: no URL: exit $rc: $out"
 expect "shots: usage names the command" "shots [--out DIR]" "$out"
+for w in , 0x0 375x0 0x812 x800; do
+  out=$(MAKEIT_DIR="$tmp/no-makeit" bash "$shots" --widths "$w" "file://$here/testdata/shots/page.html" 2>&1); rc=$?
+  [ "$rc" = 2 ] && ok "shots: --widths '$w' is a usage error" || bad "shots: --widths '$w': exit $rc: $out"
+done
 out=$(MAKEIT_DIR="$tmp/no-makeit" bash "$shots" "file://$here/testdata/shots/page.html" 2>&1); rc=$?
 [ "$rc" = 1 ] && ok "shots: without makeit's browser copy it exits 1" || bad "shots: no local copy: exit $rc: $out"
 expect "shots: without the copy it names makeit setup" "makeit setup" "$out"
@@ -795,20 +799,55 @@ if command -v node >/dev/null 2>&1 && [ -f "$cdt_pkg" ] && has_chrome; then
   page="file://$here/testdata/shots/page.html"
   runtime="${XDG_RUNTIME_DIR:-/tmp}"
   daemons() { find "$runtime" -maxdepth 1 -name 'chrome-devtools-mcp-*' 2>/dev/null | wc -l; }
+  watchers() { pgrep -f 'shots watcher' | wc -l; }
   before=$(daemons)
+  before_list=$(find "$runtime" -maxdepth 1 -name 'chrome-devtools-mcp-*' 2>/dev/null)
+  wbefore=$(watchers)
   out=$(bash "$shots" --out "$sd/a" "$page" 2>&1); rc=$?
   [ "$rc" = 0 ] && ok "shots: exits 0 when every shot is saved" || bad "shots: exit $rc: $out"
   expect "shots: the folder comes first" "out: $sd/a" "$(head -n 1 <<<"$out")"
   if [ -s "$sd/a/01-page-html-1280x800.png" ] && [ -s "$sd/a/01-page-html-375x812.png" ]; then ok "shots: one file per width, named after the page"; else bad "shots: files: $(ls "$sd/a" 2>&1)"; fi
   expect "shots: the phone shot is flagged wider than its viewport" "01-page-html 375x812: 01-page-html-375x812.png · wider than the viewport: 700 px" "$out"
   case "$(grep '01-page-html 1280x800:' <<<"$out")" in *wider*) bad "shots: the desktop shot is flagged wider: $out" ;; *1280x800.png) ok "shots: the desktop shot is not flagged" ;; *) bad "shots: no line for the desktop shot: $out" ;; esac
-  expect "shots: console errors are counted per page" "01-page-html console errors: 1" "$out"
+  expect "shots: console errors are counted per page, the same text once" "01-page-html console errors: 1" "$out"
   expect "shots: the error's text is shown" "shots test error" "$out"
   [ "$(daemons)" = "$before" ] && ok "shots: nothing of the run is left behind" || bad "shots: runtime folders before $before, after $(daemons)"
+  [ "$(watchers)" = "$wbefore" ] && ok "shots: no watcher is left after a run" || bad "shots: watchers before $wbefore, after $(watchers)"
+  # A page that picks its layout at load is loaded again at each width.
+  out=$(bash "$shots" --out "$sd/l" "file://$here/testdata/shots/layout.html" 2>&1)
+  expect "shots: each width loads the page anew, so the phone layout is the one shot at 375" "01-layout-html 375x812: 01-layout-html-375x812.png · wider than the viewport: 700 px" "$out"
+  expect "shots: the console errors are those of every load" "01-layout-html console errors: 2" "$out"
+  expect "shots: the errors of the desktop load are listed" "loaded at 1280" "$out"
+  expect "shots: the errors of the phone load are listed" "loaded at 375" "$out"
   out=$(bash "$shots" --out "$sd/b" --widths 800x600 "file:///nonexistent/missing.html" "$page" 2>&1); rc=$?
   [ "$rc" = 1 ] && ok "shots: a page that does not load makes the run exit 1" || bad "shots: missing page: exit $rc: $out"
   expect "shots: the page that did not load is named" "01-missing-html: did not load (file:///nonexistent/missing.html)" "$out"
   [ -s "$sd/b/02-page-html-800x600.png" ] && ok "shots: the next page is still taken, at the width asked" || bad "shots: after a missing page: $(ls "$sd/b" 2>&1)"
+  # A stand-in command line: the real one, except the command named in SHOTS_TEST_BREAK fails.
+  fk="$tmp/fakemk/mcp/chrome-devtools/node_modules/chrome-devtools-mcp"; mkdir -p "$fk"
+  printf '{"version":"0.0.0-test","bin":{"chrome-devtools":"./cli.js"}}\n' >"$fk/package.json"
+  printf '%s\n' "const {spawnSync} = require('child_process');" \
+    "if (process.argv[2] === process.env.SHOTS_TEST_BREAK) { console.error('Error: unknown command ' + process.argv[2]); process.exit(1); }" \
+    "const r = spawnSync(process.execPath, [process.env.SHOTS_TEST_CLI, ...process.argv.slice(2)], {stdio: 'inherit'});" \
+    "process.exit(r.status === null ? 1 : r.status);" >"$fk/cli.js"
+  real_cli="$(dirname "$cdt_pkg")/$(jq -r '.bin["chrome-devtools"]' "$cdt_pkg")"
+  broken() { SHOTS_TEST_BREAK=$1 SHOTS_TEST_CLI="$real_cli" MAKEIT_DIR="$tmp/fakemk" bash "$shots" --out "$sd/break-$1" --widths 800x600 "$page" 2>&1; }
+  out=$(broken emulate); rc=$?
+  [ "$rc" = 1 ] && ok "shots: a viewport that could not be set makes the run exit 1" || bad "shots: emulate broken: exit $rc: $out"
+  expect "shots: a viewport that could not be set is named" "01-page-html 800x600: the viewport could not be set" "$out"
+  out=$(broken list_console_messages); rc=$?
+  [ "$rc" = 1 ] && ok "shots: console errors that could not be read make the run exit 1" || bad "shots: console broken: exit $rc: $out"
+  expect "shots: console errors that could not be read are named" "01-page-html console errors: could not be read" "$out"
+  out=$(broken take_screenshot); rc=$?
+  [ "$rc" = 1 ] && ok "shots: a screenshot that failed makes the run exit 1" || bad "shots: screenshot broken: exit $rc: $out"
+  expect "shots: a screenshot that failed is named" "01-page-html 800x600: no screenshot was saved" "$out"
+  out=$(broken navigate_page); rc=$?
+  [ "$rc" = 1 ] && ok "shots: a load command that fails makes the run exit 1" || bad "shots: navigate broken: exit $rc: $out"
+  expect "shots: a load command that fails gives its error as the reason" "01-page-html: did not load ($page): Error: unknown command navigate_page" "$out"
+  out=$(broken list_pages); rc=$?
+  [ "$rc" = 1 ] && ok "shots: a browser that does not start makes the run exit 1" || bad "shots: list_pages broken: exit $rc: $out"
+  expect "shots: a browser that does not start is one line with the error" "shots: the browser did not start: Error: unknown command list_pages" "$out"
+  case "$out" in *"did not load"*) bad "shots: a browser that does not start still tried the pages: $out" ;; *) ok "shots: a browser that does not start tries no page" ;; esac
   # A page behind a login: the setup file signs in, the page shots opens next is the signed-in one.
   node "$here/testdata/shots/server.mjs" "$sd/server.log" >"$sd/port" 2>/dev/null &
   srv=$!
@@ -816,13 +855,64 @@ if command -v node >/dev/null 2>&1 && [ -f "$cdt_pkg" ] && has_chrome; then
   port=$(cat "$sd/port")
   out=$(bash "$shots" --out "$sd/n" "http://127.0.0.1:$port/private" 2>&1)
   expect "shots: without a setup file the page behind the login is refused" "private refused" "$(tail -n 1 "$sd/server.log" 2>&1)"
+  expect "shots: without a setup file the line says it landed on the login page" "01-private 1280x800: 01-private-1280x800.png · landed on http://127.0.0.1:$port/login" "$out"
   out=$(SHOTS_TEST_PORT="$port" bash "$shots" --out "$sd/c" --setup "$here/testdata/shots/login.sh" "http://127.0.0.1:$port/private" 2>&1); rc=$?
-  kill "$srv" 2>/dev/null
   if [ "$rc" = 0 ] && [ "$(tail -n 1 "$sd/server.log" 2>/dev/null)" = "private ok" ] && [ -s "$sd/c/01-private-1280x800.png" ]; then ok "shots: the setup file signs in and the page behind the login is taken"; else bad "shots: setup: exit $rc, server log [$(tr '\n' ' ' <"$sd/server.log" 2>&1)]: $out"; fi
+  case "$out" in *"landed on"*) bad "shots: the signed-in page says it landed elsewhere: $out" ;; *) ok "shots: a page at the address asked has no landing note" ;; esac
+  # A page that rendered while one of its requests never answers.
+  out=$(bash "$shots" --out "$sd/s" --widths 800x600 "http://127.0.0.1:$port/slow" 2>&1); rc=$?
+  [ "$rc" = 0 ] && ok "shots: a page still loading after the timeout is not a failure" || bad "shots: slow page: exit $rc: $out"
+  expect "shots: a page still loading after the timeout is taken and says so" "01-slow 800x600: 01-slow-800x600.png · still loading after the timeout" "$out"
+  # A run ended by a signal, or killed outright, leaves no daemon, no runtime folder, no Chrome.
+  new_runtime() {
+    local d
+    for d in "$runtime"/chrome-devtools-mcp-*; do
+      case "$before_list" in *"$d"*) ;; *) [ -s "$d/daemon.pid" ] && { echo "$d"; return; } ;; esac
+    done
+  }
+  # HUP goes to the whole process group, as a closed terminal sends it; KILL to the run alone.
+  signal_case() { # SIGNAL
+    local pid d="" dpid="" kids="" k alive target
+    ${setsid[@]+"${setsid[@]}"} bash "$shots" --out "$sd/sig-$1" --widths 800x600 "http://127.0.0.1:$port/never" >"$sd/sig-$1.log" 2>&1 &
+    pid=$!
+    for _ in $(seq 200); do
+      d=$(new_runtime)
+      [ -n "$d" ] && dpid=$(cat "$d/daemon.pid" 2>/dev/null) && kids=$(pgrep -P "$dpid" | tr '\n' ' ') && [ -n "$kids" ] && break
+      sleep 0.1
+    done
+    sleep 1
+    target=$pid; [ "$1" = HUP ] && [ -n "${setsid[*]-}" ] && target=-$pid
+    kill -"$1" -- "$target"
+    for _ in $(seq 150); do
+      alive=""
+      for k in $dpid $kids; do kill -0 "$k" 2>/dev/null && alive="$alive $k"; done
+      [ -z "$alive" ] && [ "$(daemons)" = "$before" ] && [ "$(watchers)" = "$wbefore" ] && break
+      sleep 0.1
+    done
+    wait "$pid" 2>/dev/null
+    if [ -n "$kids" ] && [ -z "$alive" ] && [ "$(daemons)" = "$before" ] && [ "$(watchers)" = "$wbefore" ]; then
+      ok "shots: kill -$1 of a run leaves no daemon, Chrome, runtime folder or watcher within 15 s"
+    else
+      bad "shots: kill -$1: Chrome seen [$kids], still alive [$alive], runtime folders before $before, after $(daemons), watchers before $wbefore, after $(watchers): $(cat "$sd/sig-$1.log")"
+    fi
+  }
+  setsid=(); command -v setsid >/dev/null 2>&1 && setsid=(setsid)
+  signal_case HUP
+  signal_case KILL
+  kill "$srv" 2>/dev/null
   printf 'false\n' >"$sd/bad-setup.sh"
   out=$(bash "$shots" --out "$sd/d" --setup "$sd/bad-setup.sh" "$page" 2>&1); rc=$?
   if [ "$rc" = 1 ] && ! ls "$sd/d"/*.png >/dev/null 2>&1; then ok "shots: a failing setup stops the run before any screenshot"; else bad "shots: failing setup: exit $rc: $out"; fi
   expect "shots: a failing setup is named" "setup failed: $sd/bad-setup.sh" "$out"
+  printf 'true\nfalse\ntrue\n' >"$sd/mid-setup.sh"
+  out=$(bash "$shots" --out "$sd/m" --setup "$sd/mid-setup.sh" "$page" 2>&1); rc=$?
+  if [ "$rc" = 1 ] && ! ls "$sd/m"/*.png >/dev/null 2>&1; then ok "shots: a setup whose middle command fails stops the run before any screenshot"; else bad "shots: setup failing in the middle: exit $rc: $out"; fi
+  # A bare name is the file in the current folder, not one of that name on PATH.
+  mkdir -p "$sd/cwd" "$sd/pathdir"
+  printf 'echo cwd >"%s/picked"\n' "$sd" >"$sd/cwd/pick.sh"
+  printf 'echo path >"%s/picked"\n' "$sd" >"$sd/pathdir/pick.sh"
+  (cd "$sd/cwd" && PATH="$sd/pathdir:$PATH" bash "$shots" --out "$sd/e" --setup pick.sh "$page" >/dev/null 2>&1)
+  expect "shots: a bare setup name is the file in the current folder" "cwd" "$(cat "$sd/picked" 2>&1)"
   [ "$(daemons)" = "$before" ] && ok "shots: nothing is left behind after failed runs" || bad "shots: runtime folders before $before, after $(daemons)"
 else
   echo "SKIP  shots: needs node, Google Chrome and makeit's local chrome-devtools-mcp"
