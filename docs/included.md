@@ -19,7 +19,7 @@ not here.
 
 | plugin | what it does in a session | why it is in |
 |---|---|---|
-| [makeit](../plugins/makeit) | the hooks, MCP servers and skills described below: handoffs between sessions, a docs reminder, the reply check, notifications, `/makeit:init`, the `draft` skill | makeit's own; its own test suite |
+| [makeit](../plugins/makeit) | the hooks, MCP servers, skills and command described below: handoffs between sessions, a docs reminder, the reply check, notifications, `/makeit:init`, the `draft` skill, the `shots` command | makeit's own; its own test suite |
 | [superpowers](https://github.com/obra/superpowers) | how Claude works: it asks before building something new, writes a design and a plan, builds test-first, debugs from the root cause, reviews before merging | on 29 hard tasks run twice, 43 of 58 resolved against 38 without it, at lower cost |
 | [ponytail](https://github.com/DietrichGebert/ponytail) | the smallest change that solves the task, no code nobody asked for; each reply ends with what was skipped | the cheapest and fastest option on the UI tasks; chosen over Caveman |
 | [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) | Claude opens your web app in Chrome, reads the console and the network, takes screenshots, runs Lighthouse | the only browser tool with traces, Lighthouse and device emulation |
@@ -93,6 +93,13 @@ Skills: `/makeit:init` sets up a project ([Projects](projects.md)); only you can
 comment): plain text ready to paste, in the reader's language, with no file paths or Markdown.
 `expand-contract` is used by Claude before a database schema change that live code reads:
 additive changes first, destructive ones last and alone, backfills in batches.
+
+Command: `shots URL...`, on the PATH of Claude's shell commands (not of your terminal), takes each
+page at desktop and phone width (`--widths` changes them) and saves the screenshots in one folder (`--out DIR`, or a new one under the temp folder). It prints
+each file, says when a page is wider than its viewport, and lists each page's console errors.
+It drives the chrome-devtools copy in `~/.makeit/mcp`, in its own headless browser with a
+throwaway profile. For pages behind a login, `--setup FILE` runs a project script that signs in
+first; `/makeit:init` writes it when the project has a development account.
 
 ## Settings
 

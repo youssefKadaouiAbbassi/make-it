@@ -78,6 +78,10 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   nothing here can run it, say so and say what the owner should check.
 - chrome-devtools for your own local pages, the Chrome extension for sites that
   need the owner's login; stop and ask at a login, captcha or 2FA screen.
+- `shots URL...` takes local pages at desktop and phone width and lists their console errors in
+  one command (`--out DIR`; before and after are two runs into two folders): use it for those
+  screenshots and read the files it names. Pages behind a login need the project's setup file
+  (`--setup`, named in its run recipe); without one, use the browser tools.
 
 ## Testing
 
