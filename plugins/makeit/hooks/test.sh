@@ -889,6 +889,8 @@ if command -v node >/dev/null 2>&1 && [ -f "$cdt_pkg" ] && has_chrome; then
       [ -z "$alive" ] && [ "$(daemons)" = "$before" ] && [ "$(watchers)" = "$wbefore" ] && break
       sleep 0.1
     done
+    # A run that outlived the signal is a failure; it must not hold the suite.
+    kill -0 "$pid" 2>/dev/null && { alive="$alive shots"; kill -KILL "$pid"; }
     wait "$pid" 2>/dev/null
     if [ -n "$kids" ] && [ -z "$alive" ] && [ "$(daemons)" = "$before" ] && [ "$(watchers)" = "$wbefore" ]; then
       ok "shots: kill -$1 of a run leaves no daemon, Chrome, runtime folder or watcher within 15 s"
