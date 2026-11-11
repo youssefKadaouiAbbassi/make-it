@@ -140,11 +140,11 @@ depend on them, so `make -k check:full` runs every check and reports every failu
 stops at its first failing line.
 
 Then run each task once and time it (`time <runner> check:fast`, then check:task and check:full).
-Write the measured times in CLAUDE.md's Commands table and CONSTRAINTS.md's budgets table, in
-place of the template's 10 s and 90 s. check:task runs after every change, so it runs
-only what a change touches: the type checker in its incremental mode, and the tests related to
-the changed files (the test runner's own option for that; look it up in the docs of the version
-in use), never the whole suite. A task over its budget (10 s for check:fast, 90 s for check:task) is a
+Write the measured times in CLAUDE.md's Commands table and as the budgets of CONSTRAINTS.md's
+budgets table, in place of the template's starting points. check:task runs after every change, so
+it runs only what a change touches: the type checker in its incremental mode, and the tests
+related to the changed files (the test runner's own option for that; look it up in the docs of
+the version in use), never the whole suite. A check:fast over 10 s or a check:task over 90 s is a
 finding: bring it down, or add a HANDOFF item that says what makes it slow.
 
 ## 4. Apply the manual lines

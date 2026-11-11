@@ -1,6 +1,6 @@
 {
   "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
-  "sources": "sha256:54cbd687e52246477184f503dd67362764463a76fd58b4acb64d7a9e83d5fde7",
+  "sources": "sha256:8fbf018c39a78f789e3904842e862e44dbd0fc1167a0424d632f97f377f8903b",
   "changes": [
     {
       "version": "0.3.7",
@@ -24,7 +24,7 @@
       "version": "0.4.0",
       "id": "deploy-ask-rules",
       "files": [".claude/settings.json"],
-      "prompt": "Every branch that deploys when pushed has two ask rules in permissions.ask of .claude/settings.json: `Bash(git push * <branch>)` and `Bash(git push *:<branch>)`. main and master are covered by the global rules. Ask the user once which other branches deploy (a production or release branch, or none) and add the rules for those; keep every other key and rule, and add no rule twice. Branches that already have both rules need nothing."
+      "prompt": "Every branch that deploys when pushed and that the owner wants to confirm each time has two ask rules in permissions.ask of .claude/settings.json: `Bash(git push * <branch>)` and `Bash(git push *:<branch>)`. main and master are covered by the global rules. Which branches those are comes from the Shipping answer (the shipping-section entry below): ask it once, for both entries, and add the rules for the deploy branches the owner keeps under \"always ask\"; a branch the answer lets Claude push to gets none. Keep every other key and rule, and add no rule twice. Branches that already have both rules need nothing."
     },
     {
       "version": "0.4.0",
@@ -54,7 +54,7 @@
       "version": "0.5.0",
       "id": "timed-checks",
       "files": ["CLAUDE.md", "CONSTRAINTS.md"],
-      "prompt": "Each check task was run and timed on this project, and the measured time stands in CLAUDE.md's Commands table and in the budgets table of CONSTRAINTS.md instead of the template's 10 s and 90 s. check:task runs only what a change touches (the type checker in its incremental mode, the tests related to the changed files) and stays under 90 s; check:fast stays under 10 s. Time the tasks now when the times are still the template's. A task over its budget is a gap for the review: say what makes it slow and what would bring it down, and change the task only with the owner's yes."
+      "prompt": "Each check task was run and timed on this project, and the measured time stands in CLAUDE.md's Commands table and in the budgets table of CONSTRAINTS.md instead of the template's 10 s and 90 s. check:task runs only what a change touches (the type checker in its incremental mode, the tests related to the changed files) and stays under 90 s; check:fast stays under 10 s. Time the tasks now when the times are still the template's. A check:fast over 10 s or a check:task over 90 s is a gap for the review: say what makes it slow and what would bring it down."
     }
   ]
 }

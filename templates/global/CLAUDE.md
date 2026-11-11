@@ -101,7 +101,8 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   says, without asking. Red: say which tests fail and ask whether to push
   anyway, even when the failures look unrelated to the change.
 - Commits: imperative mood, one logical change, never amend a pushed commit,
-  never commit secrets. Do not push to the default branch unless told to.
+  never commit secrets. Do not push to the default branch unless told to (the
+  project's Shipping section counts as told).
 - Write `HANDOFF.md` (`HANDOFF.<branch>.md` on a branch) before a context reset and
   at the end of a session that changed files: what is done, what is next, what
   is open, how to verify.
