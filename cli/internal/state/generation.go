@@ -36,6 +36,10 @@ type Manifest struct {
 	Pins []PinMove `json:"pins,omitempty"`
 	// Changes are the versions the run moved, for the result, the daily note and rollback.
 	Changes []Change `json:"changes,omitempty"`
+	// Writes are the plugin write records the run's hook check replaced, as they were before it
+	// (nil for a plugin that had none): rollback puts them back, so the release after an undone
+	// one is compared with what was accepted.
+	Writes map[string]*Writes `json:"writes,omitempty"`
 	// RolledBack is set once makeit rollback has undone this run, so the next rollback goes further back.
 	RolledBack bool `json:"rolledBack,omitempty"`
 }

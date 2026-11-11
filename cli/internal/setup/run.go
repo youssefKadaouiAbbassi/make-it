@@ -92,6 +92,7 @@ func (e *env) setupRunSteps() []plan.Step {
 // setupSteps are setup's steps in order, with global the global-file steps of the command.
 func (e *env) setupSteps(global []plan.Step) []plan.Step {
 	steps := append(e.prereqSteps(), e.toolUpgradeSteps()...)
+	steps = append(steps, e.toolLatestStep())
 	steps = append(steps, e.npmUpgradeSteps()...)
 	steps = append(steps, e.claudeStep(), e.claudeSeenStep(), e.claudeUpgradeStep())
 	steps = append(steps, e.stackSteps()...)
@@ -126,7 +127,9 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	en := &env{Env: e, st: st, req: req, command: command}
 	en.nodePathAtStart()
 	phases := build(en)
-	rep := Report{Plan: runPhases(ctx, phases, plan.Options{DryRun: true})}
+	rep := Report{Plan: runPhases(ctx, phases, plan.Options{DryRun: true, After: func(o plan.Outcome) {
+		en.pending = en.pending || o.Status == plan.WouldChange
+	}})}
 	rep.Hints, rep.Kept, rep.NeedsYou = en.hints, en.kept, en.needsYou
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {
 		// Nothing to apply, but a check took a global file back: save that (the lock is held).

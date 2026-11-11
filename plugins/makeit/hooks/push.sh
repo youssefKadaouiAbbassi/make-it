@@ -4,9 +4,14 @@
 #   in the directory a preceding `cd` or `git -C` points at. Named pushes are covered by the ask rules.
 #   Deploy branches = main, master and the branches in `Bash(git push * <b>)` / `Bash(git push *:<b>)`
 #   ask rules of <cwd>/.claude/settings.json.
-# Exits 0 and prints nothing on anything it does not understand. Needs jq and git.
+# Exits 0 and prints nothing on anything it does not understand. Needs jq and git: without jq it
+#   cannot read the command, so it asks for every push. hooks.json sets onFailure "block" on its
+#   entries: a guard that crashes, times out or cannot start stops the push instead of letting it out.
 set -u
-command -v jq >/dev/null 2>&1 || exit 0
+if ! command -v jq >/dev/null 2>&1; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"makeit cannot check this git push because jq is missing: confirm it, then install jq (makeit setup)."}}'
+  exit 0
+fi
 input=$(cat)
 cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null)
 cwd=$(jq -r '.cwd // "."' <<<"$input" 2>/dev/null)

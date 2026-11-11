@@ -156,6 +156,9 @@ func (s *seeder) checks() {
 			lines = append(lines, `"check:api" = { shell = '`+checkAPI(s.p.Spec, s.p.DefaultBranch)+`' }`)
 		}
 		s.manual("%s", strings.Join(lines, "\n"))
+	case len(s.p.Types) > 0 && s.p.Runner == "" && s.p.PM == "":
+		// No root manifest (apps in sub-folders, a folder of repositories): no CI caller either.
+		s.manual("add check:fast, check:task and check:full tasks to a task runner at the folder's root (a Makefile works): the root has no manifest to carry them")
 	case len(s.p.Types) > 0 && s.p.Runner == "":
 		s.manual("add check:fast, check:task and check:full tasks to the project's task runner; the CI checks call them by name")
 	}
@@ -361,6 +364,9 @@ func (s *seeder) ci(gateRef string) error {
 	switch {
 	case s.p.PM == "bun":
 		s.manual("makeit seeds no CI caller for bun: the GitHub runner image has no bun; write the caller with a setup that installs it")
+		return nil
+	case s.p.PM == "" && s.p.Runner == "":
+		s.manual("makeit seeds no CI caller: the folder's root has no manifest, so there is no task runner to call; write the caller by hand")
 		return nil
 	case s.p.Runner == "":
 		s.manual("makeit seeds no CI caller for a %s project without a task runner (pip): move to uv, or write the caller by hand", s.p.PM)

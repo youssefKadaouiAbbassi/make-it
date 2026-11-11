@@ -25,21 +25,22 @@ what() { # $1 event, $2 normalised command
       case "$1" in
         SessionStart) echo "injects: the handoff file into context" ;;
         PreCompact) echo "injects: a reminder to rewrite the handoff before the context is summarised" ;;
-        Stop) echo "injects: once, a reminder to rewrite the handoff when files changed after it was written" ;;
+        Stop) echo "injects: once, a reminder to rewrite the handoff when files changed after it was written; it waits while a background job runs, 30 minutes at most" ;;
         *) return 1 ;;
       esac ;;
     hooks/autoupdate.sh) echo "notifies: shows the note the last daily update left, then starts the daily update in the background" ;;
+    hooks/behind.sh) echo "notifies: once a day, one line when newer init changes wait for this project (/makeit:init applies them)" ;;
     hooks/docs.sh) echo "injects: the project's direct dependencies and a reminder to read the docs of the version in use" ;;
-    hooks/skills.sh) echo "injects: a one-line skill-check reminder next to each prompt of two words or more" ;;
+    hooks/skills.sh) echo "injects: a one-line skill-check reminder next to each typed prompt of two words or more; nothing on a finished background job or a message from another session" ;;
     hooks/docs-mark.sh) echo "records: which libraries this session looked up (no output)" ;;
     hooks/docs-nudge.sh) echo "blocks: once, an edit that uses a recent dependency nobody looked up" ;;
     hooks/options.sh) echo "injects: once, at the end of a reply that hands the user a question or a phrase to type in prose, a reminder where it belongs; the turn continues" ;;
     hooks/notify.sh) echo "notifies: desktop and ntfy message when the agent finishes or needs the user" ;;
-    hooks/push.sh) echo "blocks: asks first for a push that names no branch from a deploy branch" ;;
+    hooks/push.sh) echo "blocks: asks first for a push that names no branch from a deploy branch; asks for every push when jq is missing, and the push is stopped when the guard itself fails" ;;
     "hooks/deja.sh hook-context") echo "injects: a digest of past sessions at session start; says once if the deja binary is missing" ;;
     "hooks/deja.sh hook-precompact") echo "records: a recovery packet (objective, conclusions, open items) used by the digest after compaction (no output)" ;;
     "hooks/deja.sh hook-session-end") echo "records: marks the session as ended in deja (no output)" ;;
-    hooks/hint.sh) echo "injects: one line pointing at deja search, no recall content" ;;
+    hooks/hint.sh) echo "injects: one line pointing at deja search, no recall content; nothing on a finished background job or a message from another session" ;;
     hooks/ponytail-activate.js) echo "injects: the ponytail ruleset at session start" ;;
     hooks/ponytail-subagent.js) echo "injects: the ponytail ruleset into each subagent" ;;
     hooks/ponytail-mode-tracker.js) echo "records: the active ponytail mode in a flag file (no output)" ;;

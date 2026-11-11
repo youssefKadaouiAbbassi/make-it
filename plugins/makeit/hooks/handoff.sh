@@ -7,7 +7,8 @@
 #   PreCompact: tell the agent to rewrite the handoff before the context is summarised.
 #   Stop: if files changed in this session after the handoff was last written, say so once as Stop
 #         additionalContext so the agent rewrites it; stop_hook_active guards against a loop.
-#         "This session" means modified after the start marker SessionStart writes.
+#         "This session" means modified after the start marker SessionStart writes. While a
+#         background job runs (background_tasks), the reminder waits, for 30 minutes at most.
 # Exits 0 on every path it does not understand. Needs jq and git; without them it does nothing.
 set -u
 input=$(cat)
@@ -80,7 +81,16 @@ case "$event" in
       [ "$path" = "HANDOFF.md" ] || [ "$path" = "$name" ] && continue
       if [ "$cwd/$path" -nt "$f" ] && [ "$cwd/$path" -nt "$mark" ]; then stale=1; break; fi
     done < <(git -C "$cwd" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/^.* -> //')
-    [ "$stale" = 1 ] || exit 0
+    hold="$mark.hold"
+    [ "$stale" = 1 ] || { /bin/rm -f "$hold"; exit 0; }
+    # A background job still runs: the turn comes back when it ends, so the reminder waits. Not past
+    # 30 minutes: a dev server runs for the whole session.
+    if [ "$(jq -r '(.background_tasks // []) | if type == "array" then length else 0 end' <<<"$input")" -gt 0 ]; then
+      [ -e "$hold" ] || : >"$hold" 2>/dev/null || true
+      # No marker (the state folder cannot be written): remind now rather than never.
+      [ ! -e "$hold" ] || [ -n "$(find "$hold" -mmin +30 2>/dev/null)" ] || exit 0
+    fi
+    /bin/rm -f "$hold"
     jq -cn --arg n "$name" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: ("Files changed this session after " + $n + " was last written. The project'\''s rule: " + $n + " is rewritten before the turn ends, under 30 lines (goal, branch and commit, done, next step, open questions, blocked on, verify with, do not touch).")}}'
     ;;
 esac

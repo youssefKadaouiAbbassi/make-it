@@ -124,6 +124,28 @@ expect_empty "handoff Stop clean tree: no block" "$out"
 sleep 1; printf 'b\n' >>"$repo/a.txt"
 out=$(payload Stop ',"stop_hook_active":false' | bash "$here/handoff.sh")
 expect "handoff Stop stale HANDOFF reminds" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+# A background job still runs: the turn comes back when it ends, so the reminder waits, up to 30
+# minutes (a dev server runs for the whole session).
+bgjob=',"stop_hook_active":false,"background_tasks":[{"id":"a","type":"shell","status":"running"}]'
+out=$(payload Stop "$bgjob" | bash "$here/handoff.sh")
+expect_empty "handoff Stop waits while a background job runs" "$out"
+holdf=$(find "$tmp/state/makeit/sessions" -name 's*.hold' | head -n 1)
+[ -n "$holdf" ] && ok "handoff Stop marks when its wait began" || bad "handoff Stop left no wait marker"
+touch -d '31 minutes ago' "${holdf:-$tmp/none}"
+out=$(payload Stop "$bgjob" | bash "$here/handoff.sh")
+expect "handoff Stop reminds after 30 minutes of waiting" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+if [ -e "${holdf:-$tmp/none}" ]; then bad "handoff Stop keeps its wait marker after reminding"; else ok "handoff Stop clears its wait marker after reminding"; fi
+out=$(payload Stop ',"stop_hook_active":false,"background_tasks":[]' | bash "$here/handoff.sh")
+expect "handoff Stop reminds once no job runs" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+# When the wait marker cannot be written, the reminder must not stay silent for the whole session.
+if [ "$(id -u)" != 0 ]; then
+  chmod a-w "$tmp/state/makeit/sessions"
+  out=$(payload Stop "$bgjob" | bash "$here/handoff.sh")
+  chmod u+w "$tmp/state/makeit/sessions"
+  expect "handoff Stop reminds when it cannot mark its wait" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+else
+  echo "SKIP  handoff Stop without a writable state folder: running as root"
+fi
 out=$(payload Stop ',"stop_hook_active":true' | bash "$here/handoff.sh")
 expect_empty "handoff Stop does not block twice" "$out"
 sleep 1; printf '# Handoff\n- **Goal:** rewritten\n' >"$repo/HANDOFF.md"
@@ -227,6 +249,7 @@ expect "skills adds prompt context" '"hookEventName":"UserPromptSubmit"' "$out"
 expect "skills lists the usual matches" 'superpowers:executing-plans' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills covers follow-ups" '"go for it"' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills comes before a deja recall" 'including a deja recall' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
+case "$out" in *verification-before-completion*) bad "skills still names verification-before-completion" ;; *) ok "skills does not name verification-before-completion" ;; esac
 for short in 1 a done ""; do
   expect_empty "skills silent on short prompt '$short'" "$(jq -n --arg p "$short" '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
 done
@@ -236,6 +259,10 @@ done
 expect "skills reminds on a 5-word prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix the login page bug"}' | bash "$here/skills.sh")"
 expect "skills reminds on a multi-line prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix this\nplease now"}' | bash "$here/skills.sh")"
 expect_empty "skills ignores other events" "$(printf '{"hook_event_name":"Stop","cwd":"/x"}' | bash "$here/skills.sh")"
+# Background notices arrive as prompts (a finished job, a message from another session): no reminder.
+expect_empty "skills silent on a task notification" "$(jq -n --arg p $'<task-notification>\n<task-id>x</task-id>\n<status>completed</status> the job finished' '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
+expect_empty "skills silent on a message from another session" "$(jq -n --arg p $'Another Claude session sent a message:\n<agent-message from="a1">done with the search</agent-message>' '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
+expect "skills reminds when a prompt only quotes a notice" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"why did <task-notification> show up twice here"}' | bash "$here/skills.sh")"
 out=$(printf '{"hook_event_name":"UserPromptSubmit"}' | PATH="$tmp/nojq" bash "$here/skills.sh" 2>&1; echo "rc=$?")
 expect "skills without jq exits 0" "rc=0" "$out"
 
@@ -596,8 +623,13 @@ out=$(push "(cd $tmp/notgit && git push)" "$qrepo"); expect_empty "push: a subsh
 out=$(push '{ git push; }' "$qrepo"); expect "push: a brace group asks" '"permissionDecision":"ask"' "$out"
 out=$(push 'git -c core.x=1 push' "$qrepo"); expect "push: git -c k=v push asks" '"permissionDecision":"ask"' "$out"
 out=$(push 'git --git-dir=.git --no-pager push' "$qrepo"); expect "push: --git-dir= is skipped" '"permissionDecision":"ask"' "$out"
-out=$(printf '{"cwd":"%s","tool_input":{"command":"git push"}}' "$qrepo" | PATH="$tmp/nojq" bash "$here/push.sh" 2>&1; echo "rc=$?"); expect "push: without jq exits 0, no output" "rc=0" "$out"
-case "$out" in rc=0) ok "push: without jq prints nothing" ;; *) bad "push: without jq printed [$out]" ;; esac
+# Without jq the guard cannot read the command: it asks instead of letting the push through.
+out=$(printf '{"cwd":"%s","tool_input":{"command":"git push"}}' "$qrepo" | PATH="$tmp/nojq" bash "$here/push.sh" 2>&1; echo "rc=$?"); expect "push: without jq exits 0" "rc=0" "$out"
+expect "push: without jq asks, since it cannot check" '"permissionDecision":"ask"' "$out"
+expect "push: without jq says why" 'jq is missing' "$out"
+if printf '%s' "${out%rc=0}" | jq -e '.hookSpecificOutput.hookEventName == "PreToolUse"' >/dev/null 2>&1; then ok "push: the no-jq answer is valid JSON"; else bad "push: the no-jq answer is not valid JSON: $out"; fi
+# A guard that crashes, times out or cannot start blocks the push (Claude Code 2.1.295+).
+expect "push entries block when the hook fails" "block block block" "$(jq -r '[.hooks.PreToolUse[].hooks[] | select(.command | test("push.sh")) | .onFailure // "unset"] | join(" ")' "$here/hooks.json")"
 
 
 # --- skills/init/SKILL.md: the /makeit:init agent step (cli/INIT.md) ---------------------------
@@ -623,6 +655,17 @@ if [ -f "$sk" ]; then
   expect "init skill: Coverage and Mutation rows are never deleted" "Never delete the Coverage or Mutation row" "$body"
   expect "init skill: the commit carries the floor-guard reason line" "floor-guard: makeit init adds the CI checks, the check tasks and the hook config" "$body"
   expect "init skill: a repository with no commit yet gets its first commit on the default branch" "no commit yet" "$body"
+  expect "init skill: asks once what ships on a green suite" 'CLAUDE.md "Shipping": ask once, with AskUserQuestion' "$body"
+  expect "init skill: a deploy branch Claude may push to gets no ask rule" "gets no rule" "$body"
+  expect "init skill: times each check task" "run each task once and time it" "$body"
+  expect "init skill: check:task runs what a change touches" "only what a change touches" "$body"
+  expect "init skill: one Run part per UI surface" "one Run part per surface" "$body"
+  expect "init skill: names the surfaces that cannot start here" "Not runnable here" "$body"
+  tpl=$(cat "$here/../../../templates/project/CLAUDE.md" 2>&1)
+  expect "project template: Shipping section" "## Shipping" "$tpl"
+  expect "project template: a red suite asks" 'red, or not run: ask before any push' "$tpl"
+  expect "project template: the end of a task ships by that section" "do the steps the Shipping section allows" "$tpl"
+  expect "verify template: every surface the change reaches" "on every surface the change reaches" "$(cat "$here/../../../templates/project/verify-skill.md" 2>&1)"
   wire=$(grep -n 'Wire the check' "$sk" | head -1 | cut -d: -f1)
   full=$(grep -n 'Run check:full' "$sk" | head -1 | cut -d: -f1)
   if [ -n "$wire" ] && [ -n "$full" ] && [ "$wire" -lt "$full" ]; then ok "init skill: check:full after the stubs are wired"; else bad "init skill: order of wiring and check:full ($wire, $full)"; fi
@@ -632,6 +675,71 @@ if [ -f "$sk" ]; then
 else
   bad "init skill missing: $sk"
 fi
+
+
+# --- .mcp.json: the browser server starts from makeit's local copy, npx only as a fallback -------
+# The entry file comes from the package's own "bin": upstream moved it between releases (1.13.0),
+# and a fixed path fell back to npx without a word.
+if command -v node >/dev/null 2>&1; then
+  loader=$(jq -r '.mcpServers["chrome-devtools"].args[1]' "$here/../.mcp.json")
+  mk="$tmp/mk"; pkgd="$mk/mcp/chrome-devtools/node_modules/chrome-devtools-mcp"; mkdir -p "$mk/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >"%s/npx.log"\n' "$mk" >"$mk/bin/npx"; chmod +x "$mk/bin/npx"
+  fake_pkg() { # version, bin value as JSON, entry path relative to the package ("" for none)
+    /bin/rm -rf "$pkgd" "$mk/ran" "$mk/npx.log"; mkdir -p "$pkgd"
+    printf '{"name":"chrome-devtools-mcp","version":"%s","bin":%s}\n' "$1" "$2" >"$pkgd/package.json"
+    if [ -n "$3" ]; then mkdir -p "$pkgd/$(dirname "$3")"; printf 'require("fs").writeFileSync(process.env.MARK, process.argv.slice(2).join(" "));\n' >"$pkgd/$3"; fi
+  }
+  run_loader() { MAKEIT_DIR="$mk" MARK="$mk/ran" PATH="$mk/bin:$PATH" node -e "$loader" chrome-devtools-mcp@9.9.9 --isolated >/dev/null 2>&1; }
+  fake_pkg 9.9.9 '{"chrome-devtools-mcp":"./out/Default/gen/src/bin/chrome-devtools-mcp.js","chrome-devtools":"./out/x.js"}' out/Default/gen/src/bin/chrome-devtools-mcp.js
+  run_loader; expect "mcp loader: runs the local copy at the path its package names" "--isolated" "$(cat "$mk/ran" 2>&1)"
+  [ -e "$mk/npx.log" ] && bad "mcp loader: npx was called although the local copy is there" || ok "mcp loader: no npx when the local copy is there"
+  fake_pkg 9.9.9 '{"chrome-devtools-mcp":"./build/src/bin/chrome-devtools-mcp.js"}' build/src/bin/chrome-devtools-mcp.js
+  run_loader; expect "mcp loader: the older layout still loads" "--isolated" "$(cat "$mk/ran" 2>&1)"
+  fake_pkg 9.9.9 '"./cli.js"' cli.js
+  run_loader; expect "mcp loader: a bin given as one path loads" "--isolated" "$(cat "$mk/ran" 2>&1)"
+  fake_pkg 9.9.8 '{"chrome-devtools-mcp":"./cli.js"}' cli.js
+  run_loader; expect "mcp loader: another version goes to npx" "-y chrome-devtools-mcp@9.9.9 --isolated" "$(cat "$mk/npx.log" 2>&1)"
+  [ -e "$mk/ran" ] && bad "mcp loader: ran a local copy of another version" || ok "mcp loader: a local copy of another version is not run"
+  fake_pkg 9.9.9 '{"chrome-devtools-mcp":"./gone.js"}' ""
+  run_loader; expect "mcp loader: a missing entry file goes to npx" "-y chrome-devtools-mcp@9.9.9 --isolated" "$(cat "$mk/npx.log" 2>&1)"
+  /bin/rm -rf "$pkgd" "$mk/npx.log"
+  run_loader; expect "mcp loader: no local copy goes to npx" "-y chrome-devtools-mcp@9.9.9 --isolated" "$(cat "$mk/npx.log" 2>&1)"
+else
+  echo "SKIP  mcp loader: node is not installed"
+fi
+
+
+# --- behind.sh: a session start says when the project's setup is behind -------------------------
+bh="$tmp/behind"; mkdir -p "$bh/bin" "$bh/proj" "$bh/plain"
+printf '{}\n' >"$bh/proj/.makeit.json"
+# A fake makeit: logs its arguments, prints the JSON the test prepared.
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/calls.log"\ncat "%s/out.json"\n' "$bh" "$bh" >"$bh/bin/makeit"; chmod +x "$bh/bin/makeit"
+: >"$bh/calls.log"
+behind() { printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s","session_id":"b"}' "$1" | PATH="$bh/bin:$PATH" bash "$here/behind.sh"; }
+newday() { find "$tmp/state/makeit/behind" -type f -delete 2>/dev/null; }
+printf '{"changes":[{"id":"deploy-ask-rules"},{"id":"verify-skill"},{"id":"task-start-end"}],"initTarget":"0.4.0"}' >"$bh/out.json"
+out=$(behind "$bh/proj")
+expect "behind: says how many changes wait" '3 changes behind (deploy-ask-rules, verify-skill, task-start-end)' "$(printf '%s' "$out" | jq -r '.systemMessage' 2>&1)"
+expect "behind: names what to type" '/makeit:init' "$out"
+expect "behind: asks makeit for a dry run" 'init --dry-run --json' "$(cat "$bh/calls.log")"
+expect_empty "behind: once a day per project" "$(behind "$bh/proj")"
+: >"$bh/calls.log"
+expect_empty "behind: silent in a folder makeit did not set up" "$(behind "$bh/plain")"
+expect_empty "behind: no makeit call without a record" "$(cat "$bh/calls.log")"
+newday; printf '{"changes":[{"id":"shipping-section"}]}' >"$bh/out.json"
+expect "behind: one change reads 1 change" '1 change behind (shipping-section)' "$(behind "$bh/proj" | jq -r '.systemMessage' 2>&1)"
+newday; printf '{"changes":[]}' >"$bh/out.json"
+expect_empty "behind: up to date is silent" "$(behind "$bh/proj")"
+newday; printf 'garbage' >"$bh/out.json"
+out=$(behind "$bh/proj" 2>&1; echo "rc=$?")
+if [ "$out" = "rc=0" ]; then ok "behind: garbage from makeit exits 0, silent"; else bad "behind: garbage from makeit: [$out]"; fi
+printf '{"changes":[{"id":"x"}]}' >"$bh/out.json"
+expect "behind: a check that failed does not use up the day" '1 change behind (x)' "$(behind "$bh/proj" | jq -r '.systemMessage' 2>&1)"
+newday; out=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$bh/proj" | PATH="$tmp/nojq" bash "$here/behind.sh" 2>&1; echo "rc=$?")
+if [ "$out" = "rc=0" ]; then ok "behind: without jq or makeit exits 0, silent"; else bad "behind: without jq or makeit: [$out]"; fi
+newday; printf '{"changes":[{"id":"x"}]}' >"$bh/out.json"
+expect_empty "behind: ignores other events" "$(printf '{"hook_event_name":"Stop","cwd":"%s"}' "$bh/proj" | PATH="$bh/bin:$PATH" bash "$here/behind.sh")"
+expect "behind runs at session start" "behind.sh" "$(jq -r '.hooks.SessionStart[] | select(.matcher == "startup") | .hooks[].command' "$here/hooks.json")"
 
 
 # --- deja-vu plugin: hint.sh and the generated hook events --------------------------------------
@@ -658,4 +766,7 @@ hint_case task hint '{"session_id":"x","prompt":"Fix the DNS record now please",
 hint_case escaped-quotes hint '{"prompt":"Set \"app\" back to the new IP now","cwd":"/x"}'
 hint_case multiline hint '{"prompt":"Deploy the\nParcelo integration today please"}'
 hint_case garbage hint 'not json at all'
+hint_case task-notice silent '{"prompt":"<task-notification>\n<task-id>x</task-id> the job finished fine"}'
+hint_case peer-message silent '{"prompt":"Another Claude session sent a message:\n<agent-message from=\"a\">four more words here</agent-message>"}'
+hint_case quoted-notice hint '{"prompt":"why did <task-notification> show up twice"}'
 [ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }

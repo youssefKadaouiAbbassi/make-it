@@ -43,6 +43,11 @@ pull request, pushing to `main` or `master`, force pushes, `git reset --hard`, p
 a release, and deleting through the GitHub API. Those always stop for your yes. The full list is
 in [What makeit installs](included.md#settings).
 
+What Claude ships on its own is written once per project, in the "Shipping" section of its
+`CLAUDE.md` ([Projects](projects.md)). With a green `check:full` Claude does those steps without
+asking; a red suite always asks. A go-ahead for anything else at the end of a task (a push, a
+merge, a deploy, moving the card) is asked once for the whole chain.
+
 ## Answering Claude
 
 Claude asks in two ways, and both take one keystroke:
@@ -114,7 +119,8 @@ recipe for starting the app, runs everything, and asks before committing. Detail
 Run `/makeit:init` again after makeit updates. When a newer makeit sets projects up differently
 (a new rule, a better template row), the rerun brings this project up to date, keeps everything
 you filled in, and asks about anything else that looks out of date. What you choose to keep is
-remembered and never asked again.
+remembered and never asked again. The first session of the day in a project that is behind says
+so in one line.
 
 ## When something goes wrong
 

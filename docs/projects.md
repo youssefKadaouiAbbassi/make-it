@@ -29,7 +29,9 @@ Typing it is your consent: Claude runs `makeit init --yes --json`, then works th
    project does not have (for example accessibility without a UI).
 3. Wire the `check:fast`, `check:task` and `check:full` tasks to the project's real formatter,
    linter, type checker and tests. In a Makefile, one target per tool, so `make -k` reports every
-   failure.
+   failure. It then times each task, writes the measured times in place of the template's
+   budgets, and makes `check:task` run only what a change touches (the incremental type check,
+   the related tests).
 4. Apply the lines makeit reported for files it does not edit itself (YAML, TOML, Makefile,
    justfile, Taskfile).
 5. With a web frontend, add Playwright with axe and a `test:e2e` task. With an OpenAPI spec, add
@@ -38,11 +40,17 @@ Typing it is your consent: Claude runs `makeit init --yes --json`, then works th
    app. A project with nothing to start yet gets a `HANDOFF.md` item instead. From the same
    recipe it writes `.claude/skills/verify/SKILL.md`, which Claude Code runs before each commit:
    start what changed and use it like a person (browser at desktop and phone width, emulator,
-   or a call to the CLI or API). A `verify` skill you already have is kept.
+   or a call to the CLI or API). A `verify` skill you already have is kept. A project with a
+   user interface gets one Run part per web or mobile app; an app Claude could not start here is
+   named with the reason, because a change to it would first be seen after a deploy.
    It also writes a "Start of a task" and "End of a task" section into `CLAUDE.md` with the
-   project's real steps (ticket, branch, checks, deploy, handoff), asking for what it cannot
-   find, and asks which branches besides `main` and `master` deploy, writing a `git push` ask
-   rule for each into `.claude/settings.json`.
+   project's real steps (ticket, branch, checks, handoff), asking for what it cannot find.
+   And it asks one question for the "Shipping" section: what may Claude do without asking once
+   `check:full` is green (push the branch and open the PR; also push or merge to the branch that
+   deploys to a test environment; everything up to production). Claude then follows your answer
+   without asking again. A red suite always asks, and the commands on makeit's ask list (merging
+   a pull request, pushing to `main`) still show Claude Code's own prompt. A deploy branch you
+   keep under "always ask" gets a `git push` ask rule in `.claude/settings.json`.
 7. Run `check:full` and fix what fails.
 8. Ask before the first commit. On a yes, a repository with no commits gets its first commit on
    the default branch; otherwise Claude commits on a new branch. On a no, nothing is committed.
@@ -70,6 +78,13 @@ get:
   inside a repository (`.gitignore`, `renovate.json`, `.grype.yaml`, `.env.example`, the commit
   hooks, the CI workflow) are left out. Dependencies come from each repository; worktrees (a
   child whose `.git` is a file) are skipped.
+
+The parts for a user interface (the browser check, the Mobile section, the UI plugin) are added
+when any manifest init reads shows a web or mobile app: at the root, in a sub-folder such as
+`apps/web`, or in one of a workspace's repositories. A `pubspec.yaml` that depends on Flutter
+counts as a mobile app. Test fixtures, examples and a documentation site (`testdata`, `fixtures`,
+`examples`, `docs`, `website`) do not count. The language, the package manager and the CI checks
+come from the root.
 
 At the end, init prints what it wrote, what it kept and why, the lines to add by hand to files it
 does not edit, and notices such as "enable the git hooks once per clone: prek install".

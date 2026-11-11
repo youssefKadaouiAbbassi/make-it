@@ -327,3 +327,33 @@ func num(t *testing.T, i int) any {
 	}
 	return v
 }
+
+func TestToolLatestRoundTrip(t *testing.T) {
+	for _, c := range []struct {
+		name, doc string
+		want      map[string]string
+	}{
+		{"without", `{"schemaVersion":1,"generation":2}`, nil},
+		{"with", `{"schemaVersion":1,"generation":2,"toolLatest":{"prek":"0.6.0"}}`, map[string]string{"prek": "0.6.0"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "state.json")
+			write(t, path, c.doc)
+			s, _, err := LoadState(path)
+			if err != nil || s.ToolLatest["prek"] != c.want["prek"] {
+				t.Fatalf("load: %v %v", err, s.ToolLatest)
+			}
+			if err := SaveState(path, s); err != nil {
+				t.Fatal(err)
+			}
+			b, _ := os.ReadFile(path)
+			if has := strings.Contains(string(b), `"toolLatest"`); has != (c.want != nil) {
+				t.Errorf("toolLatest in file = %v:\n%s", has, b)
+			}
+			s2, _, err := LoadState(path)
+			if err != nil || s2.Generation != 2 || s2.ToolLatest["prek"] != c.want["prek"] {
+				t.Errorf("reload: %v %+v", err, s2)
+			}
+		})
+	}
+}

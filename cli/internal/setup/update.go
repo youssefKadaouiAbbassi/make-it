@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/fsx"
+	"makeit/internal/hookprobe"
 	"makeit/internal/jsonx"
 	"makeit/internal/plan"
 	"makeit/internal/pluginrule"
@@ -330,7 +332,8 @@ func (e *env) hint(h Hint) {
 
 // pluginSteps are update's plugin phase: refresh the makeit marketplace, install the dependencies
 // the bundle gained, update what makeit installed, update the versions of adopted plugins from
-// the makeit marketplace, and remove what the bundle no longer declares when nothing needs it.
+// the makeit marketplace, remove what the bundle no longer declares when nothing needs it, and
+// last check what the plugins' session hooks write.
 func (e *env) pluginSteps() []plan.Step {
 	declared, derr := pluginrule.BundleIDs(e.Catalog, e.req)
 	steps := []plan.Step{e.refreshStep()}
@@ -359,7 +362,7 @@ func (e *env) pluginSteps() []plan.Step {
 	for _, id := range drop {
 		steps = append(steps, e.dropStep(id))
 	}
-	return steps
+	return append(steps, e.writesStep())
 }
 
 // refreshStep refreshes the makeit marketplace, so the steps after it see its current pins and
@@ -697,6 +700,175 @@ func (e *env) dropStep(id string) plan.Step {
 			delete(e.st.Plugins, id)
 			if e.gen != nil {
 				e.gen.Manifest.Plugins.Uninstalled = append(e.gen.Manifest.Plugins.Uninstalled, id)
+			}
+			return "", nil
+		}}
+}
+
+// probed are the plugins whose session hooks update checks, id to folder: every user-scope plugin
+// of the makeit marketplace whose folder is on disk, except makeit's own plugin, whose hooks send
+// notifications and start this very update.
+func (e *env) probed(in pluginrule.Inputs) map[string]string {
+	out := map[string]string{}
+	for _, p := range in.Plugins {
+		name, market, _ := strings.Cut(p.ID, "@")
+		dir := cmp.Or(p.ReadFromFolder, p.InstallPath)
+		if market != e.req.Marketplace || name == "makeit" || p.Scope != "user" || dir == "" {
+			continue
+		}
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			out[p.ID] = dir
+		}
+	}
+	return out
+}
+
+// moved reports whether this run moved a plugin, the plugin set or a tool. The dry pass cannot
+// know yet, so there any step with work to do counts.
+func (e *env) moved() bool {
+	if e.gen == nil {
+		return e.pending
+	}
+	return e.reload || slices.ContainsFunc(e.changes, func(c state.Change) bool { return c.Kind != "remove" })
+}
+
+// settingsEnv is the env block of settings.json as KEY=value, which Claude Code gives every hook.
+func (e *env) settingsEnv() []string {
+	data, found, err := fsx.ReadOptional(filepath.Join(e.Roots.Claude, "settings.json"))
+	if err != nil || !found {
+		return nil
+	}
+	live, err := jsonx.DecodeObject(data)
+	if err != nil {
+		return nil
+	}
+	v, _ := live.Get("env")
+	eo, _ := v.(*jsonx.Object)
+	if eo == nil {
+		return nil
+	}
+	var out []string
+	for _, k := range eo.Keys() {
+		if v, _ := eo.Get(k); v != nil {
+			if s, ok := v.(string); ok {
+				out = append(out, k+"="+s)
+			}
+		}
+	}
+	return out
+}
+
+// probeRun is hookprobe.Run; tests stand in for it.
+var probeRun = hookprobe.Run
+
+var (
+	hexRun   = regexp.MustCompile(`[0-9a-fA-F]{8,}`)
+	digitRun = regexp.MustCompile(`[0-9]+`)
+)
+
+// shapes are paths with what changes from run to run masked: a long hex run (a hash) becomes "*"
+// and a number "#". Hooks name caches after a folder, a process or a time, and the same file
+// under another name is not a new write. Sorted, each shape once.
+func shapes(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, digitRun.ReplaceAllString(hexRun.ReplaceAllString(p, "*"), "#"))
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// lacking are the paths of now that seen lacks.
+func lacking(now, seen []string) []string {
+	return slices.DeleteFunc(slices.Clone(now), func(p string) bool { return slices.Contains(seen, p) })
+}
+
+// writesStep runs the session hooks of the makeit marketplace's plugins in a scratch project and
+// a scratch home (package hookprobe) after something moved, and compares the files they create
+// with the record of the last check. A new file in the project fails the step; new files in the
+// home folder are noted. The record is replaced either way, so a finding is reported once, and
+// nothing is rolled back.
+func (e *env) writesStep() plan.Step {
+	return plan.Step{ID: "writes.check", Title: "Check what the plugins' session hooks write",
+		Already: func(ctx context.Context) (bool, error) {
+			if e.claude == nil || e.Platform.OS == "windows" {
+				return true, nil
+			}
+			// A listing that fails already fails the plugin steps before this one.
+			in, err := e.gather(ctx)
+			if err != nil {
+				return true, nil
+			}
+			dirs := e.probed(in)
+			for id := range dirs {
+				if _, seen := e.st.PluginWrites[id]; !seen {
+					return false, nil
+				}
+			}
+			return len(dirs) == 0 || !e.moved(), nil
+		},
+		Run: func(ctx context.Context) (string, error) {
+			in, err := e.gather(ctx)
+			if err != nil {
+				return "", plan.ErrSkip
+			}
+			dirs := e.probed(in)
+			hookEnv := append(os.Environ(), e.settingsEnv()...)
+			// A plugin that is gone loses its record, so it is recorded afresh if it comes back.
+			for id := range e.st.PluginWrites {
+				if dirs[id] == "" {
+					delete(e.st.PluginWrites, id)
+				}
+			}
+			var found []string
+			for _, id := range slices.Sorted(maps.Keys(dirs)) {
+				now, err := probeRun(ctx, dirs[id], hookEnv)
+				switch {
+				case ctx.Err() != nil:
+					return "", ctx.Err()
+				case errors.Is(err, hookprobe.ErrUnsupported):
+					return "", plan.ErrSkip
+				}
+				last, seen := e.st.PluginWrites[id]
+				if e.st.PluginWrites == nil {
+					e.st.PluginWrites = map[string]state.Writes{}
+				}
+				// What the record held before this run goes into the generation, once: rollback
+				// puts it back, so the release after an undone one is reported again.
+				if e.gen != nil {
+					if e.gen.Manifest.Writes == nil {
+						e.gen.Manifest.Writes = map[string]*state.Writes{}
+					}
+					if _, kept := e.gen.Manifest.Writes[id]; !kept {
+						e.gen.Manifest.Writes[id] = nil
+						if seen {
+							old := last
+							e.gen.Manifest.Writes[id] = &old
+						}
+					}
+				}
+				if err != nil {
+					// The check itself could not run (no scratch folder, no git): never the run's
+					// failure, and remembered so it does not come back until something moves.
+					e.keep(id, "its session hooks were not checked: "+err.Error())
+					e.st.PluginWrites[id] = state.Writes{Unchecked: true}
+					continue
+				}
+				now.Project, now.Home = shapes(now.Project), shapes(now.Home)
+				e.st.PluginWrites[id] = state.Writes{Project: now.Project, Home: now.Home}
+				if !seen || last.Unchecked {
+					continue
+				}
+				name, _, _ := strings.Cut(id, "@")
+				if files := lacking(now.Project, last.Project); len(files) > 0 {
+					found = append(found, fmt.Sprintf("%s's session hooks now create %s in the project you work in; undo this update with makeit rollback", name, strings.Join(files, ", ")))
+				}
+				if files := lacking(now.Home, last.Home); len(files) > 0 {
+					e.notes = append(e.notes, fmt.Sprintf("%s's session hooks now write in your home folder: %s", name, strings.Join(files, ", ")))
+				}
+			}
+			if len(found) > 0 {
+				return "", errors.New(strings.Join(found, "; "))
 			}
 			return "", nil
 		}}
