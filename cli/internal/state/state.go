@@ -26,6 +26,13 @@ const SchemaVersion = 1
 // Revision counts additive changes that older binaries read on. It is not a write counter.
 const Revision = 1
 
+// Writes are the files a plugin's session hooks created in update's scratch project and scratch
+// home: sorted slash paths relative to each.
+type Writes struct {
+	Project []string `json:"project"`
+	Home    []string `json:"home"`
+}
+
 // State is state.json. Paths in it use the roots claude:, stack: and home: (package paths).
 type State struct {
 	SchemaVersion int                     `json:"schemaVersion"`
@@ -51,6 +58,9 @@ type State struct {
 	// ToolLatest is the newest release seen per release tool id (no "v"), managed by makeit or
 	// not; doctor reads it, since doctor makes no network request.
 	ToolLatest map[string]string `json:"toolLatest,omitempty"`
+	// PluginWrites are the files each plugin's session hooks were last seen creating, per plugin id;
+	// update compares its next check with them.
+	PluginWrites map[string]Writes `json:"pluginWrites,omitempty"`
 	// Notify is "asked" once setup or makeit notify has put the phone questions.
 	Notify string `json:"notify,omitempty"`
 	// NotifyKeys are the merge records of the settings.json keys makeit notify wrote, apart from

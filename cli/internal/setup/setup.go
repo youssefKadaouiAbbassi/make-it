@@ -118,6 +118,8 @@ type env struct {
 	hints    []Hint
 	// catalogChanges: the catalog step writes a new catalog in this run.
 	catalogChanges bool
+	// pending: the dry pass found a step with work to do, so the hook check plans to run.
+	pending bool
 	// inputs caches the plugin listing for the plugin phase; a step that changes plugins clears it.
 	inputs *pluginrule.Inputs
 	// stateRemoved: uninstall removed state.json, so the journal must not write it again.

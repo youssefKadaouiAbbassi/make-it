@@ -88,7 +88,15 @@ func runUpdate(ctx context.Context, p cli.Parsed, args []string, stdout, stderr 
 		},
 		after: func(w io.Writer, rep setup.Report, live bool) {
 			if auto {
-				if err := finishAuto(stack, allChanges(moved, rep), rep.Undoable); err != nil {
+				// Of the failed steps only the hook check goes into the note: the others (a network
+				// that is down) are in update.log and mend themselves the next day.
+				alert := ""
+				for _, o := range rep.Plan.Outcomes {
+					if o.ID == "writes.check" && o.Status == plan.Failed {
+						alert = o.Detail
+					}
+				}
+				if err := finishAuto(stack, allChanges(moved, rep), rep.Undoable, alert); err != nil {
 					fmt.Fprintf(w, "%s: %v\n", prog, err)
 				}
 				return
