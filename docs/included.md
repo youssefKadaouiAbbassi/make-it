@@ -57,11 +57,13 @@ Hooks, by moment:
   than the default one the handoff is `HANDOFF.<branch>.md` beside it; after a compaction Claude
   is also pointed at the active plan file. The first start of the day also starts `makeit update --auto`
   in the background, and a start after a daily run that moved something shows one line saying
-  what moved.
+  what moved. In a project whose setup is behind what `/makeit:init` does today, the first start
+  of the day says so in one line.
 - **With each prompt:** a one-line reminder to check the available skills, so the working method
   above is applied to continuations, not only to the first task, and, from the deja-vu plugin, one
   line asking Claude to search your past sessions when the prompt may touch something decided,
   fixed or tried before. A one-word prompt gets no skill reminder, and one under four words no search line.
+  Neither fires on a finished background job or on a message from another session.
 - **Before an edit or a shell command:** when it uses a library whose locked version came out after
   the model's training or has no known date, and nothing this session looked up that library's docs,
   Claude is stopped once, told the library, the version and where its docs live; the retry always
@@ -69,9 +71,11 @@ Hooks, by moment:
   Terraform lockfiles. A lookup of a release date asks the public registry once (3 s at most) and
   never sends your code.
 - **Before `git push`:** a push that names no branch, from `main`, `master` or a deploy branch of
-  the project, asks first and names the branch.
+  the project, asks first and names the branch. If the check itself fails, the push is stopped
+  rather than let through, and without `jq` every push asks.
 - **When Claude stops:** three checks. If files changed and `HANDOFF.md` is older than them,
-  Claude is told once to rewrite it. If the reply ends on a question in plain prose, Claude is
+  Claude is told once to rewrite it; while a background job still runs, that reminder waits, for
+  30 minutes at most. If the reply ends on a question in plain prose, Claude is
   told once to ask properly: a blocking decision in Claude Code's question dialog, suggestions as
   numbered options ([how that looks](daily.md#answering-claude)). And a notification goes to your
   desktop, and to your [ntfy](https://ntfy.sh) topic when one is set; the same when Claude asks
