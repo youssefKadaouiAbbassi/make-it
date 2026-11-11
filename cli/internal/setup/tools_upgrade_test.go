@@ -264,3 +264,23 @@ func TestToolLatestRespectsSkips(t *testing.T) {
 		t.Errorf("ToolLatest[prek] = %q, want 0.5.9", got)
 	}
 }
+
+// On a fresh machine an earlier step installs git: a lookup made before that fails and is kept for
+// the whole run (then "Install prek" fails), so the step waits until git is there.
+func TestToolLatestWaitsForGit(t *testing.T) {
+	e, f := newEnv(t, "apt-get", "node", "jq")
+	prekReleases(t, e, f, "b\trefs/tags/v0.6.0\n", nil)
+	if done, err := e.toolLatestStep().Already(context.Background()); !done || err != nil {
+		t.Fatalf("already %v %v, want true and no error", done, err)
+	}
+	if len(e.st.ToolLatest) != 0 || e.recordChanged {
+		t.Errorf("looked up before git was there: %v", e.st.ToolLatest)
+	}
+	e.Present = only("apt-get", "git", "node", "jq")
+	if v, err := e.newestRelease(context.Background(), "prek"); err != nil || v != "0.6.0" {
+		t.Errorf("newestRelease once git is there = %q, %v; want 0.6.0", v, err)
+	}
+	if done, _ := e.toolLatestStep().Already(context.Background()); !done || e.st.ToolLatest["prek"] != "0.6.0" {
+		t.Errorf("after git: done %v, ToolLatest %v", done, e.st.ToolLatest)
+	}
+}

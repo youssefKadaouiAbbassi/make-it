@@ -134,10 +134,15 @@ func (e *env) toolUpgradeSteps() []plan.Step {
 
 // toolLatestStep records the newest release of every release tool, makeit's or not, for doctor.
 // It never makes the plan non-empty: a changed record is saved the way a handed-back global file
-// is (recordChanged), and a lookup that failed or ran offline records nothing.
+// is (recordChanged), and a lookup that failed or ran offline records nothing. Without git (a
+// fresh machine before the prereq step) it looks nothing up: the lookups run once per run, and
+// a failure made now would be the answer the install steps get later.
 func (e *env) toolLatestStep() plan.Step {
 	return plan.Step{ID: "tools.latest", Title: "Look up the newest tool releases",
 		Already: func(ctx context.Context) (bool, error) {
+			if !e.Present("git") {
+				return true, nil
+			}
 			for _, r := range platform.Prereqs {
 				if r.Release == nil {
 					continue
