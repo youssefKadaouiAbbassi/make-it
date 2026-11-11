@@ -10,6 +10,7 @@ expect() { # name expected-substring actual
   case "$3" in *"$2"*) ok "$1" ;; *) bad "$1: expected [$2] in [$3]" ;; esac
 }
 expect_empty() { [ -z "$2" ] && ok "$1" || bad "$1: expected no output, got [$2]"; }
+skipped="" # what did not run, for the last line
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/hooks-test.XXXXXX")
 trap '/bin/rm -rf "$tmp"' EXIT
@@ -705,7 +706,7 @@ if command -v node >/dev/null 2>&1; then
   /bin/rm -rf "$pkgd" "$mk/npx.log"
   run_loader; expect "mcp loader: no local copy goes to npx" "-y chrome-devtools-mcp@9.9.9 --isolated" "$(cat "$mk/npx.log" 2>&1)"
 else
-  echo "SKIP  mcp loader: node is not installed"
+  echo "SKIP  mcp loader: node is not installed"; skipped="$skipped, mcp loader"
 fi
 
 
@@ -773,13 +774,16 @@ hint_case quoted-notice hint '{"prompt":"why did <task-notification> show up twi
 # Runs against the chrome-devtools-mcp copy makeit installed, so an upstream change shows here.
 shots="$here/../bin/shots"
 cdt_pkg="${MAKEIT_DIR:-$HOME/.makeit}/mcp/chrome-devtools/node_modules/chrome-devtools-mcp/package.json"
+# Only a browser the command line can drive: it looks for Google Chrome, not Chromium.
 has_chrome() {
   local b
-  for b in google-chrome google-chrome-stable chromium chromium-browser; do
+  for b in google-chrome google-chrome-stable; do
     command -v "$b" >/dev/null 2>&1 && return 0
   done
   [ -d "/Applications/Google Chrome.app" ]
 }
+mkdir -p "$tmp/chromium-only"; printf '#!/bin/sh\n' >"$tmp/chromium-only/chromium"; chmod +x "$tmp/chromium-only/chromium"
+if PATH="$tmp/chromium-only" has_chrome; then bad "shots: Chromium alone counts as a browser for the live cases"; else ok "shots: Chromium alone does not count as a browser for the live cases"; fi
 out=$(bash "$shots" 2>&1); rc=$?
 [ "$rc" = 2 ] && ok "shots: no URL is a usage error" || bad "shots: no URL: exit $rc: $out"
 expect "shots: usage names the command" "shots [--out DIR]" "$out"
@@ -821,7 +825,13 @@ if command -v node >/dev/null 2>&1 && [ -f "$cdt_pkg" ] && has_chrome; then
   expect "shots: a failing setup is named" "setup failed: $sd/bad-setup.sh" "$out"
   [ "$(daemons)" = "$before" ] && ok "shots: nothing is left behind after failed runs" || bad "shots: runtime folders before $before, after $(daemons)"
 else
-  echo "SKIP  shots: needs node, Chrome and makeit's local chrome-devtools-mcp"
+  echo "SKIP  shots: needs node, Google Chrome and makeit's local chrome-devtools-mcp"
+  skipped="$skipped, shots"
 fi
 
-[ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }
+# The last line names what did not run, so a green run without the live cases reads as one.
+summary() { [ -n "$skipped" ] && echo "HOOKS OK (skipped: ${skipped#, })" || echo "HOOKS OK"; }
+expect "suite: the last line names what was skipped" "HOOKS OK (skipped: shots, mcp loader)" "$(skipped=", shots, mcp loader"; summary 2>&1)"
+[ "$(skipped=""; summary 2>&1)" = "HOOKS OK" ] && ok "suite: the last line is plain when nothing was skipped" || bad "suite: nothing skipped: [$(skipped=""; summary 2>&1)]"
+
+[ "$fail" = 0 ] && summary || { echo "HOOKS FAILURES"; exit 1; }
