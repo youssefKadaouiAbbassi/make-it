@@ -61,9 +61,9 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "if": "Bash(git push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 },
-          { "type": "command", "if": "Bash(git -C * push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 },
-          { "type": "command", "if": "Bash(git -c * push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5 }
+          { "type": "command", "if": "Bash(git push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5, "onFailure": "block" },
+          { "type": "command", "if": "Bash(git -C * push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5, "onFailure": "block" },
+          { "type": "command", "if": "Bash(git -c * push*)", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push.sh\"", "timeout": 5, "onFailure": "block" }
         ]
       },
       {

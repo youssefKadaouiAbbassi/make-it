@@ -124,6 +124,19 @@ expect_empty "handoff Stop clean tree: no block" "$out"
 sleep 1; printf 'b\n' >>"$repo/a.txt"
 out=$(payload Stop ',"stop_hook_active":false' | bash "$here/handoff.sh")
 expect "handoff Stop stale HANDOFF reminds" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+# A background job still runs: the turn comes back when it ends, so the reminder waits, up to 30
+# minutes (a dev server runs for the whole session).
+bgjob=',"stop_hook_active":false,"background_tasks":[{"id":"a","type":"shell","status":"running"}]'
+out=$(payload Stop "$bgjob" | bash "$here/handoff.sh")
+expect_empty "handoff Stop waits while a background job runs" "$out"
+holdf=$(find "$tmp/state/makeit/sessions" -name 's*.hold' | head -n 1)
+[ -n "$holdf" ] && ok "handoff Stop marks when its wait began" || bad "handoff Stop left no wait marker"
+touch -d '31 minutes ago' "${holdf:-$tmp/none}"
+out=$(payload Stop "$bgjob" | bash "$here/handoff.sh")
+expect "handoff Stop reminds after 30 minutes of waiting" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+if [ -e "${holdf:-$tmp/none}" ]; then bad "handoff Stop keeps its wait marker after reminding"; else ok "handoff Stop clears its wait marker after reminding"; fi
+out=$(payload Stop ',"stop_hook_active":false,"background_tasks":[]' | bash "$here/handoff.sh")
+expect "handoff Stop reminds once no job runs" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
 out=$(payload Stop ',"stop_hook_active":true' | bash "$here/handoff.sh")
 expect_empty "handoff Stop does not block twice" "$out"
 sleep 1; printf '# Handoff\n- **Goal:** rewritten\n' >"$repo/HANDOFF.md"
@@ -227,6 +240,7 @@ expect "skills adds prompt context" '"hookEventName":"UserPromptSubmit"' "$out"
 expect "skills lists the usual matches" 'superpowers:executing-plans' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills covers follow-ups" '"go for it"' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
 expect "skills comes before a deja recall" 'including a deja recall' "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
+case "$out" in *verification-before-completion*) bad "skills still names verification-before-completion" ;; *) ok "skills does not name verification-before-completion" ;; esac
 for short in 1 a done ""; do
   expect_empty "skills silent on short prompt '$short'" "$(jq -n --arg p "$short" '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
 done
@@ -600,8 +614,13 @@ out=$(push "(cd $tmp/notgit && git push)" "$qrepo"); expect_empty "push: a subsh
 out=$(push '{ git push; }' "$qrepo"); expect "push: a brace group asks" '"permissionDecision":"ask"' "$out"
 out=$(push 'git -c core.x=1 push' "$qrepo"); expect "push: git -c k=v push asks" '"permissionDecision":"ask"' "$out"
 out=$(push 'git --git-dir=.git --no-pager push' "$qrepo"); expect "push: --git-dir= is skipped" '"permissionDecision":"ask"' "$out"
-out=$(printf '{"cwd":"%s","tool_input":{"command":"git push"}}' "$qrepo" | PATH="$tmp/nojq" bash "$here/push.sh" 2>&1; echo "rc=$?"); expect "push: without jq exits 0, no output" "rc=0" "$out"
-case "$out" in rc=0) ok "push: without jq prints nothing" ;; *) bad "push: without jq printed [$out]" ;; esac
+# Without jq the guard cannot read the command: it asks instead of letting the push through.
+out=$(printf '{"cwd":"%s","tool_input":{"command":"git push"}}' "$qrepo" | PATH="$tmp/nojq" bash "$here/push.sh" 2>&1; echo "rc=$?"); expect "push: without jq exits 0" "rc=0" "$out"
+expect "push: without jq asks, since it cannot check" '"permissionDecision":"ask"' "$out"
+expect "push: without jq says why" 'jq is missing' "$out"
+if printf '%s' "${out%rc=0}" | jq -e '.hookSpecificOutput.hookEventName == "PreToolUse"' >/dev/null 2>&1; then ok "push: the no-jq answer is valid JSON"; else bad "push: the no-jq answer is not valid JSON: $out"; fi
+# A guard that crashes, times out or cannot start blocks the push (Claude Code 2.1.295+).
+expect "push entries block when the hook fails" "block block block" "$(jq -r '[.hooks.PreToolUse[].hooks[] | select(.command | test("push.sh")) | .onFailure // "unset"] | join(" ")' "$here/hooks.json")"
 
 
 # --- skills/init/SKILL.md: the /makeit:init agent step (cli/INIT.md) ---------------------------

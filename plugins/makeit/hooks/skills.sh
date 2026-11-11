@@ -25,7 +25,6 @@ note='Before your first tool call for a task, including a follow-up that starts 
 - new feature, new command or behaviour change: superpowers:brainstorming
 - continuing planned work (HANDOFF.md, a plan or a task list): superpowers:executing-plans
 - writing implementation code: superpowers:test-driven-development
-- about to say done, fixed or passing: superpowers:verification-before-completion
 Questions and conversation need no skill.'
 printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":%s}}\n' "$(jq -Rs . <<<"$note")"
 exit 0
