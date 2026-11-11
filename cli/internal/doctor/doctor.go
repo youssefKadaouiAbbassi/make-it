@@ -14,6 +14,7 @@ import (
 	"makeit/internal/catalog"
 	"makeit/internal/claudecli"
 	"makeit/internal/fsx"
+	"makeit/internal/latest"
 	"makeit/internal/pathenv"
 	"makeit/internal/platform"
 	"makeit/internal/selfupdate"
@@ -61,6 +62,9 @@ type Machine struct {
 	StackDir string
 	// NodeVersion is `node -v` ("v22.1.0"), or "" when node is missing or unreadable.
 	NodeVersion string
+	// ToolVersions is the version each present release tool prints (`--version`), by tool id;
+	// "" or absent when it could not be read.
+	ToolVersions map[string]string
 	// NodeDist: makeit installed node from nodejs.org; NodeLink is the link it made and NodePath
 	// the node PATH finds first ("" for none).
 	NodeDist           bool
@@ -95,7 +99,8 @@ func Run(ctx context.Context, m Machine) []Check {
 	r.self(m)
 	r.catalogSource(m)
 	r.platform(m)
-	r.prereqs(m)
+	st, info, stErr := state.LoadState(m.StatePath)
+	r.prereqs(m, st)
 	r.profile(m)
 	unusable := r.claude(ctx, m, req, reqErr)
 	// The two claude listings cost 0.6 s each: start both now, beside the settings check, so the
@@ -108,7 +113,6 @@ func Run(ctx context.Context, m Machine) []Check {
 		go func() { defer warm.Done(); _, _ = m.Claude.Plugins(ctx) }()
 	}
 	r.settings(ctx, m, req.Marketplace, unusable)
-	st, info, stErr := state.LoadState(m.StatePath)
 	warm.Wait()
 	r.plugins(ctx, m, req, reqErr, unusable, st)
 	r.mcpLocal(m)
@@ -207,10 +211,14 @@ func (r *report) platform(m Machine) {
 	r.add("platform", "platform", Info, fmt.Sprintf("%s/%s%s, package manager %s", m.Platform.OS, m.Platform.Arch, wsl, m.Platform.PM), "")
 }
 
-func (r *report) prereqs(m Machine) {
+func (r *report) prereqs(m Machine, st *state.State) {
 	for _, s := range m.Prereqs {
 		id := "prereq." + s.Prereq.ID
 		if s.Present {
+			if s.Prereq.Release != nil {
+				r.releaseTool(id, s.Prereq.ID, m.ToolVersions[s.Prereq.ID], st)
+				continue
+			}
 			r.add(id, "prereqs", OK, s.Prereq.ID+" found", "")
 			continue
 		}
@@ -240,6 +248,25 @@ func (r *report) prereqs(m Machine) {
 		}
 		r.add(id, "prereqs", level, fmt.Sprintf("%s is missing: %s", s.Prereq.ID, s.Prereq.Why), fix)
 	}
+}
+
+// releaseTool reports a present release tool: its version, and whether it is behind the newest
+// release the last update run recorded (doctor looks nothing up itself).
+func (r *report) releaseTool(id, tool, have string, st *state.State) {
+	if have == "" {
+		r.add(id, "prereqs", OK, tool+" found", "")
+		return
+	}
+	newest := st.ToolLatest[tool]
+	if newest == "" || !latest.Newer(have, newest) {
+		r.add(id, "prereqs", OK, tool+" "+have+" found", "")
+		return
+	}
+	if rec := st.Prereqs[tool]; rec != nil && rec.InstalledBy == "makeit" {
+		r.add(id, "prereqs", Warn, fmt.Sprintf("%s %s is behind %s: makeit update moves it", tool, have, newest), "makeit update")
+		return
+	}
+	r.add(id, "prereqs", Warn, fmt.Sprintf("%s %s is behind %s: you installed it, so makeit leaves it; update it the way you installed it", tool, have, newest), "")
 }
 
 // profileState is the env file's path and the profile files that do not load it yet; "" on

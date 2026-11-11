@@ -132,6 +132,30 @@ func (e *env) toolUpgradeSteps() []plan.Step {
 	return append(steps, e.nodeUpgradeSteps()...)
 }
 
+// toolLatestStep records the newest release of every release tool, makeit's or not, for doctor.
+// It never makes the plan non-empty: a changed record is saved the way a handed-back global file
+// is (recordChanged), and a lookup that failed or ran offline records nothing.
+func (e *env) toolLatestStep() plan.Step {
+	return plan.Step{ID: "tools.latest", Title: "Look up the newest tool releases",
+		Already: func(ctx context.Context) (bool, error) {
+			for _, r := range platform.Prereqs {
+				if r.Release == nil {
+					continue
+				}
+				v, err := e.newestRelease(ctx, r.ID)
+				if err != nil || v == "" || e.st.ToolLatest[r.ID] == v {
+					continue
+				}
+				if e.st.ToolLatest == nil {
+					e.st.ToolLatest = map[string]string{}
+				}
+				e.st.ToolLatest[r.ID] = v
+				e.recordChanged = true
+			}
+			return true, nil
+		}}
+}
+
 // toolRollbackSteps put the records of the tools g upgraded back to the earlier release once
 // its file is restored, and skip the undone release until a newer one ships.
 func (e *env) toolRollbackSteps(g *state.Generation) []plan.Step {

@@ -208,3 +208,59 @@ func TestRollbackRestoresTool(t *testing.T) {
 		t.Errorf("skips %v, want v0.6.0", rb.st.ToolSkips)
 	}
 }
+
+// The newest release of a tool makeit does not manage is recorded, and the step stays Already so
+// the run makes no generation for it.
+func TestToolLatestRecordsUnmanagedTool(t *testing.T) {
+	cases := []struct {
+		name       string
+		tags       string
+		offline    bool
+		want       string
+		wantRecord bool
+	}{
+		{"newer tag", "a\trefs/tags/v0.5.9\nb\trefs/tags/v0.6.0\n", false, "0.6.0", true},
+		{"failed lookup", "", false, "", false},
+		{"offline", "b\trefs/tags/v0.6.0\n", true, "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e, f := newEnv(t, "apt-get", "git", "node", "jq", "prek")
+			prekReleases(t, e, f, c.tags, nil)
+			e.Offline = c.offline
+			s := e.toolLatestStep()
+			done, err := s.Already(context.Background())
+			if !done || err != nil {
+				t.Fatalf("already %v %v, want true and no error", done, err)
+			}
+			if got := e.st.ToolLatest["prek"]; got != c.want {
+				t.Errorf("ToolLatest[prek] = %q, want %q", got, c.want)
+			}
+			if e.recordChanged != c.wantRecord {
+				t.Errorf("recordChanged = %v, want %v", e.recordChanged, c.wantRecord)
+			}
+		})
+	}
+}
+
+// A record that already matches changes nothing, so no state write.
+func TestToolLatestUnchangedRecordsNothing(t *testing.T) {
+	e, f := newEnv(t, "apt-get", "git", "node", "jq", "prek")
+	prekReleases(t, e, f, "b\trefs/tags/v0.6.0\n", nil)
+	e.st.ToolLatest = map[string]string{"prek": "0.6.0"}
+	if done, _ := e.toolLatestStep().Already(context.Background()); !done || e.recordChanged {
+		t.Errorf("done %v recordChanged %v, want true and false", done, e.recordChanged)
+	}
+}
+
+// The daily run's skip list applies to the recorded value.
+func TestToolLatestRespectsSkips(t *testing.T) {
+	e, f := newEnv(t, "apt-get", "git", "node", "jq", "prek")
+	prekReleases(t, e, f, "a\trefs/tags/v0.5.9\nb\trefs/tags/v0.6.0\n", nil)
+	e.Background = true
+	e.st.ToolSkips = map[string][]string{"prek": {"v0.6.0"}}
+	_, _ = e.toolLatestStep().Already(context.Background())
+	if got := e.st.ToolLatest["prek"]; got != "0.5.9" {
+		t.Errorf("ToolLatest[prek] = %q, want 0.5.9", got)
+	}
+}

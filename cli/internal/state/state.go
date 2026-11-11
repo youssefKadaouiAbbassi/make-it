@@ -48,6 +48,9 @@ type State struct {
 	PluginSkips map[string][]string `json:"pluginSkips,omitempty"`
 	// ToolSkips are the release tags of a tool makeit rollback undid; update leaves them, as for plugins.
 	ToolSkips map[string][]string `json:"toolSkips,omitempty"`
+	// ToolLatest is the newest release seen per release tool id (no "v"), managed by makeit or
+	// not; doctor reads it, since doctor makes no network request.
+	ToolLatest map[string]string `json:"toolLatest,omitempty"`
 	// Notify is "asked" once setup or makeit notify has put the phone questions.
 	Notify string `json:"notify,omitempty"`
 	// NotifyKeys are the merge records of the settings.json keys makeit notify wrote, apart from
