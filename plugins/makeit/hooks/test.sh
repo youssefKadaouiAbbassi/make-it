@@ -236,6 +236,10 @@ done
 expect "skills reminds on a 5-word prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix the login page bug"}' | bash "$here/skills.sh")"
 expect "skills reminds on a multi-line prompt" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"fix this\nplease now"}' | bash "$here/skills.sh")"
 expect_empty "skills ignores other events" "$(printf '{"hook_event_name":"Stop","cwd":"/x"}' | bash "$here/skills.sh")"
+# Background notices arrive as prompts (a finished job, a message from another session): no reminder.
+expect_empty "skills silent on a task notification" "$(jq -n --arg p $'<task-notification>\n<task-id>x</task-id>\n<status>completed</status> the job finished' '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
+expect_empty "skills silent on a message from another session" "$(jq -n --arg p $'Another Claude session sent a message:\n<agent-message from="a1">done with the search</agent-message>' '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:$p}' | bash "$here/skills.sh")"
+expect "skills reminds when a prompt only quotes a notice" 'hookEventName' "$(jq -n '{hook_event_name:"UserPromptSubmit",cwd:"/x",prompt:"why did <task-notification> show up twice here"}' | bash "$here/skills.sh")"
 out=$(printf '{"hook_event_name":"UserPromptSubmit"}' | PATH="$tmp/nojq" bash "$here/skills.sh" 2>&1; echo "rc=$?")
 expect "skills without jq exits 0" "rc=0" "$out"
 
@@ -658,4 +662,7 @@ hint_case task hint '{"session_id":"x","prompt":"Fix the DNS record now please",
 hint_case escaped-quotes hint '{"prompt":"Set \"app\" back to the new IP now","cwd":"/x"}'
 hint_case multiline hint '{"prompt":"Deploy the\nParcelo integration today please"}'
 hint_case garbage hint 'not json at all'
+hint_case task-notice silent '{"prompt":"<task-notification>\n<task-id>x</task-id> the job finished fine"}'
+hint_case peer-message silent '{"prompt":"Another Claude session sent a message:\n<agent-message from=\"a\">four more words here</agent-message>"}'
+hint_case quoted-notice hint '{"prompt":"why did <task-notification> show up twice"}'
 [ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }
