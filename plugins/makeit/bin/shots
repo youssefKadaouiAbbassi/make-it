@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# shots: screenshots of web pages at several widths, with their console errors, in one command.
+#
+#   shots [--out DIR] [--widths WxH[,WxH...]] [--setup FILE] URL...
+#
+# Every URL is opened in its own headless browser with a throwaway profile, and saved full page
+# as DIR/NN-<page>-<WxH>.png for each width (default 1280x800,375x812; DIR defaults to a new
+# folder under the temp folder). The summary names each file, says when a page is wider than
+# its viewport, and lists each page's console errors. Before and after a change are two runs
+# into two folders.
+#
+# --setup FILE is for pages behind a login: the file is sourced once the browser is up and
+# calls the browser's command line through `cdt` (cdt new_page URL, cdt fill ..., cdt click ...).
+#
+# It drives the `chrome-devtools` command line of the chrome-devtools-mcp copy makeit installs.
+# Exit 0 when every screenshot was saved (what the summary found is for you to read), 1 when a
+# page did not load or a screenshot is missing, 2 on a usage error. Needs bash, node and jq.
+set -u
+usage() {
+  echo "usage: shots [--out DIR] [--widths WxH[,WxH...]] [--setup FILE] URL..." >&2
+  exit 2
+}
+die() {
+  echo "shots: $*" >&2
+  exit 1
+}
+
+out=""
+widths="1280x800,375x812"
+setup=""
+urls=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --out | --widths | --setup)
+      [ $# -ge 2 ] || usage
+      case "$1" in --out) out=$2 ;; --widths) widths=$2 ;; --setup) setup=$2 ;; esac
+      shift 2
+      ;;
+    -h | --help) usage ;;
+    --)
+      shift
+      while [ $# -gt 0 ]; do urls+=("$1"); shift; done
+      ;;
+    -*)
+      echo "shots: unknown option $1" >&2
+      usage
+      ;;
+    *)
+      urls+=("$1")
+      shift
+      ;;
+  esac
+done
+[ "${#urls[@]}" -gt 0 ] || usage
+sizes=$(printf '%s' "$widths" | tr ',' ' ')
+[ -n "$sizes" ] || usage
+for size in $sizes; do
+  case "$size" in
+    *[!0-9x]* | x* | *x | *x*x*) echo "shots: a width is WIDTHxHEIGHT, got '$size'" >&2; usage ;;
+    *x*) ;;
+    *) echo "shots: a width is WIDTHxHEIGHT, got '$size'" >&2; usage ;;
+  esac
+done
+
+for bin in node jq; do
+  command -v "$bin" >/dev/null 2>&1 || die "$bin is missing: run makeit setup"
+done
+pkg="${MAKEIT_DIR:-$HOME/.makeit}/mcp/chrome-devtools/node_modules/chrome-devtools-mcp"
+[ -f "$pkg/package.json" ] || die "the browser tools makeit installs are missing ($pkg): run makeit setup"
+rel=$(jq -r '.bin["chrome-devtools"] // empty' "$pkg/package.json" 2>/dev/null)
+if [ -z "$rel" ] || [ ! -f "$pkg/$rel" ]; then
+  die "chrome-devtools-mcp $(jq -r '.version // "?"' "$pkg/package.json" 2>/dev/null) has no chrome-devtools command line here: use the browser tools"
+fi
+cli="$pkg/$rel"
+if [ -n "$setup" ] && [ ! -f "$setup" ]; then die "setup file not found: $setup"; fi
+
+# Its own daemon: another run, or the session's browser server, is not touched.
+sid=$(printf '%x%x' "$$" "$RANDOM")
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  runtime="$XDG_RUNTIME_DIR/chrome-devtools-mcp-$sid"
+else
+  runtime="/tmp/chrome-devtools-mcp-$sid-$(id -u)"
+fi
+limit=()
+if command -v timeout >/dev/null 2>&1; then limit=(timeout 90); fi
+export CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1
+cdt() {
+  ${limit[@]+"${limit[@]}"} node "$cli" "$@" --sessionId "$sid"
+}
+
+started=0
+# shellcheck disable=SC2317 # called by the EXIT trap
+finish() {
+  if [ "$started" = 1 ]; then
+    cdt stop >/dev/null 2>&1
+    rmdir "$runtime" 2>/dev/null
+  fi
+}
+trap finish EXIT
+trap 'exit 130' INT TERM
+
+if [ -z "$out" ]; then
+  out=$(mktemp -d "${TMPDIR:-/tmp}/shots.XXXXXX") || die "could not make a folder for the screenshots"
+fi
+mkdir -p "$out" || die "could not make $out"
+out=$(cd "$out" && pwd)
+
+started=1
+if ! err=$(cdt start --headless --isolated --no-performance-crux 2>&1 >/dev/null); then
+  die "the browser did not start: $(printf '%s' "$err" | tail -n 3)"
+fi
+
+if [ -n "$setup" ]; then
+  # A subshell: the file's own variables and an exit in it stay there. Its output is not the summary.
+  (
+    set +u
+    # shellcheck disable=SC1090 # the project's own file, named on the command line
+    . "$setup"
+  ) >&2 || die "setup failed: $setup"
+fi
+
+# page_name URL: the URL's path as a file name (a file: URL gives its base name).
+page_name() {
+  local u=$1 p
+  u=${u%%\#*}
+  u=${u%%\?*}
+  case "$u" in
+    file:*) p=${u##*/} ;;
+    *://*)
+      p=${u#*://}
+      case "$p" in */*) p=${p#*/} ;; *) p="" ;; esac
+      ;;
+    *) p=$u ;;
+  esac
+  p=$(printf '%s' "$p" | tr -c 'A-Za-z0-9' '-' | tr -s '-')
+  p=${p#-}
+  p=${p%-}
+  [ -n "$p" ] || p=index
+  if [ "${#p}" -gt 40 ]; then
+    p=${p: -40}
+    p=${p#-}
+  fi
+  printf '%s' "$p"
+}
+
+echo "out: $out"
+n=0
+failed=0
+for url in "${urls[@]}"; do
+  n=$((n + 1))
+  name=$(printf '%02d-%s' "$n" "$(page_name "$url")")
+  json=$(cdt new_page "$url" --output-format=json 2>/dev/null)
+  id=$(printf '%s' "$json" | jq -r 'if type == "object" then ([.pages[]? | select(.selected) | .id][0] // empty) else empty end' 2>/dev/null)
+  if [ -z "$id" ]; then
+    why=$(printf '%s' "$json" | jq -r 'if type == "array" then (.[0].text // empty) else empty end' 2>/dev/null)
+    echo "$name: did not load ($url)${why:+: $why}"
+    failed=1
+    continue
+  fi
+  for size in $sizes; do
+    file="$out/$name-$size.png"
+    cdt emulate "$id" --viewport "$size" >/dev/null 2>&1
+    cdt take_screenshot "$id" --fullPage true --filePath "$file" >/dev/null 2>&1
+    if [ ! -s "$file" ]; then
+      echo "$name $size: no screenshot was saved"
+      failed=1
+      continue
+    fi
+    # A PNG holds its width in bytes 16 to 19: a full-page shot wider than the viewport overflowed.
+    width=$(node -e 'const fs=require("fs"),b=Buffer.alloc(24),f=fs.openSync(process.argv[1],"r");fs.readSync(f,b,0,24,0);console.log(b.readUInt32BE(16))' "$file" 2>/dev/null)
+    line="$name $size: $name-$size.png"
+    if [ -n "$width" ] && [ "$width" -gt "${size%%x*}" ]; then line="$line · wider than the viewport: $width px"; fi
+    echo "$line"
+  done
+  errors=$(cdt list_console_messages "$id" --types error --output-format=json 2>/dev/null)
+  count=$(printf '%s' "$errors" | jq -r '[.consoleMessages[]?] | length' 2>/dev/null)
+  echo "$name console errors: ${count:-0}"
+  printf '%s' "$errors" | jq -r '.consoleMessages[]? | "  " + ((.text // "") | tostring | .[0:200])' 2>/dev/null | head -n 5
+done
+exit "$failed"

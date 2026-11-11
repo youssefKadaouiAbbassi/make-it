@@ -769,4 +769,51 @@ hint_case garbage hint 'not json at all'
 hint_case task-notice silent '{"prompt":"<task-notification>\n<task-id>x</task-id> the job finished fine"}'
 hint_case peer-message silent '{"prompt":"Another Claude session sent a message:\n<agent-message from=\"a\">four more words here</agent-message>"}'
 hint_case quoted-notice hint '{"prompt":"why did <task-notification> show up twice"}'
+# --- bin/shots: every page at two widths, with its console errors, in one command ----------------
+# Runs against the chrome-devtools-mcp copy makeit installed, so an upstream change shows here.
+shots="$here/../bin/shots"
+cdt_pkg="${MAKEIT_DIR:-$HOME/.makeit}/mcp/chrome-devtools/node_modules/chrome-devtools-mcp/package.json"
+has_chrome() {
+  local b
+  for b in google-chrome google-chrome-stable chromium chromium-browser; do
+    command -v "$b" >/dev/null 2>&1 && return 0
+  done
+  [ -d "/Applications/Google Chrome.app" ]
+}
+out=$(bash "$shots" 2>&1); rc=$?
+[ "$rc" = 2 ] && ok "shots: no URL is a usage error" || bad "shots: no URL: exit $rc: $out"
+expect "shots: usage names the command" "shots [--out DIR]" "$out"
+out=$(MAKEIT_DIR="$tmp/no-makeit" bash "$shots" "file://$here/testdata/shots/page.html" 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "shots: without makeit's browser copy it exits 1" || bad "shots: no local copy: exit $rc: $out"
+expect "shots: without the copy it names makeit setup" "makeit setup" "$out"
+if command -v node >/dev/null 2>&1 && [ -f "$cdt_pkg" ] && has_chrome; then
+  sd="$tmp/shots"; mkdir -p "$sd"
+  page="file://$here/testdata/shots/page.html"
+  runtime="${XDG_RUNTIME_DIR:-/tmp}"
+  daemons() { find "$runtime" -maxdepth 1 -name 'chrome-devtools-mcp-*' 2>/dev/null | wc -l; }
+  before=$(daemons)
+  out=$(bash "$shots" --out "$sd/a" "$page" 2>&1); rc=$?
+  [ "$rc" = 0 ] && ok "shots: exits 0 when every shot is saved" || bad "shots: exit $rc: $out"
+  expect "shots: the folder comes first" "out: $sd/a" "$(head -n 1 <<<"$out")"
+  if [ -s "$sd/a/01-page-html-1280x800.png" ] && [ -s "$sd/a/01-page-html-375x812.png" ]; then ok "shots: one file per width, named after the page"; else bad "shots: files: $(ls "$sd/a" 2>&1)"; fi
+  expect "shots: the phone shot is flagged wider than its viewport" "01-page-html 375x812: 01-page-html-375x812.png · wider than the viewport: 700 px" "$out"
+  case "$(grep '01-page-html 1280x800:' <<<"$out")" in *wider*) bad "shots: the desktop shot is flagged wider: $out" ;; *1280x800.png) ok "shots: the desktop shot is not flagged" ;; *) bad "shots: no line for the desktop shot: $out" ;; esac
+  expect "shots: console errors are counted per page" "01-page-html console errors: 1" "$out"
+  expect "shots: the error's text is shown" "shots test error" "$out"
+  [ "$(daemons)" = "$before" ] && ok "shots: nothing of the run is left behind" || bad "shots: runtime folders before $before, after $(daemons)"
+  out=$(bash "$shots" --out "$sd/b" --widths 800x600 "file:///nonexistent/missing.html" "$page" 2>&1); rc=$?
+  [ "$rc" = 1 ] && ok "shots: a page that does not load makes the run exit 1" || bad "shots: missing page: exit $rc: $out"
+  expect "shots: the page that did not load is named" "01-missing-html: did not load (file:///nonexistent/missing.html)" "$out"
+  [ -s "$sd/b/02-page-html-800x600.png" ] && ok "shots: the next page is still taken, at the width asked" || bad "shots: after a missing page: $(ls "$sd/b" 2>&1)"
+  out=$(SHOTS_TEST_MARK="$sd/mark" bash "$shots" --out "$sd/c" --setup "$here/testdata/shots/login.sh" "$page" 2>&1); rc=$?
+  if [ "$rc" = 0 ] && grep -q 'about:blank' "$sd/mark" 2>/dev/null; then ok "shots: the setup file runs first and reaches the browser through cdt"; else bad "shots: setup: exit $rc, mark [$(cat "$sd/mark" 2>&1)]: $out"; fi
+  printf 'false\n' >"$sd/bad-setup.sh"
+  out=$(bash "$shots" --out "$sd/d" --setup "$sd/bad-setup.sh" "$page" 2>&1); rc=$?
+  if [ "$rc" = 1 ] && ! ls "$sd/d"/*.png >/dev/null 2>&1; then ok "shots: a failing setup stops the run before any screenshot"; else bad "shots: failing setup: exit $rc: $out"; fi
+  expect "shots: a failing setup is named" "setup failed: $sd/bad-setup.sh" "$out"
+  [ "$(daemons)" = "$before" ] && ok "shots: nothing is left behind after failed runs" || bad "shots: runtime folders before $before, after $(daemons)"
+else
+  echo "SKIP  shots: needs node, Chrome and makeit's local chrome-devtools-mcp"
+fi
+
 [ "$fail" = 0 ] && echo "HOOKS OK" || { echo "HOOKS FAILURES"; exit 1; }
