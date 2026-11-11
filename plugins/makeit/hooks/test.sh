@@ -657,6 +657,37 @@ else
 fi
 
 
+# --- behind.sh: a session start says when the project's setup is behind -------------------------
+bh="$tmp/behind"; mkdir -p "$bh/bin" "$bh/proj" "$bh/plain"
+printf '{}\n' >"$bh/proj/.makeit.json"
+# A fake makeit: logs its arguments, prints the JSON the test prepared.
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/calls.log"\ncat "%s/out.json"\n' "$bh" "$bh" >"$bh/bin/makeit"; chmod +x "$bh/bin/makeit"
+: >"$bh/calls.log"
+behind() { printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s","session_id":"b"}' "$1" | PATH="$bh/bin:$PATH" bash "$here/behind.sh"; }
+newday() { find "$tmp/state/makeit/behind" -type f -delete 2>/dev/null; }
+printf '{"changes":[{"id":"deploy-ask-rules"},{"id":"verify-skill"},{"id":"task-start-end"}],"initTarget":"0.4.0"}' >"$bh/out.json"
+out=$(behind "$bh/proj")
+expect "behind: says how many changes wait" '3 changes behind (deploy-ask-rules, verify-skill, task-start-end)' "$(printf '%s' "$out" | jq -r '.systemMessage' 2>&1)"
+expect "behind: names what to type" '/makeit:init' "$out"
+expect "behind: asks makeit for a dry run" 'init --dry-run --json' "$(cat "$bh/calls.log")"
+expect_empty "behind: once a day per project" "$(behind "$bh/proj")"
+: >"$bh/calls.log"
+expect_empty "behind: silent in a folder makeit did not set up" "$(behind "$bh/plain")"
+expect_empty "behind: no makeit call without a record" "$(cat "$bh/calls.log")"
+newday; printf '{"changes":[{"id":"shipping-section"}]}' >"$bh/out.json"
+expect "behind: one change reads 1 change" '1 change behind (shipping-section)' "$(behind "$bh/proj" | jq -r '.systemMessage' 2>&1)"
+newday; printf '{"changes":[]}' >"$bh/out.json"
+expect_empty "behind: up to date is silent" "$(behind "$bh/proj")"
+newday; printf 'garbage' >"$bh/out.json"
+out=$(behind "$bh/proj" 2>&1; echo "rc=$?")
+if [ "$out" = "rc=0" ]; then ok "behind: garbage from makeit exits 0, silent"; else bad "behind: garbage from makeit: [$out]"; fi
+newday; out=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$bh/proj" | PATH="$tmp/nojq" bash "$here/behind.sh" 2>&1; echo "rc=$?")
+if [ "$out" = "rc=0" ]; then ok "behind: without jq or makeit exits 0, silent"; else bad "behind: without jq or makeit: [$out]"; fi
+newday; printf '{"changes":[{"id":"x"}]}' >"$bh/out.json"
+expect_empty "behind: ignores other events" "$(printf '{"hook_event_name":"Stop","cwd":"%s"}' "$bh/proj" | PATH="$bh/bin:$PATH" bash "$here/behind.sh")"
+expect "behind runs at session start" "behind.sh" "$(jq -r '.hooks.SessionStart[] | select(.matcher == "startup") | .hooks[].command' "$here/hooks.json")"
+
+
 # --- deja-vu plugin: hint.sh and the generated hook events --------------------------------------
 dv="$here/../../deja-vu"
 hint_events=$(jq -r '[.hooks // {} | keys[]] | sort | join(",")' "$dv/.claude-plugin/plugin.json" "$dv/hooks/hooks.json" 2>&1 | paste -sd' ' -)
