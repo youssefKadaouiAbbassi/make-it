@@ -43,8 +43,13 @@ func TestManifestRules(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, e := range m.Files {
-		if e.Mode == "0755" && filepath.Ext(e.Path) != ".sh" && filepath.Ext(e.Path) != ".mjs" && filepath.Ext(e.Path) != ".py" {
+		// A plugin's bin/ holds the commands Claude Code puts on the Bash tool's PATH: bare names.
+		command, _ := filepath.Match("plugins/*/bin/*", e.Path)
+		if e.Mode == "0755" && !command && filepath.Ext(e.Path) != ".sh" && filepath.Ext(e.Path) != ".mjs" && filepath.Ext(e.Path) != ".py" {
 			t.Errorf("unexpected executable %s", e.Path)
+		}
+		if command && e.Mode != "0755" {
+			t.Errorf("%s is a command and must be executable", e.Path)
 		}
 		if filepath.Ext(e.Path) == ".out" {
 			t.Errorf("build output embedded: %s", e.Path)
