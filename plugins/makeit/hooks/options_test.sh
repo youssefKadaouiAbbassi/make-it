@@ -71,7 +71,7 @@ check "say a quoted phrase" fire "$human" false $'To ship it, say "release dev t
 check "Next: line with a prompt to type" fire "$human" false $'**Done:** fixed.\n**Next:** `finish the 2272 items`'
 check "waiting on you: nothing" quiet "$human" false $'**Done:** fixed.\n**Waiting on you:** nothing.'
 check "waiting on you: something" fire "$human" false $'Still waiting on you: the GitHub token approval.'
-check "word boundary: sender \`UNICE\`" quiet "$human" false $'Keys go to OpenTofu (sender `UNICE`) and deploy.'
+check "word boundary: sender \`ACME\`" quiet "$human" false $'Keys go to OpenTofu (sender `ACME`) and deploy.'
 check "offer with if you'd rather" fire "$human" false $'If you\'d rather keep 1.12.0, say so.'
 check "French question at the end" fire "$human" false $'C\'est en place sur dev.\nTu en penses quoi ?'
 check "empty message" quiet "$human" false ''
