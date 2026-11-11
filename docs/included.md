@@ -105,6 +105,7 @@ differs. `--dry-run` prints each path with its value.
 | `env.PONYTAIL_DEFAULT_MODE` | `full` | ponytail's level |
 | `crossSessionInbound` | `accept` | lets sessions receive messages from other sessions |
 | `env.CLAUDE_CODE_ENABLE_TODO_TOOLS`, `env.CLAUDE_CODE_SUBAGENT_EFFORT` | `1`, `medium` | the todo tools on, subagents at medium effort |
+| `env.CLAUDE_CODE_SUBAGENT_MODEL` | `sonnet` | subagents run on Sonnet unless Claude names another model for one (it does for a design, a plan or a review) |
 | `env.CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`, `env.REDOCLY_TELEMETRY`, `env.FASTLANE_OPT_OUT_USAGE`, `env.MAESTRO_CLI_NO_ANALYTICS` | off | telemetry off for the tools the plugins and the CI checks run |
 | `extraKnownMarketplaces.claude-plugins-official` | GitHub `anthropics/claude-plugins-official`, `autoUpdate: true` | the marketplace of the four language server plugins |
 

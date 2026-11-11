@@ -41,6 +41,12 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   choice with every pick as written; "a: ..." changes a pick, after which you
   show the changed lines and the choices again. Nothing the owner must read
   goes in a dialog option's preview.
+- A go-ahead the task will need at its end (push, merge, deploy, release,
+  moving the card) is asked once, for the whole chain, naming each step: with
+  the task's first question when there is one (a second question in the same
+  dialog), else when the work is ready. After the yes, do every step named
+  without asking again; a red full suite still asks. Steps the project's
+  Shipping section allows are not asked.
 
 ## Scope
 
@@ -91,7 +97,9 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 ## Workflow
 
 - Before committing: linter, type checker, relevant tests. Before pushing: the
-  full suite; if it is red, say so and ask whether to push anyway.
+  full suite. Green: ship as the Shipping section of the project's CLAUDE.md
+  says, without asking. Red: say which tests fail and ask whether to push
+  anyway, even when the failures look unrelated to the change.
 - Commits: imperative mood, one logical change, never amend a pushed commit,
   never commit secrets. Do not push to the default branch unless told to.
 - Write `HANDOFF.md` (`HANDOFF.<branch>.md` on a branch) before a context reset and
@@ -103,12 +111,16 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - Plan tasks that touch different files may run in parallel, each in its own
   worktree, merged after their reviews.
 - A builder's brief includes the criteria its reviewer will check.
-- Read-only research and mechanical subagents run on Sonnet; design and review
-  stay on the session's model.
+- Subagents run on Sonnet unless you name a model (the setup's default): right
+  for read-only research and mechanical work. For a design, a plan or a
+  review, pass your own model on the Agent call.
 - A second session that writes code in the same repository runs in its own
   worktree (`claude -w <name>`).
 - A command that may run past two minutes, or a wait longer than a minute, runs
   in the background or with Monitor; never a fixed foreground sleep.
+- Independent lookups (file reads, searches, git queries, page reads)
+  go in one message as parallel tool calls; shell steps that depend on each
+  other go in one command.
 
 ## Communication
 
