@@ -156,6 +156,9 @@ func (s *seeder) checks() {
 			lines = append(lines, `"check:api" = { shell = '`+checkAPI(s.p.Spec, s.p.DefaultBranch)+`' }`)
 		}
 		s.manual("%s", strings.Join(lines, "\n"))
+	case len(s.p.Types) > 0 && s.p.Runner == "" && s.p.PM == "":
+		// No root manifest (apps in sub-folders, a folder of repositories): no CI caller either.
+		s.manual("add check:fast, check:task and check:full tasks to a task runner at the folder's root (a Makefile works): the root has no manifest to carry them")
 	case len(s.p.Types) > 0 && s.p.Runner == "":
 		s.manual("add check:fast, check:task and check:full tasks to the project's task runner; the CI checks call them by name")
 	}

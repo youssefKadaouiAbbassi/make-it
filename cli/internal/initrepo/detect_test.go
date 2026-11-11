@@ -317,6 +317,9 @@ func TestDetectPubspec(t *testing.T) {
 		{"flutter sdk", map[string]string{"pubspec.yaml": "name: a\ndependencies:\n  flutter:\n    sdk: flutter\n"}, true},
 		{"comments and blanks", map[string]string{"pubspec.yaml": "name: a\ndependencies:\n  # ui\n\n  cupertino_icons: ^1.0.0\n\n  flutter:\n    sdk: flutter\n"}, true},
 		{"subfolder", map[string]string{"app/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n"}, true},
+		{"comment after the key", map[string]string{"pubspec.yaml": "name: a\ndependencies: # ui\n  flutter:\n    sdk: flutter\n"}, true},
+		{"spaces after the key", map[string]string{"pubspec.yaml": "name: a\ndependencies:  \r\n  flutter:\r\n    sdk: flutter\r\n"}, true},
+		{"another key that starts the same", map[string]string{"pubspec.yaml": "dependencies_extra:\n  flutter:\n    sdk: flutter\n"}, false},
 		{"pure dart", map[string]string{"pubspec.yaml": "name: a\ndependencies:\n  path: ^1.9.0\n"}, false},
 		{"node_modules", map[string]string{"node_modules/x/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n"}, false},
 		{"dev only", map[string]string{"pubspec.yaml": "dependencies:\n  path: ^1.9.0\ndev_dependencies:\n  flutter:\n    sdk: flutter\n  flutter_test:\n    sdk: flutter\n"}, false},
@@ -342,6 +345,8 @@ func TestDetectFixturesDoNotCount(t *testing.T) {
 		"testdata/app/package.json":  `{"dependencies": {"react": "19.2.0"}}`,
 		"examples/demo/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
 		"fixtures/m/package.json":    `{"dependencies": {"react-native": "1"}}`,
+		"docs/package.json":          `{"dependencies": {"react": "19.2.0", "@docusaurus/core": "3.9.0"}}`,
+		"website/package.json":       `{"dependencies": {"next": "16.0.0"}}`,
 		"example/pubspec.yaml":       "dependencies:\n  flutter:\n    sdk: flutter\n",
 	})
 	if !slices.Equal(p.Types, []string{"go"}) {

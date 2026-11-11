@@ -80,8 +80,9 @@ var pruned = map[string]bool{"node_modules": true, "vendor": true, ".git": true,
 // pubspecName is read for the mobile type only: it adds no Dep.
 const pubspecName = "pubspec.yaml"
 
-// notAnApp are folder names whose manifests are not the project's own app.
-var notAnApp = map[string]bool{"testdata": true, "fixtures": true, "examples": true, "example": true}
+// notAnApp are folder names whose manifests are not the project's own app: fixtures, examples
+// and a documentation site.
+var notAnApp = map[string]bool{"testdata": true, "fixtures": true, "examples": true, "example": true, "docs": true, "website": true}
 
 // inApp reports whether the slash path m is outside every notAnApp folder.
 func inApp(m string) bool {
@@ -100,7 +101,7 @@ var (
 
 // Detect reads dir's manifests, lockfiles and layout. A directory with no manifest gives a
 // Project with no types. The web and mobile types also look in sub-folders (same walk as Deps, and
-// skipping testdata, fixtures, examples and example); every other type, PM, Runner and the root
+// skipping testdata, fixtures, examples, example, docs and website); every other type, PM, Runner and the root
 // fields come from the root only.
 func Detect(dir string) (Project, error) {
 	p := Project{Dir: dir, Scripts: map[string]bool{}}
@@ -361,8 +362,10 @@ func pubspecHasFlutter(dir, m string) bool {
 	in := false
 	for _, line := range strings.Split(string(b), "\n") {
 		line = strings.TrimRight(line, "\r")
+		// The key alone: spaces and a comment may follow it.
+		key, _, _ := strings.Cut(line, "#")
 		switch {
-		case line == "dependencies:":
+		case strings.TrimRight(key, " ") == "dependencies:":
 			in = true
 		case in && strings.HasPrefix(line, " ") && strings.HasPrefix(strings.TrimLeft(line, " "), "flutter:"):
 			return true

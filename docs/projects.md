@@ -82,7 +82,9 @@ get:
 The parts for a user interface (the browser check, the Mobile section, the UI plugin) are added
 when any manifest init reads shows a web or mobile app: at the root, in a sub-folder such as
 `apps/web`, or in one of a workspace's repositories. A `pubspec.yaml` that depends on Flutter
-counts as a mobile app. The language, the package manager and the CI checks come from the root.
+counts as a mobile app. Test fixtures, examples and a documentation site (`testdata`, `fixtures`,
+`examples`, `docs`, `website`) do not count. The language, the package manager and the CI checks
+come from the root.
 
 At the end, init prints what it wrote, what it kept and why, the lines to add by hand to files it
 does not edit, and notices such as "enable the git hooks once per clone: prek install".

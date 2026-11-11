@@ -478,4 +478,9 @@ func TestSeedsNoRootManifest(t *testing.T) {
 	if !slices.Contains(rep.Manual, want) {
 		t.Errorf("manual %q", rep.Manual)
 	}
+	// No root manifest means no CI caller either: the check-task line must not name CI checks.
+	const tasks = "add check:fast, check:task and check:full tasks to a task runner at the folder's root (a Makefile works): the root has no manifest to carry them"
+	if !slices.Contains(rep.Manual, tasks) || manualHas(rep, "the CI checks call them by name") {
+		t.Errorf("manual %q", rep.Manual)
+	}
 }
