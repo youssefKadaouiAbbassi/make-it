@@ -50,6 +50,10 @@ work that was already checked.
   in the home folder are listed. Nothing is rolled back on its own. Linux and macOS.
 - **`makeit doctor` shows tool versions.** For prek, deja-vu and grype it prints the version,
   warns when one is behind its newest release, and says whether makeit updates it or you do.
+- **The browser server starts from makeit's local copy again.** chrome-devtools-mcp 1.13.0 moved
+  its entry file, and makeit's start line still looked at the old place, so every session fell
+  back to `npx` without a word: a slower start and one more process per session. The start line
+  now reads the place from the package itself.
 
 ## 0.4.4
 
