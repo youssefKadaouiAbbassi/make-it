@@ -91,7 +91,7 @@ func Group(stepID, title string) string {
 		return "Machine"
 	case "claude":
 		return "Claude Code"
-	case "catalog", "marketplace", "bundle", "plugin", "plugins":
+	case "catalog", "marketplace", "bundle", "plugin", "plugins", "writes":
 		return "Plugins"
 	case "settings":
 		return "Settings"

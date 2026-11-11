@@ -126,7 +126,9 @@ func execute(ctx context.Context, e Env, command string, mode plan.Mode, confirm
 	en := &env{Env: e, st: st, req: req, command: command}
 	en.nodePathAtStart()
 	phases := build(en)
-	rep := Report{Plan: runPhases(ctx, phases, plan.Options{DryRun: true})}
+	rep := Report{Plan: runPhases(ctx, phases, plan.Options{DryRun: true, After: func(o plan.Outcome) {
+		en.pending = en.pending || o.Status == plan.WouldChange
+	}})}
 	rep.Hints, rep.Kept, rep.NeedsYou = en.hints, en.kept, en.needsYou
 	if nothingToDo(rep.Plan) || rep.Plan.Failed() {
 		// Nothing to apply, but a check took a global file back: save that (the lock is held).

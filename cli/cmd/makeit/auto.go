@@ -35,16 +35,21 @@ func autoDue(stack string, now time.Time) (*fsx.Lock, string) {
 	return lock, ""
 }
 
-// autoNote is the one line the next Claude Code session shows after a daily run moved something.
-func autoNote(changes []state.Change, undoable bool) string {
+// autoNote is the one line the next Claude Code session shows after a daily run moved something,
+// or found a plugin whose session hooks now create files in the project (alert, which names
+// rollback itself).
+func autoNote(changes []state.Change, undoable bool, alert string) string {
 	var parts []string
 	for _, c := range changes {
 		parts = append(parts, c.Item+" "+changeText(c))
 	}
 	if len(parts) == 0 {
-		return ""
+		return alert
 	}
 	note := "makeit updated: " + strings.Join(parts, ", ")
+	if alert != "" {
+		return note + " · " + alert
+	}
 	// Rollback undoes the run, or puts the old makeit back; npm and Claude Code moves alone it leaves.
 	if undoable || slices.ContainsFunc(changes, func(c state.Change) bool { return c.Kind == "makeit" }) {
 		note += " · undo: makeit rollback"
@@ -68,9 +73,10 @@ func openAutoLog(stack string) (*os.File, error) {
 	return os.OpenFile(path, flags, 0o600)
 }
 
-// finishAuto leaves the note for the next session after a daily run that moved something.
-func finishAuto(stack string, changes []state.Change, undoable bool) error {
-	if note := autoNote(changes, undoable); note != "" {
+// finishAuto leaves the note for the next session after a daily run that moved something or whose
+// hook check failed.
+func finishAuto(stack string, changes []state.Change, undoable bool, alert string) error {
+	if note := autoNote(changes, undoable, alert); note != "" {
 		return fsx.WriteAtomic(filepath.Join(stack, "pending-note"), []byte(note+"\n"), 0o600)
 	}
 	return nil

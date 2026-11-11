@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"makeit/internal/plan"
+	"makeit/internal/setup"
 	"makeit/internal/state"
 )
 
@@ -59,22 +62,22 @@ func TestAutoNote(t *testing.T) {
 		{Kind: "tool", Item: "grype", From: "", To: "0.122.0"},
 	}
 	want := "makeit updated: makeit 0.2.0 → 0.2.1, superpowers 7.0.1 → 7.1.0, grype → 0.122.0 · undo: makeit rollback"
-	if got := autoNote(changes, true); got != want {
+	if got := autoNote(changes, true, ""); got != want {
 		t.Errorf("note\n%q\nwant\n%q", got, want)
 	}
-	if n := autoNote(nil, false); n != "" {
+	if n := autoNote(nil, false, ""); n != "" {
 		t.Errorf("a run that changed nothing left a note: %q", n)
 	}
 }
 
 // A daily run that only moved npm tools has nothing rollback undoes: no undo hint.
 func TestAutoNoteNoUndoWhenNothingToUndo(t *testing.T) {
-	got := autoNote([]state.Change{{Kind: "npm", Item: "pyright", From: "1.1.413", To: "1.1.414"}}, false)
+	got := autoNote([]state.Change{{Kind: "npm", Item: "pyright", From: "1.1.413", To: "1.1.414"}}, false, "")
 	if want := "makeit updated: pyright 1.1.413 → 1.1.414"; got != want {
 		t.Errorf("note %q, want %q", got, want)
 	}
 	// makeit itself moved: rollback can put the old binary back.
-	if got := autoNote([]state.Change{{Kind: "makeit", Item: "makeit", From: "0.3.5", To: "0.3.6"}}, false); !strings.Contains(got, "undo: makeit rollback") {
+	if got := autoNote([]state.Change{{Kind: "makeit", Item: "makeit", From: "0.3.5", To: "0.3.6"}}, false, ""); !strings.Contains(got, "undo: makeit rollback") {
 		t.Errorf("note %q, want the undo hint after a self update", got)
 	}
 }
@@ -101,4 +104,49 @@ func TestAutoDueHoldsTheLock(t *testing.T) {
 		t.Errorf("a second start while the first holds the lock: lock %v, why %q", second, why)
 	}
 	first.Release()
+}
+
+// A new file in the project is told to the next session, with or without a version that moved,
+// in place of the plain undo hint (the sentence names rollback itself).
+func TestAutoNoteCarriesTheHookFinding(t *testing.T) {
+	alert := "sp's session hooks now create SESSIONS.md in the project you work in; undo this update with makeit rollback"
+	got := autoNote([]state.Change{{Kind: "plugin", Item: "sp", From: "7.0.1", To: "7.1.0"}}, true, alert)
+	if want := "makeit updated: sp 7.0.1 → 7.1.0 · " + alert; got != want {
+		t.Errorf("note\n%q\nwant\n%q", got, want)
+	}
+	if got := autoNote(nil, false, alert); got != alert {
+		t.Errorf("note %q, want the finding alone", got)
+	}
+}
+
+// The failed hook check of a daily run reaches update.log and the next session's note; a run by
+// hand prints it in its result.
+func TestHookFindingReachesLogAndNote(t *testing.T) {
+	m := newCatMachine(t, nil)
+	if code, _, errOut := run2(t, "setup", "--yes"); code != 0 {
+		t.Fatalf("setup: exit %d\n%s", code, errOut)
+	}
+	finding := "sp's session hooks now create SESSIONS.md in the project you work in; undo this update with makeit rollback"
+	saved := stackUpdate
+	stackUpdate = func(context.Context, setup.Env, plan.Mode, func([]plan.Outcome) (bool, error), []string) (setup.Report, error) {
+		return setup.Report{Generation: 2, Undoable: true, Changes: []state.Change{{Kind: "plugin", Item: "sp", From: "7.0.1", To: "7.1.0"}},
+			Plan: plan.Report{Outcomes: []plan.Outcome{
+				{ID: "plugin.sp@makeit", Title: "Update sp@makeit", Status: plan.Done},
+				{ID: "plugin.x@makeit", Title: "Update x@makeit", Status: plan.Failed, Detail: "network down"},
+				{ID: "writes.check", Title: "Check what the plugins' session hooks write", Status: plan.Failed, Detail: finding}}}}, nil
+	}
+	t.Cleanup(func() { stackUpdate = saved })
+	if code, _, errOut := run2(t, "update", "--yes", "--offline"); code != 1 || !strings.Contains(errOut, finding) {
+		t.Errorf("update by hand: exit %d, stderr\n%s", code, errOut)
+	}
+	if code, _, _ := run2(t, "update", "--auto", "--offline"); code != 1 {
+		t.Errorf("daily run: exit %d, want 1", code)
+	}
+	if log, _ := os.ReadFile(filepath.Join(m.stack, "update.log")); !strings.Contains(string(log), finding) {
+		t.Errorf("update.log lacks the finding:\n%s", log)
+	}
+	note, _ := os.ReadFile(filepath.Join(m.stack, "pending-note"))
+	if want := "makeit updated: sp 7.0.1 → 7.1.0 · " + finding + "\n"; string(note) != want {
+		t.Errorf("pending-note\n%q\nwant\n%q", note, want)
+	}
 }
