@@ -3,6 +3,54 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.5.0
+
+Fewer stops, a setup that reaches the whole project, and safer updates. Two studies of real
+sessions are behind it: sessions waited on their owner longer than they worked, mostly to ship
+work that was already checked.
+
+- **Shipping, decided once per project.** `/makeit:init` asks one question: what may Claude do
+  without asking once `check:full` is green (push the branch and open the PR; also push or merge
+  to the branch that deploys to a test environment; everything up to production). The answer
+  goes into a new "Shipping" section of the project's `CLAUDE.md`, and Claude follows it without
+  asking again. A red suite always asks, also when the failures look unrelated to the change.
+  The commands on makeit's ask list (merging a pull request, pushing to `main`) still show
+  Claude Code's own prompt, and a branch you let Claude push to gets no ask rule. Run
+  `/makeit:init` in a project you already set up to get the question.
+- **One question for a whole chain.** A go-ahead a task needs at its end (push, merge, deploy,
+  release, moving the card) is asked once, naming every step, with the task's first question
+  when there is one. After your yes, Claude does every step.
+- **Subagents run on Sonnet by default** (`CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in the settings):
+  right for research and mechanical work, and faster. Claude names its own model for a design, a
+  plan or a review. Set your own value to change it; makeit keeps yours.
+- **Lookups go together.** A new global rule: independent lookups go in one message as parallel
+  tool calls, and shell steps that depend on each other go in one command.
+- **`makeit init` sees apps in sub-folders.** A web or mobile app in a sub-folder (a monorepo's
+  `apps/web`, a repository inside a folder of repositories) now counts, and a `pubspec.yaml`
+  that depends on Flutter marks a mobile app. Such a project gets the browser check, the Mobile
+  section and the UI plugin it was missing. The language, the package manager and the CI checks
+  still come from the root.
+- **A project that is behind says so.** When a newer makeit sets projects up differently, the
+  first session of the day in an older project shows one line with what waits and
+  `/makeit:init`.
+- **The run recipe covers every screen.** `/makeit:init` writes one Run part per web or mobile
+  app and names the ones it could not start, so a change is seen locally before a deploy. It
+  also times each check task and makes `check:task` run only what a change touches.
+- **Reminders stay out of background events.** The skill reminder and the deja hint no longer
+  fire on a finished background job or a message from another session. The reminder also drops
+  its line about verification-before-completion: the global rules carry the same checks.
+- **The push guard fails closed.** If the guard crashes, times out or cannot start, the push is
+  stopped instead of let through; without `jq` it asks for every push.
+- **The handoff reminder waits** while a background job runs (30 minutes at most), instead of
+  asking for a rewrite between two waits.
+- **Updates are checked for new writes.** After `makeit update` moved a plugin or a tool, it
+  runs the plugins' session hooks in a scratch project and a scratch home and compares what they
+  write with last time. A new file in the project fails the update with the plugin, the file and
+  the undo command (`makeit rollback`), in the result and in the next session's note; new files
+  in the home folder are listed. Nothing is rolled back on its own. Linux and macOS.
+- **`makeit doctor` shows tool versions.** For prek, deja-vu and grype it prints the version,
+  warns when one is behind its newest release, and says whether makeit updates it or you do.
+
 ## 0.4.4
 
 - The global `CLAUDE.md` gains two rules for UI changes. A change to a screen that exists keeps
