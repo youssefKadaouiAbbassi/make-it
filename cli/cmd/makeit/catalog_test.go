@@ -22,7 +22,7 @@ import (
 
 // catMachine is the round trip's fake-claude machine, with the real git on PATH, and a bare
 // repository at url holding the embedded catalog (plus extra files) tagged v1.0.0.
-type catMachine struct{ home, stack, work, bare, url string }
+type catMachine struct{ home, bin, stack, work, bare, url string }
 
 func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
@@ -41,9 +41,7 @@ func newCatMachine(t *testing.T, extra map[string]string) catMachine {
 		t.Skip("a shell script stands in for claude")
 	}
 	home, bin, stack, fake := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tool := range []string{"node", "jq", "gh", "google-chrome", "prek", "deja", "grype", "typescript-language-server", "pyright-langserver"} {
-		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
-	}
+	stubTools(t, bin, "git")
 	write(t, filepath.Join(bin, "claude"), fakeClaude)
 	t.Setenv("HOME", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
@@ -59,7 +57,7 @@ func newCatMachine(t *testing.T, extra map[string]string) catMachine {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	m := catMachine{home: home, stack: stack, work: filepath.Join(root, "work"), bare: filepath.Join(root, "cat.git")}
+	m := catMachine{home: home, bin: bin, stack: stack, work: filepath.Join(root, "work"), bare: filepath.Join(root, "cat.git")}
 	m.url = "file://" + m.bare
 	for _, e := range emb.Manifest.Files {
 		p := filepath.Join(m.work, filepath.FromSlash(e.Path))
