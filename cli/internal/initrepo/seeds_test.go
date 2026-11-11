@@ -460,3 +460,22 @@ func TestMakeAPIGuards(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedsWorkspaceWeb(t *testing.T) {
+	dir := tree(t, map[string]string{"back/.git/": "", "back/package.json": `{"dependencies": {"next": "16.0.0"}}`})
+	_, merges, rep := seedsFor(t, dir, gateRef)
+	if body := string(merged(t, dir, merges, ".claude/settings.json").Body); !strings.Contains(body, `"makeit-ui@makeit": true`) {
+		t.Errorf("web settings:\n%s", body)
+	}
+	if manualHas(rep, "(pip)") {
+		t.Errorf("manual %q", rep.Manual)
+	}
+}
+
+func TestSeedsNoRootManifest(t *testing.T) {
+	_, _, rep := seedsFor(t, tree(t, map[string]string{"apps/web/package.json": `{"dependencies": {"react": "19.2.0"}}`}), gateRef)
+	const want = "makeit seeds no CI caller: the folder's root has no manifest, so there is no task runner to call; write the caller by hand"
+	if !slices.Contains(rep.Manual, want) {
+		t.Errorf("manual %q", rep.Manual)
+	}
+}

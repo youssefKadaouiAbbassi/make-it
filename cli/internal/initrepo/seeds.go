@@ -362,6 +362,9 @@ func (s *seeder) ci(gateRef string) error {
 	case s.p.PM == "bun":
 		s.manual("makeit seeds no CI caller for bun: the GitHub runner image has no bun; write the caller with a setup that installs it")
 		return nil
+	case s.p.PM == "" && s.p.Runner == "":
+		s.manual("makeit seeds no CI caller: the folder's root has no manifest, so there is no task runner to call; write the caller by hand")
+		return nil
 	case s.p.Runner == "":
 		s.manual("makeit seeds no CI caller for a %s project without a task runner (pip): move to uv, or write the caller by hand", s.p.PM)
 		return nil
