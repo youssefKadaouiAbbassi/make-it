@@ -646,6 +646,17 @@ if [ -f "$sk" ]; then
   expect "init skill: Coverage and Mutation rows are never deleted" "Never delete the Coverage or Mutation row" "$body"
   expect "init skill: the commit carries the floor-guard reason line" "floor-guard: makeit init adds the CI checks, the check tasks and the hook config" "$body"
   expect "init skill: a repository with no commit yet gets its first commit on the default branch" "no commit yet" "$body"
+  expect "init skill: asks once what ships on a green suite" 'CLAUDE.md "Shipping": ask once, with AskUserQuestion' "$body"
+  expect "init skill: a deploy branch Claude may push to gets no ask rule" "gets no rule" "$body"
+  expect "init skill: times each check task" "run each task once and time it" "$body"
+  expect "init skill: check:task runs what a change touches" "only what a change touches" "$body"
+  expect "init skill: one Run part per UI surface" "one Run part per surface" "$body"
+  expect "init skill: names the surfaces that cannot start here" "Not runnable here" "$body"
+  tpl=$(cat "$here/../../../templates/project/CLAUDE.md" 2>&1)
+  expect "project template: Shipping section" "## Shipping" "$tpl"
+  expect "project template: a red suite asks" 'red, or not run: ask before any push' "$tpl"
+  expect "project template: the end of a task ships by that section" "do the steps the Shipping section allows" "$tpl"
+  expect "verify template: every surface the change reaches" "on every surface the change reaches" "$(cat "$here/../../../templates/project/verify-skill.md" 2>&1)"
   wire=$(grep -n 'Wire the check' "$sk" | head -1 | cut -d: -f1)
   full=$(grep -n 'Run check:full' "$sk" | head -1 | cut -d: -f1)
   if [ -n "$wire" ] && [ -n "$full" ] && [ "$wire" -lt "$full" ]; then ok "init skill: check:full after the stubs are wired"; else bad "init skill: order of wiring and check:full ($wire, $full)"; fi

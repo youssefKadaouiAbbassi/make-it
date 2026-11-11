@@ -32,11 +32,21 @@ Run `check:task` before saying a task is done; `check:full` before a push.
 
 1. `check:task` passes, and the app was started and the change exercised (the verify skill).
 2. `check:full` before a push.
-3. Deploy: push the branch and open the PR; a push to a deploy branch (`main`, `master`, or the
-   ones in `.claude/settings.json` ask rules) is the owner's call.
+3. Ship: do the steps the Shipping section allows, in its order; ask once for any other.
 4. Handoff: on a branch, write `HANDOFF.<slug>.md` (the branch name with characters outside
    `A-Za-z0-9._-` as `-`); on the default branch, `HANDOFF.md`. Delete `HANDOFF.<slug>.md` in the
    merge so it never reaches the default branch.
+
+## Shipping
+
+The owner's answer, asked once by /makeit:init. Follow it without asking again; ask only for a
+step it does not name.
+
+- `check:full` green: <what Claude does without asking, in order, in the owner's words. Example:
+  "push the branch, open the PR to main, move the card to Review".>
+- Always ask first: <the steps the owner keeps. Example: "merging to main; anything on production".>
+- `check:full` red, or not run: ask before any push and say which tests fail, even when the
+  failures look unrelated to the change.
 
 ## Layout
 
@@ -51,8 +61,7 @@ Run `check:task` before saying a task is done; `check:full` before a push.
   migration that has been merged.
 - Secrets come from the environment; `.env.example` lists every variable and
   the app refuses to start without the required ones.
-- Branch from the default branch; feature-branch push and PR creation are free;
-  merge is the owner's call.
+- Branch from the default branch. Pushes, PRs and merges follow the Shipping section.
 
 ## How to verify a change
 

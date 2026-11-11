@@ -1,6 +1,6 @@
 {
   "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
-  "sources": "sha256:3c37be62e99ef086e7e54c89847adb12bfaf378e0d1ef20658b6482abeb762b4",
+  "sources": "sha256:54cbd687e52246477184f503dd67362764463a76fd58b4acb64d7a9e83d5fde7",
   "changes": [
     {
       "version": "0.3.7",
@@ -37,6 +37,24 @@
       "id": "task-start-end",
       "files": ["CLAUDE.md"],
       "prompt": "CLAUDE.md has the sections \"## Start of a task\" (read the ticket, branch from the default branch, baseline check:task) and \"## End of a task\" (check:task and /verify, check:full before a push, deploy, handoff: on a branch HANDOFF.<slug>.md, deleted in the merge), as in templates/project/CLAUDE.md. Place \"Start of a task\" before the Commands table and \"End of a task\" after it, as the template does; keep every section the file has and every value the user wrote. The steps themselves come from the repository, not from the template: fill them with its ticket system, branch naming, checks and deploy as the repository shows them, and ask the user once for any it does not show; never copy the template's generic steps."
+    },
+    {
+      "version": "0.5.0",
+      "id": "shipping-section",
+      "files": ["CLAUDE.md", ".claude/settings.json"],
+      "prompt": "CLAUDE.md has a section \"## Shipping\" after \"## End of a task\", as in templates/project/CLAUDE.md: what Claude does without asking once check:full is green, what always asks, and the template's line for a red suite, unchanged. The first two lines are the owner's answer: ask once with AskUserQuestion, with two or three options built from the repository's branches, CI and deploy config, the most careful first, each naming the real branches and steps and saying when a step still shows Claude Code's own permission prompt (step 2 of the init skill). Write the answer in the owner's words. The deploy step of \"End of a task\" and the Repository rules line about pushes point at the section instead of calling a deploy the owner's call. A deploy branch the answer lets Claude push to has no ask rule in .claude/settings.json: when an earlier init added the two rules for it, say so in the question and remove them on the owner's yes. A Shipping section already there: keep it."
+    },
+    {
+      "version": "0.5.0",
+      "id": "run-recipe-surfaces",
+      "files": [".claude/skills/run-<project>/SKILL.md", ".claude/skills/verify/SKILL.md"],
+      "prompt": "The run recipe has one Run part per user interface of the project: each web app and each mobile app (in a folder of repositories, each repository that has one), with commands you ran and saw work in this session. A surface that cannot be started here stands under \"Not runnable here\" with the reason and has a HANDOFF item. The verify skill's exercise step covers every surface a change reaches (a back-office field that feeds an app page: both). Add what is missing; keep every part that is there. No user interface: nothing to do."
+    },
+    {
+      "version": "0.5.0",
+      "id": "timed-checks",
+      "files": ["CLAUDE.md", "CONSTRAINTS.md"],
+      "prompt": "Each check task was run and timed on this project, and the measured time stands in CLAUDE.md's Commands table and in the budgets table of CONSTRAINTS.md instead of the template's 10 s and 90 s. check:task runs only what a change touches (the type checker in its incremental mode, the tests related to the changed files) and stays under 90 s; check:fast stays under 10 s. Time the tasks now when the times are still the template's. A task over its budget is a gap for the review: say what makes it slow and what would bring it down, and change the task only with the owner's yes."
     }
   ]
 }

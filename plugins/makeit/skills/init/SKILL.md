@@ -109,12 +109,23 @@ Then go on with step 2; the steps below still run, as on any init.
   messages), its branch naming, the checks it runs, how it deploys. When the repository does not say,
   ask once with AskUserQuestion and write the answer; never leave the template's generic step as it is.
 - HANDOFF.md: small numbered items, one action each.
-- Deploy branches: `main` and `master` always ask before a push. Ask once, with AskUserQuestion,
-  which other branches deploy when pushed (a `production` or `release` branch, or none), and
-  record the answer: for each branch `<b>`, add the two rules `Bash(git push * <b>)` and
-  `Bash(git push *:<b>)` to `permissions.ask` in `.claude/settings.json` (create the file when
-  missing, keep every other key and rule, add no rule twice). Never in `settings.local.json`:
-  the file is committed so the whole team asks.
+- CLAUDE.md "Shipping": ask once, with AskUserQuestion, what Claude may do without asking once
+  `check:full` is green. Build two or three options from what the repository shows (its
+  branches, its CI and deploy config, where tickets live), the most careful first: push the
+  branch and open the PR, and the owner does the rest; that, plus pushing or merging to the
+  branch that deploys to a test environment; everything up to production. Name the real branches
+  and steps in each option, and say in it when a step still shows Claude Code's own permission
+  prompt (merging a PR, a push to `main` or `master`, anything on the user's ask list): that
+  yes stays the owner's. Write the answer into the section in the owner's words: the steps
+  allowed, in order, then what always asks. Keep the template's red line as it is. In a folder of
+  repositories, one line per repository whose routine differs.
+- Deploy branches: `main` and `master` always ask before a push. Every other branch that deploys
+  when pushed is named by the Shipping answer. One the owner keeps under "always ask" gets the
+  two rules `Bash(git push * <b>)` and `Bash(git push *:<b>)` in `permissions.ask` of
+  `.claude/settings.json` (create the file when missing, keep every other key and rule, add no
+  rule twice; never in `settings.local.json`: the file is committed so the whole team asks). One
+  the Shipping section lets Claude push to on a green suite gets no rule; when an earlier init
+  added the two rules for it, say so in the Shipping question and remove them on the owner's yes.
 
 ## 3. Wire the check tasks
 
@@ -127,6 +138,14 @@ check:full. Use the package manager and runner the repository already has.
 In a Makefile, give each tool its own target (one command per recipe) and make each check task
 depend on them, so `make -k check:full` runs every check and reports every failure: a recipe
 stops at its first failing line.
+
+Then run each task once and time it (`time <runner> check:fast`, then check:task and check:full).
+Write the measured times in CLAUDE.md's Commands table and CONSTRAINTS.md's budgets table, in
+place of the template's 10 s and 90 s. check:task runs after every change, so it runs
+only what a change touches: the type checker in its incremental mode, and the tests related to
+the changed files (the test runner's own option for that; look it up in the docs of the version
+in use), never the whole suite. A task over its budget (10 s for check:fast, 90 s for check:task) is a
+finding: bring it down, or add a HANDOFF item that says what makes it slow.
 
 ## 4. Apply the manual lines
 
@@ -157,6 +176,11 @@ Then the sections Setup, Build, Run (agent path: start it in the background with
 Gotchas only for errors you hit. Every command in it must be one you ran in this session and saw
 work. The name must start with `run-`: a skill named exactly `run` would replace Claude Code's
 built-in run skill, which finds this recipe by its description.
+
+A project with a user interface gets one Run part per surface: each web app and each mobile app
+(in a folder of repositories, each repository that has one), started and seen once for real. A
+surface you could not start here goes under a heading "Not runnable here" with the reason, and
+gets a HANDOFF item: until it has a recipe, a change to that screen is first seen after a deploy.
 
 If nothing can be started yet (a fresh project), write no recipe; add a HANDOFF item instead.
 
