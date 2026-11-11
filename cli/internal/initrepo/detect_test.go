@@ -87,7 +87,8 @@ func TestDetectGitHub(t *testing.T) {
 	}
 }
 
-// Types and CI come from the root manifests only.
+// The node, python, go and rust types and the CI settings come from the root manifests only; a
+// sub-folder manifest adds Deps, and a web or mobile dependency there adds web or mobile.
 func TestDetectMonorepo(t *testing.T) {
 	p, err := Detect(tree(t, map[string]string{
 		"package.json":                       pkg,
@@ -265,5 +266,88 @@ func TestDetectCountsOnlyWorktrees(t *testing.T) {
 	})
 	if p, err := Detect(dir); err != nil || p.Worktrees != 1 {
 		t.Errorf("worktrees %d (%v), want 1", p.Worktrees, err)
+	}
+}
+
+func typesOf(t *testing.T, files map[string]string) Project {
+	t.Helper()
+	p, err := Detect(tree(t, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestDetectWebInSubfolder(t *testing.T) {
+	p := typesOf(t, map[string]string{"package.json": pkg, "apps/web/package.json": `{"dependencies": {"next": "16.0.0"}}`})
+	if !slices.Equal(p.Types, []string{"node", "web"}) {
+		t.Errorf("types %v", p.Types)
+	}
+}
+
+func TestDetectNoRootManifest(t *testing.T) {
+	p := typesOf(t, map[string]string{"apps/web/package.json": `{"dependencies": {"react": "19.2.0"}}`})
+	if !slices.Equal(p.Types, []string{"web"}) || p.PM != "" || p.Runner != "" {
+		t.Errorf("types %v pm %q runner %q", p.Types, p.PM, p.Runner)
+	}
+}
+
+func TestDetectWorkspaceUI(t *testing.T) {
+	p := typesOf(t, map[string]string{
+		"back/.git/": "", "back/package.json": `{"dependencies": {"next": "16.0.0"}}`,
+		"app/.git/": "", "app/pubspec.yaml": "name: app\ndependencies:\n  flutter:\n    sdk: flutter\n",
+		"api/.git/": "", "api/package.json": `{"dependencies": {"express": "5.0.0"}}`,
+		"loose/package.json": `{"dependencies": {"react": "19.2.0", "react-native": "1.0.0"}}`,
+	})
+	if !slices.Equal(p.Types, []string{"web", "mobile"}) {
+		t.Errorf("types %v", p.Types)
+	}
+	only := typesOf(t, map[string]string{"api/.git/": "", "api/package.json": `{}`, "loose/package.json": `{"dependencies": {"react": "19.2.0"}}`})
+	if len(only.Types) != 0 {
+		t.Errorf("non-repository folder counted: %v", only.Types)
+	}
+}
+
+func TestDetectPubspec(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		files map[string]string
+		want  bool
+	}{
+		{"flutter sdk", map[string]string{"pubspec.yaml": "name: a\ndependencies:\n  flutter:\n    sdk: flutter\n"}, true},
+		{"comments and blanks", map[string]string{"pubspec.yaml": "name: a\ndependencies:\n  # ui\n\n  cupertino_icons: ^1.0.0\n\n  flutter:\n    sdk: flutter\n"}, true},
+		{"subfolder", map[string]string{"app/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n"}, true},
+		{"pure dart", map[string]string{"pubspec.yaml": "name: a\ndependencies:\n  path: ^1.9.0\n"}, false},
+		{"node_modules", map[string]string{"node_modules/x/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n"}, false},
+		{"dev only", map[string]string{"pubspec.yaml": "dependencies:\n  path: ^1.9.0\ndev_dependencies:\n  flutter:\n    sdk: flutter\n  flutter_test:\n    sdk: flutter\n"}, false},
+		{"flutter top-level config", map[string]string{"pubspec.yaml": "name: a\ndependencies:\n  path: ^1.9.0\nflutter:\n  uses-material-design: true\n"}, false},
+		{"flutter before block ends", map[string]string{"pubspec.yaml": "dependencies:\n  path: ^1.9.0\nenvironment:\n  flutter:\n    sdk: x\n"}, false},
+		{"too deep", map[string]string{"a/b/c/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n"}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := typesOf(t, c.files)
+			if got := slices.Contains(p.Types, "mobile"); got != c.want {
+				t.Errorf("mobile %v, want %v (types %v)", got, c.want, p.Types)
+			}
+			if len(p.Deps) != 0 {
+				t.Errorf("pubspec added deps %v", p.Deps)
+			}
+		})
+	}
+}
+
+func TestDetectFixturesDoNotCount(t *testing.T) {
+	p := typesOf(t, map[string]string{
+		"go.mod":                     "module x\n\ngo 1.24\n",
+		"testdata/app/package.json":  `{"dependencies": {"react": "19.2.0"}}`,
+		"examples/demo/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
+		"fixtures/m/package.json":    `{"dependencies": {"react-native": "1"}}`,
+		"example/pubspec.yaml":       "dependencies:\n  flutter:\n    sdk: flutter\n",
+	})
+	if !slices.Equal(p.Types, []string{"go"}) {
+		t.Errorf("types %v", p.Types)
+	}
+	if !slices.ContainsFunc(p.Deps, func(d Dep) bool { return d.Name == "react" && d.Manifest == "testdata/app/package.json" }) {
+		t.Errorf("fixture manifest left out of deps: %v", p.Deps)
 	}
 }

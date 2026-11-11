@@ -29,8 +29,9 @@ type Dep struct {
 // Project is what init learned about a directory.
 type Project struct {
 	Dir string
-	// Types are drawn from node, python, go, rust (from the root manifests), then web, api,
-	// database, model and mobile, in that order.
+	// Types are drawn in this order: node, python, go, rust (root manifests only), web (a web
+	// dependency in any manifest read), api, database, model (root only) and mobile (android/ or
+	// ios/ at the root, a mobile dependency in any manifest, or flutter in any pubspec.yaml).
 	Types []string
 	// PM is the package manager; Runner prefixes a named task (the gate's runner input) and
 	// Setup installs the dependencies (the gate's setup input).
@@ -76,6 +77,17 @@ func siblingLock(m string) string {
 // pruned are directories where no manifest or spec is looked for.
 var pruned = map[string]bool{"node_modules": true, "vendor": true, ".git": true, "target": true, ".venv": true}
 
+// pubspecName is read for the mobile type only: it adds no Dep.
+const pubspecName = "pubspec.yaml"
+
+// notAnApp are folder names whose manifests are not the project's own app.
+var notAnApp = map[string]bool{"testdata": true, "fixtures": true, "examples": true, "example": true}
+
+// inApp reports whether the slash path m is outside every notAnApp folder.
+func inApp(m string) bool {
+	return !slices.ContainsFunc(strings.Split(path.Dir(m), "/"), func(s string) bool { return notAnApp[s] })
+}
+
 // manifestNames are the files Detect reads dependencies from.
 var manifestNames = map[string]bool{"go.mod": true, "package.json": true, "pyproject.toml": true, "Cargo.toml": true}
 
@@ -87,7 +99,9 @@ var (
 )
 
 // Detect reads dir's manifests, lockfiles and layout. A directory with no manifest gives a
-// Project with no types.
+// Project with no types. The web and mobile types also look in sub-folders (same walk as Deps, and
+// skipping testdata, fixtures, examples and example); every other type, PM, Runner and the root
+// fields come from the root only.
 func Detect(dir string) (Project, error) {
 	p := Project{Dir: dir, Scripts: map[string]bool{}}
 	p.Repos, p.Worktrees = workspaceChildren(dir)
@@ -96,7 +110,14 @@ func Detect(dir string) (Project, error) {
 		return p, err
 	}
 	root := map[string]bool{}
+	flutter := false
 	for _, m := range manifests {
+		if path.Base(m) == pubspecName {
+			if inApp(m) && pubspecHasFlutter(dir, m) {
+				flutter = true
+			}
+			continue
+		}
 		deps, err := readDeps(dir, m)
 		if err != nil {
 			return p, err
@@ -113,10 +134,13 @@ func Detect(dir string) (Project, error) {
 		}
 		return a.Name < b.Name
 	})
-	rootDeps := map[string]bool{}
+	rootDeps, appDeps := map[string]bool{}, map[string]bool{}
 	for _, d := range p.Deps {
 		if !strings.Contains(d.Manifest, "/") {
 			rootDeps[d.Name] = true
+		}
+		if inApp(d.Manifest) {
+			appDeps[d.Name] = true
 		}
 	}
 	has := func(f string) bool { _, err := os.Stat(filepath.Join(dir, f)); return err == nil }
@@ -127,8 +151,8 @@ func Detect(dir string) (Project, error) {
 	if b, err := os.ReadFile(filepath.Join(dir, "package.json")); err == nil {
 		_ = json.Unmarshal(b, &rootPkg)
 	}
-	anyDep := func(names []string) bool {
-		return slices.ContainsFunc(names, func(n string) bool { return rootDeps[n] })
+	anyDep := func(deps map[string]bool, names []string) bool {
+		return slices.ContainsFunc(names, func(n string) bool { return deps[n] })
 	}
 
 	if root["package.json"] {
@@ -185,19 +209,19 @@ func Detect(dir string) (Project, error) {
 			p.PM, p.Runner = "cargo", "make"
 		}
 	}
-	if anyDep(webDeps) {
+	if anyDep(appDeps, webDeps) {
 		p.Types = append(p.Types, "web")
 	}
 	if p.Spec = findSpec(dir); p.Spec != "" {
 		p.Types = append(p.Types, "api")
 	}
-	if has("migrations") || anyDep(dbDeps) || envHas(filepath.Join(dir, ".env.example"), "DATABASE_URL") {
+	if has("migrations") || anyDep(rootDeps, dbDeps) || envHas(filepath.Join(dir, ".env.example"), "DATABASE_URL") {
 		p.Types = append(p.Types, "database")
 	}
-	if anyDep(modelDeps) {
+	if anyDep(rootDeps, modelDeps) {
 		p.Types = append(p.Types, "model")
 	}
-	if has("android") || has("ios") || anyDep(mobileDeps) {
+	if has("android") || has("ios") || flutter || anyDep(appDeps, mobileDeps) {
 		p.Types = append(p.Types, "mobile")
 	}
 	gitDir := findGitDir(dir)
@@ -319,12 +343,34 @@ func findManifests(dir string, repos []string) ([]string, error) {
 			}
 			return nil
 		}
-		if manifestNames[d.Name()] {
+		if manifestNames[d.Name()] || d.Name() == pubspecName {
 			out = append(out, rel)
 		}
 		return nil
 	})
 	return out, err
+}
+
+// pubspecHasFlutter reports whether the pubspec at slash path m has an entry flutter in its
+// top-level dependencies block (dev_dependencies and the top-level flutter: config do not count).
+func pubspecHasFlutter(dir, m string) bool {
+	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(m)))
+	if err != nil {
+		return false
+	}
+	in := false
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimRight(line, "\r")
+		switch {
+		case line == "dependencies:":
+			in = true
+		case in && strings.HasPrefix(line, " ") && strings.HasPrefix(strings.TrimLeft(line, " "), "flutter:"):
+			return true
+		case line != "" && line[0] != ' ' && line[0] != '#' && line[0] != '\t':
+			in = false
+		}
+	}
+	return false
 }
 
 // readDeps parses one manifest and its lockfile.
