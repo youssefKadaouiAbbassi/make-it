@@ -86,8 +86,9 @@ case "$event" in
     # A background job still runs: the turn comes back when it ends, so the reminder waits. Not past
     # 30 minutes: a dev server runs for the whole session.
     if [ "$(jq -r '(.background_tasks // []) | if type == "array" then length else 0 end' <<<"$input")" -gt 0 ]; then
-      [ -e "$hold" ] || : >"$hold" 2>/dev/null
-      [ -n "$(find "$hold" -mmin +30 2>/dev/null)" ] || exit 0
+      [ -e "$hold" ] || : >"$hold" 2>/dev/null || true
+      # No marker (the state folder cannot be written): remind now rather than never.
+      [ ! -e "$hold" ] || [ -n "$(find "$hold" -mmin +30 2>/dev/null)" ] || exit 0
     fi
     /bin/rm -f "$hold"
     jq -cn --arg n "$name" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: ("Files changed this session after " + $n + " was last written. The project'\''s rule: " + $n + " is rewritten before the turn ends, under 30 lines (goal, branch and commit, done, next step, open questions, blocked on, verify with, do not touch).")}}'

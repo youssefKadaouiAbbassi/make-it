@@ -15,9 +15,10 @@ seen="${XDG_STATE_HOME:-$HOME/.local/state}/makeit/behind"
 mark="$seen/$(printf '%s' "$cwd" | cksum | tr -c '0-9' '_')"
 today=$(date +%F)
 [ "$(cat "$mark" 2>/dev/null)" = "$today" ] && exit 0
+# The day is marked only once makeit has answered: a check cut short asks again next session.
+ids=$(cd "$cwd" 2>/dev/null && makeit init --dry-run --json 2>/dev/null | jq -er '[.changes[]?.id] | join(", ")' 2>/dev/null) || exit 0
 mkdir -p "$seen" 2>/dev/null && printf '%s\n' "$today" >"$mark" 2>/dev/null
 find "$seen" -type f -mtime +7 -delete 2>/dev/null
-ids=$(cd "$cwd" 2>/dev/null && makeit init --dry-run --json 2>/dev/null | jq -r '[.changes[]?.id] | join(", ")' 2>/dev/null)
 [ -n "$ids" ] || exit 0
 n=$(awk -F', ' '{print NF}' <<<"$ids")
 word=changes; [ "$n" = 1 ] && word=change

@@ -137,6 +137,15 @@ expect "handoff Stop reminds after 30 minutes of waiting" '"hookEventName":"Stop
 if [ -e "${holdf:-$tmp/none}" ]; then bad "handoff Stop keeps its wait marker after reminding"; else ok "handoff Stop clears its wait marker after reminding"; fi
 out=$(payload Stop ',"stop_hook_active":false,"background_tasks":[]' | bash "$here/handoff.sh")
 expect "handoff Stop reminds once no job runs" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+# When the wait marker cannot be written, the reminder must not stay silent for the whole session.
+if [ "$(id -u)" != 0 ]; then
+  chmod a-w "$tmp/state/makeit/sessions"
+  out=$(payload Stop "$bgjob" | bash "$here/handoff.sh")
+  chmod u+w "$tmp/state/makeit/sessions"
+  expect "handoff Stop reminds when it cannot mark its wait" '"hookEventName":"Stop","additionalContext":"Files changed this session' "$out"
+else
+  echo "SKIP  handoff Stop without a writable state folder: running as root"
+fi
 out=$(payload Stop ',"stop_hook_active":true' | bash "$here/handoff.sh")
 expect_empty "handoff Stop does not block twice" "$out"
 sleep 1; printf '# Handoff\n- **Goal:** rewritten\n' >"$repo/HANDOFF.md"
@@ -724,6 +733,8 @@ expect_empty "behind: up to date is silent" "$(behind "$bh/proj")"
 newday; printf 'garbage' >"$bh/out.json"
 out=$(behind "$bh/proj" 2>&1; echo "rc=$?")
 if [ "$out" = "rc=0" ]; then ok "behind: garbage from makeit exits 0, silent"; else bad "behind: garbage from makeit: [$out]"; fi
+printf '{"changes":[{"id":"x"}]}' >"$bh/out.json"
+expect "behind: a check that failed does not use up the day" '1 change behind (x)' "$(behind "$bh/proj" | jq -r '.systemMessage' 2>&1)"
 newday; out=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$bh/proj" | PATH="$tmp/nojq" bash "$here/behind.sh" 2>&1; echo "rc=$?")
 if [ "$out" = "rc=0" ]; then ok "behind: without jq or makeit exits 0, silent"; else bad "behind: without jq or makeit: [$out]"; fi
 newday; printf '{"changes":[{"id":"x"}]}' >"$bh/out.json"
