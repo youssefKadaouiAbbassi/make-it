@@ -805,8 +805,16 @@ if command -v node >/dev/null 2>&1 && [ -f "$cdt_pkg" ] && has_chrome; then
   [ "$rc" = 1 ] && ok "shots: a page that does not load makes the run exit 1" || bad "shots: missing page: exit $rc: $out"
   expect "shots: the page that did not load is named" "01-missing-html: did not load (file:///nonexistent/missing.html)" "$out"
   [ -s "$sd/b/02-page-html-800x600.png" ] && ok "shots: the next page is still taken, at the width asked" || bad "shots: after a missing page: $(ls "$sd/b" 2>&1)"
-  out=$(SHOTS_TEST_MARK="$sd/mark" bash "$shots" --out "$sd/c" --setup "$here/testdata/shots/login.sh" "$page" 2>&1); rc=$?
-  if [ "$rc" = 0 ] && grep -q 'about:blank' "$sd/mark" 2>/dev/null; then ok "shots: the setup file runs first and reaches the browser through cdt"; else bad "shots: setup: exit $rc, mark [$(cat "$sd/mark" 2>&1)]: $out"; fi
+  # A page behind a login: the setup file signs in, the page shots opens next is the signed-in one.
+  node "$here/testdata/shots/server.mjs" "$sd/server.log" >"$sd/port" 2>/dev/null &
+  srv=$!
+  for _ in $(seq 50); do [ -s "$sd/port" ] && break; sleep 0.1; done
+  port=$(cat "$sd/port")
+  out=$(bash "$shots" --out "$sd/n" "http://127.0.0.1:$port/private" 2>&1)
+  expect "shots: without a setup file the page behind the login is refused" "private refused" "$(tail -n 1 "$sd/server.log" 2>&1)"
+  out=$(SHOTS_TEST_PORT="$port" bash "$shots" --out "$sd/c" --setup "$here/testdata/shots/login.sh" "http://127.0.0.1:$port/private" 2>&1); rc=$?
+  kill "$srv" 2>/dev/null
+  if [ "$rc" = 0 ] && [ "$(tail -n 1 "$sd/server.log" 2>/dev/null)" = "private ok" ] && [ -s "$sd/c/01-private-1280x800.png" ]; then ok "shots: the setup file signs in and the page behind the login is taken"; else bad "shots: setup: exit $rc, server log [$(tr '\n' ' ' <"$sd/server.log" 2>&1)]: $out"; fi
   printf 'false\n' >"$sd/bad-setup.sh"
   out=$(bash "$shots" --out "$sd/d" --setup "$sd/bad-setup.sh" "$page" 2>&1); rc=$?
   if [ "$rc" = 1 ] && ! ls "$sd/d"/*.png >/dev/null 2>&1; then ok "shots: a failing setup stops the run before any screenshot"; else bad "shots: failing setup: exit $rc: $out"; fi
