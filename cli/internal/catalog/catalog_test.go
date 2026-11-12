@@ -179,9 +179,18 @@ func TestBaselineSetupReview(t *testing.T) {
 		Permissions         struct {
 			Ask []string `json:"ask"`
 		} `json:"permissions"`
+		Attribution *struct {
+			Commit     *string `json:"commit"`
+			PR         *string `json:"pr"`
+			SessionURL *bool   `json:"sessionUrl"`
+		} `json:"attribution"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		t.Fatal(err)
+	}
+	// Commits and PRs carry no Claude attribution (Claude Code's documented attribution setting).
+	if a := s.Attribution; a == nil || a.Commit == nil || *a.Commit != "" || a.PR == nil || *a.PR != "" || a.SessionURL == nil || *a.SessionURL {
+		t.Errorf("attribution = %+v, want commit \"\", pr \"\", sessionUrl false", a)
 	}
 	if s.CrossSessionInbound != "accept" {
 		t.Errorf("crossSessionInbound = %q", s.CrossSessionInbound)
