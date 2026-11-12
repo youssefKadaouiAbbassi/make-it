@@ -62,9 +62,6 @@ they worked, mostly to ship work that was already checked.
   Pages behind a login need a setup file that signs in first (`--setup FILE`); `/makeit:init`
   writes it when the project has a development account, and adds the `shots` line to the run
   recipe and the verify skill. Run `/makeit:init` in a project you already set up to get them.
-- **The screens come first.** A new global rule: before proposing approaches for a change to
-  something a screen shows, Claude finds every screen that shows it, in every app of the
-  project, reads each one's code, opens it when it runs here, and names each in the approaches.
 - **The tests stay off the network.** makeit's own command tests no longer reach GitHub to look
   up tool releases.
 

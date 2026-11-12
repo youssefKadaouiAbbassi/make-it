@@ -58,10 +58,6 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
 - A change to a screen that exists keeps its look: reuse its components and
   fill them with the new data. Hiding or replacing a designed part is a choice
   to name in the approaches, beside a screenshot of the screen as it is today.
-- A change to something a screen shows starts with the screens: before
-  proposing approaches, find every screen that shows it, in every app of the
-  project (a back-office field can feed an app page), read each screen's code
-  and open it when it runs here, and name each screen in the approaches.
 
 ## Verification
 
