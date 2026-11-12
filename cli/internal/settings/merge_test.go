@@ -350,3 +350,26 @@ func TestEnforcedKeepsAPreexistingValue(t *testing.T) {
 		t.Fatalf("Force did not take it over: %v", taken.Changes)
 	}
 }
+
+// An attribution value the user set before makeit managed the key is held and reported once,
+// while the other attribution keys are added.
+func TestMergeHoldsUserAttribution(t *testing.T) {
+	const ours = `{"attribution": {"commit": "", "pr": "", "sessionUrl": false}}`
+	first := Merge(obj(t, `{"attribution": {"commit": "Signed-off-by: me"}}`), obj(t, ours), nil, DefaultOptions())
+	if got := str(t, first.Settings, "/attribution/commit"); got != `"Signed-off-by: me"` {
+		t.Fatalf("commit overwritten: %s", got)
+	}
+	if got := str(t, first.Settings, "/attribution/pr"); got != `""` || action(first, "/attribution/pr") != Set {
+		t.Fatalf("pr %s, changes %v", got, first.Changes)
+	}
+	if got := str(t, first.Settings, "/attribution/sessionUrl"); got != `false` || action(first, "/attribution/sessionUrl") != Set {
+		t.Fatalf("sessionUrl %s, changes %v", got, first.Changes)
+	}
+	if action(first, "/attribution/commit") != KeptTheirs || !first.State["/attribution/commit"].Held {
+		t.Fatalf("want kept-theirs and held, got %v", first.Changes)
+	}
+	second := Merge(first.Settings, obj(t, ours), first.State, DefaultOptions())
+	if got := str(t, second.Settings, "/attribution/commit"); got != `"Signed-off-by: me"` || action(second, "/attribution/commit") != Noop {
+		t.Fatalf("second run: commit %s, changes %v", got, second.Changes)
+	}
+}

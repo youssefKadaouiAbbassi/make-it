@@ -3,6 +3,7 @@
   "model": "opus",
   "cleanupPeriodDays": 3650,
   "crossSessionInbound": "accept",
+  "attribution": {"commit": "", "pr": "", "sessionUrl": false},
   "skipDangerousModePermissionPrompt": true,
   "permissions": {
     "defaultMode": "bypassPermissions",
