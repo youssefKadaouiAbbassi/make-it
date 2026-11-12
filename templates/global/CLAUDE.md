@@ -46,7 +46,8 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   the task's first question when there is one (a second question in the same
   dialog), else when the work is ready. After the yes, do every step named
   without asking again; a red full suite still asks. Steps the project's
-  Shipping section allows are not asked.
+  Shipping section allows are not asked. Approving a design is not that
+  go-ahead: write the plan and show it; the build starts on a yes to the plan.
 
 ## Scope
 
@@ -82,6 +83,9 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   one command (`--out DIR`; before and after are two runs into two folders): use it for those
   screenshots and read the files it names. Pages behind a login need the project's setup file
   (`--setup`, named in its run recipe); without one, use the browser tools.
+- When the owner approved screens (a mockup, prototype or picture), each plan task
+  that builds one ends with a side-by-side: the built screen next to the approved one
+  at the same width, both read. Write where the approved design lives in HANDOFF.md.
 
 ## Testing
 
@@ -123,6 +127,8 @@ override this one. Hard limits are `permissions.ask` rules in settings, not pros
   worktree (`claude -w <name>`).
 - A command that may run past two minutes, or a wait longer than a minute, runs
   in the background or with Monitor; never a fixed foreground sleep.
+- Leave temporary files in the scratchpad; never delete them to tidy up. An
+  `rm -rf` waits on the owner's approval and stalls agents nobody is watching.
 - Independent lookups (file reads, searches, git queries, page reads)
   go in one message as parallel tool calls; shell steps that depend on each
   other go in one command.
