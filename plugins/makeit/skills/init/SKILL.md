@@ -182,6 +182,18 @@ A project with a user interface gets one Run part per surface: each web app and 
 surface you could not start here goes under a heading "Not runnable here" with the reason, and
 gets a HANDOFF item: until it has a recipe, a change to that screen is first seen after a deploy.
 
+A web surface's Run part ends with the line that takes its screenshots, run once and seen to
+work: `shots --out <folder> <the URLs of its main pages>` (one command: each page at desktop and
+phone width, with its console errors). When the pages sit behind a login, write
+`.claude/skills/run-<project>/shots-login.sh` first and add `--setup` with that file to the
+line. The file is sourced once the browser is up and signs in through `cdt`, which takes the
+browser tools as commands (`cdt new_page <login URL> --output-format=json`, `cdt evaluate_script
+'<a function that fills and submits the form>' --pageId <id>`). It signs in with a development
+account of the project, never with a person's own password. The file is committed, so it holds
+no password: it reads the account's password from an environment variable that the recipe
+names (for example `"$DEV_PASSWORD"`). With no such account, leave the
+login out, say so under "Not runnable here", and keep the browser tools for those pages.
+
 If nothing can be started yet (a fresh project), write no recipe; add a HANDOFF item instead.
 
 Also write `.claude/skills/verify/SKILL.md` from `templates/project/verify-skill.md` (in the

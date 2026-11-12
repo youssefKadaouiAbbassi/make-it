@@ -37,6 +37,10 @@ Ask for what you want in plain words. The plugin set shapes how Claude works on 
 - **Nothing is "done" without proof.** Before Claude says a task is done, it runs the project's
   `check:task` (format, lint, types and the tests related to the change) and shows the output.
   For a web app it opens the page in Chrome and looks at it; for an API or a CLI it calls it.
+  For a change to web pages it runs `shots` once before and once after, each into its own folder:
+  every page at desktop and phone width with its console errors, in one command, and reads the
+  files. Pages behind a login need a setup file in the project's run recipe; without one Claude
+  uses the browser tools.
 
 Claude runs commands without asking, except the risky ones on makeit's ask list, such as merging a
 pull request, pushing to `main` or `master`, force pushes, `git reset --hard`, publishing a package or

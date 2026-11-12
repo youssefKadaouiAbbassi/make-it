@@ -5,9 +5,9 @@ raises the minor version.
 
 ## 0.5.0
 
-Fewer stops, a setup that reaches the whole project, and safer updates. Two studies of real
-sessions are behind it: sessions waited on their owner longer than they worked, mostly to ship
-work that was already checked.
+Fewer stops, a setup that reaches the whole project, screenshots in one command, and safer
+updates. Two studies of real sessions are behind it: sessions waited on their owner longer than
+they worked, mostly to ship work that was already checked.
 
 - **Shipping, decided once per project.** `/makeit:init` asks one question: what may Claude do
   without asking once `check:full` is green (push the branch and open the PR; also push or merge
@@ -54,6 +54,16 @@ work that was already checked.
   its entry file, and makeit's start line still looked at the old place, so every session fell
   back to `npx` without a word: a slower start and one more process per session. The start line
   now reads the place from the package itself.
+- **`shots` takes the screenshots of a UI change.** `shots URL...` starts one headless browser
+  of its own, with a throwaway profile, loads each page once per width, at desktop and phone
+  width (`--widths` to change them), and saves the screenshots into one folder (`--out DIR`). It
+  prints each file, says when a page is wider than its viewport or landed on another address,
+  and lists each page's console errors. Before and after a change are two runs into two folders.
+  Pages behind a login need a setup file that signs in first (`--setup FILE`); `/makeit:init`
+  writes it when the project has a development account, and adds the `shots` line to the run
+  recipe and the verify skill. Run `/makeit:init` in a project you already set up to get them.
+- **The tests stay off the network.** makeit's own command tests no longer reach GitHub to look
+  up tool releases.
 
 ## 0.4.4
 

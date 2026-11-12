@@ -10,7 +10,8 @@ description: Verify a change in <project> before committing. Use before any comm
    `.claude/skills/run-<project>/SKILL.md`.
 3. Exercise the changed behaviour once for real, on every surface the change reaches (a back-office
    field that feeds an app page: both): `<how to drive the changed path: request, click, command>`.
-   Read the output, the logs and (for a UI) a screenshot of each screen, before and after.
+   Read the output, the logs and (for a UI) a screenshot of each screen, before and after; for
+   web pages `<the run recipe's shots line>` takes them at desktop and phone width in one command.
 4. Stop the app.
 5. Report each command run this turn with its output, and the commit it ran against. A step
    that could not run is inconclusive, never a pass.

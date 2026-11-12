@@ -1,0 +1,312 @@
+#!/usr/bin/env bash
+# shots: screenshots of web pages at several widths, with their console errors, in one command.
+#
+#   shots [--out DIR] [--widths WxH[,WxH...]] [--setup FILE] URL...
+#
+# A run has one headless browser of its own with a throwaway profile. It loads each page once per
+# width (the viewport is set first, so a page that picks its layout at load gets the right one)
+# and saves it full page as DIR/NN-<page>-<WxH>.png (default widths 1280x800,375x812; DIR
+# defaults to a new folder under the temp folder). The summary names each file, says when a page
+# is wider than its viewport, when it landed on another address (a redirect to a login page) and
+# when it was still loading after the timeout, and lists each page's console errors. Before and
+# after a change are two runs into two folders.
+#
+# --setup FILE is for pages behind a login: the file is sourced once the browser is up and
+# calls the browser's command line through `cdt` (cdt new_page URL, cdt fill ..., cdt click ...).
+# Any failing command in the file stops the run, so its last command must succeed too. A bare
+# name is the file in the current folder.
+#
+# Limits: the phone width is a narrow viewport, not a phone emulation (no touch, no phone user
+# agent). The console errors are those logged up to the last screenshot of the page.
+#
+# It drives the `chrome-devtools` command line of the chrome-devtools-mcp copy makeit installs.
+# Exit 0 when every screenshot was saved (what the summary found is for you to read), 1 when a
+# page did not load, a step failed or a screenshot is missing, 2 on a usage error. Needs bash,
+# node, jq and Google Chrome.
+set -u
+usage() {
+  echo "usage: shots [--out DIR] [--widths WxH[,WxH...]] [--setup FILE] URL..." >&2
+  exit 2
+}
+die() {
+  echo "shots: $*" >&2
+  exit 1
+}
+
+out=""
+widths="1280x800,375x812"
+setup=""
+urls=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --out | --widths | --setup)
+      [ $# -ge 2 ] || usage
+      case "$1" in --out) out=$2 ;; --widths) widths=$2 ;; --setup) setup=$2 ;; esac
+      shift 2
+      ;;
+    -h | --help) usage ;;
+    --)
+      shift
+      while [ $# -gt 0 ]; do urls+=("$1"); shift; done
+      ;;
+    -*)
+      echo "shots: unknown option $1" >&2
+      usage
+      ;;
+    *)
+      urls+=("$1")
+      shift
+      ;;
+  esac
+done
+[ "${#urls[@]}" -gt 0 ] || usage
+sizes=$(printf '%s' "$widths" | tr ',' ' ')
+[ -n "${sizes// /}" ] || usage
+bad_size() {
+  echo "shots: a width is WIDTHxHEIGHT, each at least 1, got '$1'" >&2
+  usage
+}
+for size in $sizes; do
+  case "$size" in
+    *[!0-9x]* | x* | *x | *x*x*) bad_size "$size" ;;
+    *x*) ;;
+    *) bad_size "$size" ;;
+  esac
+  if [ "$((10#${size%x*}))" -lt 1 ] || [ "$((10#${size#*x}))" -lt 1 ]; then bad_size "$size"; fi
+done
+
+for bin in node jq; do
+  command -v "$bin" >/dev/null 2>&1 || die "$bin is missing: run makeit setup"
+done
+pkg="${MAKEIT_DIR:-$HOME/.makeit}/mcp/chrome-devtools/node_modules/chrome-devtools-mcp"
+[ -f "$pkg/package.json" ] || die "the browser tools makeit installs are missing ($pkg): run makeit setup"
+rel=$(jq -r '.bin["chrome-devtools"] // empty' "$pkg/package.json" 2>/dev/null)
+if [ -z "$rel" ] || [ ! -f "$pkg/$rel" ]; then
+  die "chrome-devtools-mcp $(jq -r '.version // "?"' "$pkg/package.json" 2>/dev/null) has no chrome-devtools command line here: use the browser tools"
+fi
+cli="$pkg/$rel"
+# `. name` would look the name up on PATH first.
+case "$setup" in "" | */*) ;; *) setup="./$setup" ;; esac
+if [ -n "$setup" ] && [ ! -f "$setup" ]; then die "setup file not found: $setup"; fi
+
+# Its own daemon: another run, or the session's browser server, is not touched.
+sid=$(printf '%x%x' "$$" "$RANDOM")
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  runtime="$XDG_RUNTIME_DIR/chrome-devtools-mcp-$sid"
+else
+  runtime="/tmp/chrome-devtools-mcp-$sid-$(id -u)"
+fi
+limit=()
+# --foreground keeps the client in the run's process group: a hangup or Ctrl-C sent to the group
+# ends it too, instead of the trap waiting for it to finish.
+if timeout --foreground 1 true >/dev/null 2>&1; then
+  limit=(timeout --foreground 90)
+elif command -v timeout >/dev/null 2>&1; then
+  limit=(timeout 90)
+fi
+export CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1
+cdt() {
+  ${limit[@]+"${limit[@]}"} node "$cli" "$@" --sessionId "$sid"
+}
+
+# last_line TEXT: the last non-blank line, reading a JSON list of messages as its texts.
+last_line() {
+  printf '%s\n' "$1" |
+    jq -rR '(fromjson? // .) | if type == "array" then (.[]?.text? // empty | tostring) elif type == "string" then . else empty end' 2>/dev/null |
+    grep -v '^[[:space:]]*$' | tail -n 1
+}
+
+# start_watcher: a kill -9 runs no trap, so a detached node process stops this run's daemon and
+# removes its runtime folder once this shell is gone. Prints the watcher's pid.
+start_watcher() {
+  local watch='// shots watcher
+const {spawnSync} = require("child_process"), fs = require("fs");
+const [pid, cli, sid, dir] = process.argv.slice(1);
+setInterval(() => {
+  try { process.kill(Number(pid), 0); return; } catch (e) { if (e.code === "EPERM") return; }
+  spawnSync(process.execPath, [cli, "stop", "--sessionId", sid], {stdio: "ignore", timeout: 30000});
+  try { fs.rmdirSync(dir); } catch (e) {}
+  process.exit(0);
+}, 1000);'
+  node -e 'const {spawn} = require("child_process");
+const w = spawn(process.execPath, ["-e", ...process.argv.slice(1)], {detached: true, stdio: "ignore"});
+w.unref(); console.log(w.pid);' "$watch" "$$" "$cli" "$sid" "$runtime"
+}
+
+started=0
+watcher=""
+# shellcheck disable=SC2317 # called by the EXIT trap
+finish() {
+  if [ "$started" = 1 ]; then
+    cdt stop >/dev/null 2>&1
+    rmdir "$runtime" 2>/dev/null
+  fi
+  if [ -n "$watcher" ]; then kill "$watcher" 2>/dev/null; fi
+}
+trap finish EXIT
+trap 'exit 130' INT TERM HUP
+
+if [ -z "$out" ]; then
+  out=$(mktemp -d "${TMPDIR:-/tmp}/shots.XXXXXX") || die "could not make a folder for the screenshots"
+fi
+mkdir -p "$out" || die "could not make $out"
+out=$(cd "$out" && pwd)
+
+watcher=$(start_watcher)
+started=1
+if ! err=$(cdt start --headless --isolated --no-performance-crux 2>&1 >/dev/null); then
+  die "the browser did not start: $(last_line "$err")"
+fi
+# The daemon starts Chrome on its first call: a machine without Chrome stops here.
+pages=$(cdt list_pages --output-format=json 2>&1)
+tab=$(printf '%s\n' "$pages" | grep '^{' | jq -r '[.pages[]?.id][0] // empty' 2>/dev/null)
+[ -n "$tab" ] || die "the browser did not start: $(last_line "$pages")"
+
+if [ -n "$setup" ]; then
+  # A subshell: the file's own variables and an exit in it stay there. Its output is not the summary.
+  # set -e is ignored on the left of || and inside `if !`, so the status is taken on its own line.
+  (
+    set +u -e
+    # shellcheck disable=SC1090 # the project's own file, named on the command line
+    . "$setup"
+  ) >&2
+  status=$?
+  [ "$status" = 0 ] || die "setup failed: $setup"
+  # A tab the file opened stays in front, and Chrome stalls the screenshots of a tab behind it.
+  cdt select_page "$tab" --bringToFront true >/dev/null 2>&1
+fi
+
+# page_name URL: the URL's path as a file name (a file: URL gives its base name).
+page_name() {
+  local u=$1 p
+  u=${u%%\#*}
+  u=${u%%\?*}
+  case "$u" in
+    file:*) p=${u##*/} ;;
+    *://*)
+      p=${u#*://}
+      case "$p" in */*) p=${p#*/} ;; *) p="" ;; esac
+      ;;
+    *) p=$u ;;
+  esac
+  p=$(printf '%s' "$p" | tr -c 'A-Za-z0-9' '-' | tr -s '-')
+  p=${p#-}
+  p=${p%-}
+  [ -n "$p" ] || p=index
+  if [ "${#p}" -gt 40 ]; then
+    p=${p: -40}
+    p=${p#-}
+  fi
+  printf '%s' "$p"
+}
+
+# same_address A B: equal once the fragment and a trailing slash are left out.
+same_address() {
+  local a=${1%%\#*} b=${2%%\#*}
+  [ "${a%/}" = "${b%/}" ]
+}
+
+# set_viewport SIZE: the command line exits 0 on most errors, so success is its JSON answer.
+set_viewport() {
+  local res
+  res=$(cdt emulate "$tab" --viewport "$1" --output-format=json 2>/dev/null) || return 1
+  printf '%s' "$res" | jq -e 'type == "object" and has("viewport")' >/dev/null 2>&1
+}
+
+# load URL: loads it in the tab. Sets note (added to the shot's line), or why when it did not load.
+load() {
+  local raw json final msg
+  note=""
+  why=""
+  raw=$(cdt navigate_page "$tab" --type url --url "$1" --output-format=json 2>&1)
+  json=$(printf '%s\n' "$raw" | grep '^{' | tail -n 1)
+  final=$(printf '%s' "$json" | jq -r --argjson t "$tab" '.pages[]? | select(.id == $t) | .url' 2>/dev/null)
+  if [ -z "$final" ]; then
+    why=$(last_line "$raw")
+    return 1
+  fi
+  msg=$(printf '%s' "$json" | jq -r '.message // ""')
+  case "$msg" in
+    "Unable to navigate"*"Navigation timeout"*)
+      # One request never answered, but the page is there: it is taken.
+      if same_address "$final" "$1"; then
+        note=" · still loading after the timeout"
+        return 0
+      fi
+      ;;
+  esac
+  case "$msg" in
+    "Unable to navigate"*)
+      why=${msg#Unable to navigate in the selected page: }
+      return 1
+      ;;
+  esac
+  same_address "$final" "$1" || note=" · landed on $final"
+}
+
+# console_errors: the tab's console errors, one text per line; fails when they cannot be read.
+# No error at all is an empty object; a failure is not an object.
+console_errors() {
+  local res
+  res=$(cdt list_console_messages "$tab" --types error --output-format=json 2>/dev/null) || return 1
+  printf '%s' "$res" | jq -e 'type == "object"' >/dev/null 2>&1 || return 1
+  printf '%s' "$res" | jq -r '.consoleMessages[]? | (.text // "") | tostring | gsub("\n"; " ")'
+}
+
+# overflow FILE SIZE: a PNG holds its width in bytes 16 to 19; a full-page shot wider than the
+# viewport overflowed. Prints the note for the shot's line.
+overflow() {
+  local width
+  width=$(node -e 'const fs=require("fs"),b=Buffer.alloc(24),f=fs.openSync(process.argv[1],"r");fs.readSync(f,b,0,24,0);console.log(b.readUInt32BE(16))' "$1" 2>/dev/null)
+  if [ -n "$width" ] && [ "$width" -gt "${2%%x*}" ]; then printf ' · wider than the viewport: %s px' "$width"; fi
+}
+
+# shoot_page URL NAME: each width in turn: viewport, load, screenshot, console errors.
+shoot_page() {
+  local url=$1 name=$2 size file texts="" more loaded=0 unread=0 count
+  for size in $sizes; do
+    if ! set_viewport "$size"; then
+      echo "$name $size: the viewport could not be set"
+      failed=1
+      continue
+    fi
+    if ! load "$url"; then
+      echo "$name: did not load ($url)${why:+: $why}"
+      failed=1
+      break
+    fi
+    loaded=1
+    file="$out/$name-$size.png"
+    /bin/rm -f "$file"
+    if ! cdt take_screenshot "$tab" --fullPage true --filePath "$file" >/dev/null 2>&1 || [ ! -s "$file" ]; then
+      echo "$name $size: no screenshot was saved"
+      failed=1
+    else
+      echo "$name $size: $name-$size.png$(overflow "$file" "$size")$note"
+    fi
+    if more=$(console_errors); then
+      texts="$texts$more"$'\n'
+    else
+      unread=1
+    fi
+  done
+  [ "$loaded" = 1 ] || return 0
+  if [ "$unread" = 1 ]; then
+    echo "$name console errors: could not be read"
+    failed=1
+    return 0
+  fi
+  texts=$(printf '%s' "$texts" | grep -v '^$' | awk '!seen[$0]++')
+  count=$(printf '%s' "$texts" | grep -c '^')
+  echo "$name console errors: $count"
+  [ -z "$texts" ] || printf '%s\n' "$texts" | head -n 5 | jq -Rr '"  " + .[0:200]'
+}
+
+echo "out: $out"
+n=0
+failed=0
+for url in "${urls[@]}"; do
+  n=$((n + 1))
+  shoot_page "$url" "$(printf '%02d-%s' "$n" "$(page_name "$url")")"
+done
+exit "$failed"

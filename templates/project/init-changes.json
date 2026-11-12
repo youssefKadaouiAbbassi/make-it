@@ -1,6 +1,6 @@
 {
   "$comment": "Changes to how makeit init sets a project up, in version order. /makeit:init applies the ones newer than the project's initVersion (.makeit.json). Each prompt is the end state to reach, so applying it twice is harmless. sources is the hash of templates/project/ and the init skill: a Go test fails when they change and it does not.",
-  "sources": "sha256:8fbf018c39a78f789e3904842e862e44dbd0fc1167a0424d632f97f377f8903b",
+  "sources": "sha256:918074a7d5df1965df289b07c46433433515a5810317a62549cee2bfa72fcbdb",
   "changes": [
     {
       "version": "0.3.7",
@@ -55,6 +55,12 @@
       "id": "timed-checks",
       "files": ["CLAUDE.md", "CONSTRAINTS.md"],
       "prompt": "Each check task was run and timed on this project, and the measured time stands in CLAUDE.md's Commands table and in the budgets table of CONSTRAINTS.md instead of the template's 10 s and 90 s. check:task runs only what a change touches (the type checker in its incremental mode, the tests related to the changed files) and stays under 90 s; check:fast stays under 10 s. Time the tasks now when the times are still the template's. A check:fast over 10 s or a check:task over 90 s is a gap for the review: say what makes it slow and what would bring it down."
+    },
+    {
+      "version": "0.5.0",
+      "id": "shots-line",
+      "files": [".claude/skills/run-<project>/SKILL.md", ".claude/skills/verify/SKILL.md"],
+      "prompt": "Each web surface's Run part in the run recipe ends with the line that takes its screenshots in one command, run once in this session and seen to work: `shots --out <folder> <the URLs of its main pages>`, and step 3 of the verify skill names that line. When the pages sit behind a login and the project has a development account, a file `shots-login.sh` beside the recipe signs in through `cdt` and the line passes it with `--setup`. The file is committed, so it holds no password: it reads the development account's password from an environment variable the recipe names. With no such account the recipe says so under \"Not runnable here\" and the browser tools stay in use for those pages. A project with no web surface needs nothing here."
     }
   ]
 }
