@@ -3,6 +3,32 @@
 All notable changes to makeit. Versions follow 0.x while makeit is in beta: a breaking change
 raises the minor version.
 
+## 0.5.1
+
+Fixes from two diagnosed sessions: one rebuilt its screens twice because the approved design was
+lost, the other lost hours on one cleanup command and took a design approval as a go to build.
+Each new rule line was tested first: five runs without it and five with it, on a scenario that
+tempts the failure.
+
+- **No Claude attribution in commits and pull requests.** The settings set Claude Code's
+  `attribution` setting to `{"commit": "", "pr": "", "sessionUrl": false}`: no Co-Authored-By
+  trailer, no "Generated with Claude Code" line, no session link. A value you set there before
+  is kept and reported once.
+- **A design approval is not a go to build.** The go-ahead rule now says that approving a design
+  is not the shipping go-ahead: Claude writes the plan and shows it, and the build starts on a
+  yes to the plan. Without the line, 4 of 5 runs offered to build before a plan (2 of 5
+  recommended it); with it, 0 of 5.
+- **Screens are checked against the approved design.** When you approved screens (a mockup,
+  prototype or picture), each plan task that builds one ends with a side-by-side of the built
+  screen next to the approved one at the same width, and HANDOFF.md says where the approved
+  design lives. Without the line, 4 of 5 plans had a screen task with no such comparison and
+  5 of 5 left the design's location out of HANDOFF.md; with it, 0 of 5 for both.
+- **Temporary files stay in the scratchpad.** Agents leave temporary files there and never
+  delete them to tidy up: an `rm -rf` waits on your approval and stalls agents nobody is
+  watching. Kept after a second test: the first scenario (a text-only finish) failed 0 of 5
+  times without the line, so it was retested with the temporary files inside the agent's
+  delivery folder. Without the line, 5 of 5 runs deleted the browser profile; with it, 0 of 5.
+
 ## 0.5.0
 
 Fewer stops, a setup that reaches the whole project, screenshots in one command, and safer
